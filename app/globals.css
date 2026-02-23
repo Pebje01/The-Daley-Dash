@@ -1,0 +1,155 @@
+/* ── Theme Variabelen ─────────────────────────────────────────── */
+
+:root {
+  /* Primary backgrounds — pastel / editorial */
+  --color-brand-lavender:          221 214 236;
+  --color-brand-lavender-light:    236 231 244;
+  --color-brand-lavender-dark:     204 195 224;
+
+  /* Page backgrounds */
+  --color-brand-page-light:        236 236 236;
+  --color-brand-page-medium:       245 244 240;
+
+  /* Accent pastels */
+  --color-brand-pink:              234 214 219;
+  --color-brand-light-blue:        213 228 241;
+  --color-brand-lavender-accent:   215 208 232;
+  --color-brand-lime:              205 235 115;
+
+  /* Icon accents */
+  --color-brand-pink-accent:       166 118 127;
+  --color-brand-blue-accent:        96 134 167;
+  --color-brand-lav-accent:        129 113 166;
+  --color-brand-lime-accent:       122 150  44;
+
+  /* Cards */
+  --color-brand-card-bg:           245 244 240;
+  --color-brand-card-border:        17  17  17;
+
+  /* Highlights */
+  --color-brand-yellow-highlight:  255 241 115;
+
+  /* Text */
+  --color-brand-text-primary:       17  17  17;
+  --color-brand-text-secondary:    108 108 108;
+
+  /* Status */
+  --color-brand-status-green:      121 163 133;
+  --color-brand-status-orange:     222 172 124;
+  --color-brand-status-red:        218 126 126;
+
+  /* Overig */
+  --color-brand-purple:            129 113 166;
+
+  /* Sidebar overlay */
+  --color-sidebar-active:          255 255 255;
+  --color-sidebar-hover:           248 248 248;
+}
+
+.dark {
+  /* Primary backgrounds — Donker paars */
+  --color-brand-lavender:           42  32  62;
+  --color-brand-lavender-light:     35  27  55;
+  --color-brand-lavender-dark:      60  45  85;
+
+  /* Page backgrounds — Donker navy-paars */
+  --color-brand-page-light:         22  18  35;
+  --color-brand-page-medium:        18  14  30;
+
+  /* Accent pastels — Diep gedesatureerd */
+  --color-brand-pink:               55  30  30;
+  --color-brand-light-blue:         25  35  55;
+  --color-brand-lavender-accent:    45  30  65;
+  --color-brand-lime:               30  40  22;
+
+  /* Icon accents — Iets feller voor contrast */
+  --color-brand-pink-accent:       210 140 125;
+  --color-brand-blue-accent:       130 165 200;
+  --color-brand-lav-accent:        170 145 200;
+  --color-brand-lime-accent:       155 175  95;
+
+  /* Cards — Donker oppervlak */
+  --color-brand-card-bg:            30  25  48;
+  --color-brand-card-border:        70  60 100;
+
+  /* Highlights */
+  --color-brand-yellow-highlight:   80  70  20;
+
+  /* Text — Licht voor leesbaarheid */
+  --color-brand-text-primary:      240 238 245;
+  --color-brand-text-secondary:    160 155 175;
+
+  /* Status — Iets feller voor donkere achtergrond */
+  --color-brand-status-green:      110 185 130;
+  --color-brand-status-orange:     230 180 120;
+  --color-brand-status-red:        230 110 110;
+
+  /* Overig */
+  --color-brand-purple:            150 135 185;
+
+  /* Sidebar overlay — Paars ipv wit */
+  --color-sidebar-active:           80  65 115;
+  --color-sidebar-hover:            60  48  90;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply text-brand-text-primary antialiased min-h-screen;
+    font-family: var(--font-geist), system-ui, sans-serif;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-brand-lime text-brand-text-primary border-brand border-brand-card-border px-4 py-2 rounded-brand-btn text-sm font-medium
+           hover:opacity-80 transition-opacity flex items-center gap-2 cursor-pointer;
+  }
+
+  .btn-secondary {
+    @apply bg-brand-lavender-accent text-brand-text-primary border-brand border-brand-card-border
+           px-4 py-2 rounded-brand-btn text-sm font-medium
+           hover:opacity-70 transition-opacity flex items-center gap-2 cursor-pointer;
+  }
+
+  .card {
+    @apply bg-brand-card-bg rounded-brand border-brand border-brand-card-border p-card-padding;
+  }
+
+  .input {
+    @apply w-full border-brand border-brand-card-border rounded-brand-btn px-3 py-2 text-sm
+           focus:outline-none focus:ring-2 focus:ring-brand-lavender-dark/30 focus:border-brand-lavender-dark
+           bg-brand-card-bg text-brand-text-primary;
+  }
+
+  .label {
+    @apply block text-caption font-medium text-brand-text-secondary uppercase tracking-wide mb-1.5;
+  }
+
+  .pill {
+    @apply inline-flex items-center px-2.5 py-1 rounded-full text-pill font-medium text-brand-text-primary;
+  }
+
+  .btn-soft-pink {
+    @apply border-2 border-brand-card-border bg-brand-pink text-brand-text-primary;
+    box-shadow: 0 4px 0 rgb(var(--color-brand-pink-accent) / 0.25);
+  }
+
+  .btn-soft-blue {
+    @apply border-2 border-brand-card-border bg-brand-light-blue text-brand-text-primary;
+    box-shadow: 0 4px 0 rgb(var(--color-brand-blue-accent) / 0.25);
+  }
+
+  .btn-soft-lilac {
+    @apply border-2 border-brand-card-border bg-brand-lavender-accent text-brand-text-primary;
+    box-shadow: 0 4px 0 rgb(var(--color-brand-lav-accent) / 0.25);
+  }
+
+  .btn-soft-lime {
+    @apply border-2 border-brand-card-border bg-brand-lime text-brand-text-primary;
+    box-shadow: 0 4px 0 rgb(var(--color-brand-lime-accent) / 0.25);
+  }
+}

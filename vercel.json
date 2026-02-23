@@ -1,0 +1,9 @@
+{
+  "crons": [
+    {
+      "path": "/api/integrations/clickup/cron",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}
+

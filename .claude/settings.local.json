@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run build:*)",
+      "Bash(lsof:*)",
+      "Bash(npx next lint:*)"
+    ]
+  }
+}

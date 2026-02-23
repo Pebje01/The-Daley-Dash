@@ -1,0 +1,24 @@
+{
+  "name": "The Daley Dash",
+  "short_name": "Daley Dash",
+  "description": "Jouw werkportaal — offertes, facturen & meer",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8F5FA",
+  "theme_color": "#7F719D",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

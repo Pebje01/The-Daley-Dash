@@ -1,0 +1,142 @@
+'use client'
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { usePathname, useRouter } from 'next/navigation'
+import {
+  LayoutDashboard, FileText, Receipt, Users, Settings,
+  CreditCard, Repeat2, RefreshCw, BadgeDollarSign, Building2, ContactRound, BriefcaseBusiness, ScrollText, List,
+  ChevronRight, LogOut
+} from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import type { User } from '@supabase/supabase-js'
+import ThemeToggle from '@/components/ThemeToggle'
+
+const nav = [
+  { label: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { label: 'Offertes', href: '/offertes', icon: FileText },
+  { label: 'Facturen', href: '/facturen', icon: Receipt },
+  { label: 'Betalingen', href: '/betalingen', icon: CreditCard },
+  { label: 'Abonnementen', href: '/abonnementen', icon: Repeat2 },
+  { label: 'CRM Sync', href: '/crm-sync', icon: RefreshCw },
+  { label: "Daley Jansen's List", href: '/crm/daley-list', icon: List },
+  { label: 'Leads', href: '/crm/leads', icon: BadgeDollarSign },
+  { label: 'Bedrijven', href: '/crm/bedrijven', icon: Building2 },
+  { label: 'Contacten', href: '/crm/contacten', icon: ContactRound },
+  { label: 'Opdrachten (ClickUp)', href: '/crm/opdrachten', icon: BriefcaseBusiness },
+  { label: 'Facturatie (ClickUp)', href: '/crm/facturen', icon: ScrollText },
+  { label: 'Klanten', href: '/klanten', icon: Users },
+]
+
+const companies = [
+  { id: 'tde',        name: 'The Daley Edit',  color: '#C8963E' },
+  { id: 'wgb',        name: 'We Grow Brands',  color: '#03483A' },
+  { id: 'daleyphotography', name: 'Daley Photography', color: '#111827' },
+  { id: 'bleijenberg',name: 'Bleijenberg',     color: '#1D4ED8' },
+  { id: 'montung',    name: 'Montung',         color: '#7C3AED' },
+]
+
+export default function Sidebar() {
+  const path = usePathname()
+  const router = useRouter()
+  const [user, setUser] = useState<User | null>(null)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user)
+    })
+  }, [])
+
+  const handleLogout = async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
+  }
+
+  return (
+    <aside className="w-sidebar-w min-h-screen bg-gradient-to-b from-brand-lavender-light to-brand-lavender flex flex-col fixed left-0 top-0 z-30">
+      {/* Logo */}
+      <div className="px-5 pt-6 pb-4">
+        <h1 className="font-uxum text-sidebar-t text-brand-text-primary">The Daley Dash</h1>
+        <p className="text-pill text-brand-text-secondary mt-0.5">
+          Jouw werkportaal
+        </p>
+      </div>
+
+      <hr className="border-brand-card-border/20 mx-4" />
+
+      {/* Navigation */}
+      <nav className="flex-1 px-2 py-4 space-y-0.5">
+        <p className="px-3 text-[10px] font-semibold text-brand-text-secondary/50 uppercase tracking-widest mb-2">Menu</p>
+        {nav.map(({ label, href, icon: Icon }) => {
+          const active = href === '/' ? path === '/' : path.startsWith(href)
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={`flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body transition-colors ${
+                active
+                  ? 'bg-sidebar-active/80 text-brand-text-primary font-medium'
+                  : 'text-brand-text-secondary hover:bg-sidebar-hover/40'
+              }`}
+            >
+              <Icon size={15} />
+              {label}
+            </Link>
+          )
+        })}
+
+        {/* Companies */}
+        <div className="pt-5">
+          <p className="px-3 text-[10px] font-semibold text-brand-text-secondary/50 uppercase tracking-widest mb-2">Bedrijven</p>
+          {companies.map(c => (
+            <Link
+              key={c.id}
+              href={`/bedrijven/${c.id}`}
+              className="flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body text-brand-text-secondary hover:bg-sidebar-hover/40 transition-colors group"
+            >
+              <span
+                className="w-2 h-2 rounded-full flex-shrink-0"
+                style={{ backgroundColor: c.color }}
+              />
+              <span className="truncate">{c.name}</span>
+              <ChevronRight size={12} className="ml-auto opacity-0 group-hover:opacity-60" />
+            </Link>
+          ))}
+        </div>
+      </nav>
+
+      {/* Bottom */}
+      <div className="px-2 py-4 border-t border-brand-card-border/10 space-y-2">
+        <Link
+          href="/instellingen"
+          className="flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body text-brand-text-secondary hover:bg-sidebar-hover/40 transition-colors"
+        >
+          <Settings size={15} />
+          Instellingen
+        </Link>
+
+        <ThemeToggle />
+
+        {user && (
+          <div className="flex items-center gap-3 px-3 py-2">
+            <div className="w-6 h-6 rounded-full bg-brand-lavender-dark flex items-center justify-center text-[10px] text-brand-text-primary font-semibold">
+              {user.email?.charAt(0).toUpperCase()}
+            </div>
+            <span className="text-caption text-brand-text-secondary truncate flex-1">
+              {user.email}
+            </span>
+            <button
+              onClick={handleLogout}
+              className="text-brand-text-secondary/50 hover:text-brand-text-primary transition-colors"
+              title="Uitloggen"
+            >
+              <LogOut size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+    </aside>
+  )
+}
