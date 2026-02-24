@@ -393,10 +393,14 @@ export async function getOfferteStats() {
     .filter((o: any) => o.status === 'akkoord' && o.created_at >= monthStart)
     .reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
 
-  // Omzet berekeningen: alle offertes dit jaar (excl. concept en afgewezen)
-  const revenueStatuses = ['verstuurd', 'akkoord', 'opgeslagen']
-  const yearOffertes = offertes.filter((o: any) => revenueStatuses.includes(o.status) && o.date >= yearStart.split('T')[0])
-  const monthOffertes = offertes.filter((o: any) => revenueStatuses.includes(o.status) && o.date >= monthStart.split('T')[0])
+  // Openstaande offertes deze maand (verstuurd)
+  const openMonthOffertes = offertes.filter((o: any) => o.status === 'verstuurd' && o.date >= monthStart.split('T')[0])
+  const openMonthCount = openMonthOffertes.length
+  const openMonthAmount = openMonthOffertes.reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
+
+  // Omzet berekeningen: alleen goedgekeurde offertes
+  const yearOffertes = offertes.filter((o: any) => o.status === 'akkoord' && o.date >= yearStart.split('T')[0])
+  const monthOffertes = offertes.filter((o: any) => o.status === 'akkoord' && o.date >= monthStart.split('T')[0])
 
   const revenueYear = yearOffertes.reduce((sum: number, o: any) => sum + (o.subtotal ?? 0), 0)
   const revenueYearIncl = yearOffertes.reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
@@ -412,6 +416,8 @@ export async function getOfferteStats() {
     totalOffertes: offertes.length,
     totalOpenAmount,
     acceptedThisMonth,
+    openMonthCount,
+    openMonthAmount,
     revenueYear,
     revenueYearIncl,
     revenueMonth,
