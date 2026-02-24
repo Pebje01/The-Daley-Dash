@@ -6,6 +6,13 @@
 - Path alias: `@/*` verwijst naar project root
 - Huisstijl: zie @/tailwind.config.ts voor kleuren, fonts en spacing tokens
 
+## Data (BELANGRIJK)
+- **Supabase is de single source of truth** voor alle bedrijfsdata
+- Offertes, facturen, klanten en line items worden ALTIJD via Supabase opgeslagen en ingelezen
+- Lokale bestanden (Excel, PDF) zijn alleen exports — Supabase is leidend
+- Bij het toevoegen van offertes/facturen: altijd via Supabase API of dashboard, nooit alleen lokaal
+- Omzet berekeningen zijn gebaseerd op goedgekeurde offertes (status `akkoord`) in Supabase
+
 ## Structuur
 ```
 app/
