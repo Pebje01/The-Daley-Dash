@@ -12,12 +12,7 @@ export async function GET(
 
     if (!url || !key) {
       return NextResponse.json(
-        {
-          error: 'Server configuration error',
-          hasUrl: !!url,
-          hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-          hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-        },
+        { error: 'Server configuration error' },
         { status: 500 }
       )
     }
