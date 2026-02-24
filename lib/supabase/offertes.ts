@@ -48,7 +48,7 @@ interface DbLineItem {
 
 // ── Mappers ────────────────────────────────────────────────────────────────
 
-function mapDbToOfferte(row: DbOfferte, items: DbLineItem[] = []): Offerte {
+export function mapDbToOfferte(row: DbOfferte, items: DbLineItem[] = []): Offerte {
   return {
     id: row.id,
     number: row.number,
