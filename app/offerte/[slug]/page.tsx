@@ -50,11 +50,6 @@ export default function OffertePublicPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  const [contactName, setContactName] = useState('')
-  const [contactEmail, setContactEmail] = useState('')
-  const [agreedToTerms, setAgreedToTerms] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [approvalError, setApprovalError] = useState('')
 
   const loadOfferte = useCallback(async () => {
     setLoading(true)
@@ -77,32 +72,6 @@ export default function OffertePublicPage() {
   useEffect(() => {
     loadOfferte()
   }, [loadOfferte])
-
-  const handleApproval = async () => {
-    if (!offerte || !contactName || !contactEmail || !agreedToTerms) return
-    setApprovalError('')
-    setIsSubmitting(true)
-    try {
-      const res = await fetch(`/api/offerte-public/${offerte.slug}/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientName: contactName,
-          clientEmail: contactEmail,
-          agreedToTerms: true,
-        }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || 'Goedkeuren mislukt')
-      }
-      await loadOfferte()
-    } catch (e: any) {
-      setApprovalError(e.message || 'Er ging iets mis bij het goedkeuren')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
 
   if (loading) {
     return (
@@ -127,11 +96,12 @@ export default function OffertePublicPage() {
   }
 
   const sections = groupBySection(offerte.items)
+  const serviceSections = sections.filter(s => s.title.toLowerCase() !== 'prijsoverzicht')
   const brand = company.color
   const brandSoft = hexToRgba(brand, 0.06)
   const brandSoftBorder = hexToRgba(brand, 0.14)
   const brandTextSoft = hexToRgba(brand, 0.78)
-  const isApproved = offerte.status === 'geaccepteerd'
+  const isApproved = offerte.status === 'akkoord'
 
   if (isApproved) {
     return (
@@ -184,12 +154,12 @@ export default function OffertePublicPage() {
       <div className="w-full max-w-[1680px] mx-auto rounded-[28px] shadow-lg overflow-hidden bg-white border border-gray-100">
         <div className="p-8 lg:p-14" style={{ backgroundColor: brand }}>
           <div className="text-center mb-8">
-            <h2 className="text-4xl lg:text-5xl font-serif text-white font-light tracking-tight">OFFERTE</h2>
+            <h2 className="text-4xl lg:text-5xl font-instrument text-white font-light tracking-tight">OFFERTE</h2>
           </div>
 
           <div className="flex flex-col lg:flex-row justify-between gap-10 items-start">
             <div>
-              <h3 className="text-lg font-serif text-white mb-2 font-light">Klantgegevens</h3>
+              <h3 className="text-lg font-instrument text-white mb-2 font-light">Klantgegevens</h3>
               <div className="space-y-0.5 text-xs text-white/80">
                 <p className="font-medium text-white">{offerte.client.name}</p>
                 {offerte.client.contactPerson && <p>t.a.v. {offerte.client.contactPerson}</p>}
@@ -199,7 +169,7 @@ export default function OffertePublicPage() {
             </div>
 
             <div className="text-left lg:text-right">
-              <h3 className="font-serif text-lg text-white mb-1 font-light">{company.name}</h3>
+              <h3 className="font-instrument text-lg text-white mb-1 font-light">{company.name}</h3>
               <div className="space-y-0.5 text-xs text-white/80">
                 <p>{company.address}</p>
                 <p>{company.email} | {company.phone}</p>
@@ -224,57 +194,74 @@ export default function OffertePublicPage() {
         </div>
 
         <div className="p-8 lg:p-16 bg-white">
+          {/* Intro tekst */}
           {offerte.introText && (
-            <div className="mb-12">
-              <div
-                className="rounded-[20px] p-8 lg:p-10 border text-center"
-                style={{ backgroundColor: brandSoft, borderColor: brandSoftBorder }}
-              >
-                <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{offerte.introText}</p>
+            <div className="mb-16 text-center">
+              <p className="text-base text-gray-500 font-light leading-relaxed max-w-3xl mx-auto whitespace-pre-wrap">
+                {offerte.introText}
+              </p>
+            </div>
+          )}
+
+          {/* Zwart klantgegevens vlak */}
+          <div className="mb-20">
+            <div className="bg-[#1a1a1a] rounded-[20px] p-10 text-white">
+              <h2 className="text-2xl font-instrument text-white/90 mb-8 font-light tracking-tight">Klantgegevens</h2>
+              <div className="grid md:grid-cols-2 gap-x-12 gap-y-8">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-white/50 mb-2">Bedrijfsnaam</p>
+                  <p className="text-base text-white border-b border-white/20 pb-3">{offerte.client.name}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-white/50 mb-2">Contactpersoon</p>
+                  <p className="text-base text-white border-b border-white/20 pb-3">{offerte.client.contactPerson || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-white/50 mb-2">Email</p>
+                  <p className="text-base text-white border-b border-white/20 pb-3">{offerte.client.email || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-white/50 mb-2">Telefoonnummer</p>
+                  <p className="text-base text-white border-b border-white/20 pb-3">{offerte.client.phone || '—'}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Diensten secties */}
+          {serviceSections.length > 0 && (
+            <div className="mb-20 pb-12 border-b border-gray-200">
+              <div className="space-y-6">
+                {serviceSections.map((section, sIdx) => (
+                  <div
+                    key={sIdx}
+                    className="rounded-[20px] p-8 border"
+                    style={{ background: `linear-gradient(135deg, ${brandSoft}, transparent)`, borderColor: brandSoftBorder }}
+                  >
+                    {section.title && (
+                      <h4 className="font-semibold text-[20px] mb-4" style={{ color: brand }}>
+                        {section.title}
+                      </h4>
+                    )}
+                    <ul className="space-y-2 text-sm text-gray-500">
+                      {section.items.map((item) => (
+                        <li key={item.id} className="flex items-start">
+                          <span className="mr-3" style={{ color: brand }}>•</span>
+                          <span>
+                            <strong className="text-gray-800">{item.description}</strong>
+                            {item.details && <span className="text-gray-500"> — {item.details}</span>}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
-          <div className="mb-14">
-            <h3 className="text-xl font-serif mb-8 font-light tracking-tight" style={{ color: brand }}>
-              <strong>Offerte Overzicht</strong>
-            </h3>
-
-            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {sections.map((section, sIdx) => (
-                <div
-                  key={sIdx}
-                  className="rounded-[20px] p-7 border"
-                  style={{ background: `linear-gradient(135deg, ${brandSoft}, rgba(255,255,255,0))`, borderColor: brandSoftBorder }}
-                >
-                  {section.title && (
-                    <h4 className="text-lg font-serif mb-4 font-semibold tracking-tight" style={{ color: brand }}>
-                      {section.title}
-                    </h4>
-                  )}
-                  <ul className="space-y-3 text-sm text-gray-600">
-                    {section.items.map((item) => (
-                      <li key={item.id} className="flex items-start gap-3">
-                        <span className="mt-0.5 font-bold" style={{ color: brand }}>•</span>
-                        <span>
-                          <strong className="text-gray-800">{item.description}</strong>
-                          {item.details && <span> - {item.details}</span>}
-                          {item.quantity !== 1 || item.unitPrice !== 0 ? (
-                            <span className="block text-xs text-gray-500 mt-0.5">
-                              {item.quantity} × {euro(item.unitPrice)} = {euro(item.quantity * item.unitPrice)}
-                            </span>
-                          ) : null}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </div>
-
           <div className="mb-12 pb-12 border-b border-gray-200">
-            <h3 className="text-xl font-serif mb-8 font-light tracking-tight" style={{ color: brand }}>
+            <h3 className="text-xl font-instrument mb-8 font-light tracking-tight" style={{ color: brand }}>
               <strong>Prijsoverzicht</strong>
             </h3>
 
@@ -310,101 +297,52 @@ export default function OffertePublicPage() {
           {(offerte.termsText || offerte.notes) && (
             <div className="mb-10">
               <div className="rounded-[20px] p-8 lg:p-10 text-white" style={{ backgroundColor: brand }}>
-                <h3 className="text-2xl font-serif text-white/90 mb-4 font-light">Voorwaarden &amp; Opmerkingen</h3>
-                <p className="text-white/85 leading-relaxed whitespace-pre-wrap">
-                  {offerte.termsText || offerte.notes}
-                </p>
+                <h3 className="text-2xl font-instrument text-white/90 mb-4 font-light">Voorwaarden &amp; Opmerkingen</h3>
+                <ul className="space-y-2 text-white/85 leading-relaxed">
+                  {(offerte.termsText || offerte.notes || '').split('\n').filter(line => line.trim()).map((line, i) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <span className="text-white/50 mt-0.5">•</span>
+                      <span>{line.replace(/^[-•]\s*/, '')}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             </div>
           )}
 
-          <div className="pb-6">
-            <button
-              onClick={() => downloadOffertePdf(offerte, company)}
-              className="inline-flex items-center gap-2 bg-white border-2 px-6 py-3 rounded-xl font-semibold hover:bg-gray-50 transition"
-              style={{ borderColor: brand, color: brand }}
-            >
-              <Download size={16} />
-              Download Offerte als PDF
-            </button>
-          </div>
-
-          <div className="pb-4">
-            <div className="bg-gray-50 rounded-[20px] p-8 lg:p-10 border-l-4" style={{ borderLeftColor: brand }}>
-              <h3 className="font-serif text-2xl mb-6 font-light" style={{ color: brand }}>
-                Offerte Goedkeuren
-              </h3>
-
-              {approvalError && (
-                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-[10px] text-red-700 text-sm">
-                  {approvalError}
-                </div>
-              )}
-
-              <div className="mb-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-800 mb-2">Uw naam *</label>
-                  <input
-                    type="text"
-                    value={contactName}
-                    onChange={(e) => setContactName(e.target.value)}
-                    placeholder="Voornaam en achternaam"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none"
-                    style={{ borderColor: contactName ? brandSoftBorder : undefined }}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-800 mb-2">Uw e-mailadres *</label>
-                  <input
-                    type="email"
-                    value={contactEmail}
-                    onChange={(e) => setContactEmail(e.target.value)}
-                    placeholder="naam@bedrijf.nl"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none"
-                    style={{ borderColor: contactEmail ? brandSoftBorder : undefined }}
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-start gap-4 mb-8">
-                <input
-                  type="checkbox"
-                  checked={agreedToTerms}
-                  onChange={(e) => setAgreedToTerms(e.target.checked)}
-                  className="w-5 h-5 cursor-pointer mt-1 flex-shrink-0"
-                  style={{ accentColor: brand }}
-                />
-                <label className="text-base text-gray-700 leading-relaxed cursor-pointer">
-                  Ik heb de offerte gelezen en ga akkoord met de inhoud en voorwaarden.
-                </label>
-              </div>
-
-              <div className="flex flex-col md:flex-row gap-4">
-                <button
-                  onClick={handleApproval}
-                  disabled={!agreedToTerms || !contactEmail || !contactName || isSubmitting}
-                  className={`flex-1 py-3 rounded-xl font-semibold transition ${
-                    agreedToTerms && contactEmail && contactName && !isSubmitting
-                      ? 'text-white'
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  }`}
-                  style={
-                    agreedToTerms && contactEmail && contactName && !isSubmitting
-                      ? { backgroundColor: brand }
-                      : undefined
-                  }
-                >
-                  {isSubmitting ? 'Verwerken...' : 'Akkoord'}
-                </button>
-
+          {/* Acties onderaan */}
+          <div className="text-center space-y-4 pb-4">
+            {offerte.paymentUrl && (
+              <>
                 <a
-                  href={`mailto:${company.email}?subject=Vraag%20over%20offerte%20${encodeURIComponent(offerte.number)}`}
-                  className="flex-1 bg-white border-2 py-3 rounded-xl font-semibold hover:bg-gray-50 transition text-center"
-                  style={{ borderColor: brand, color: brand }}
+                  href={offerte.paymentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block px-12 py-4 rounded-2xl font-bold text-white text-lg shadow-lg transition hover:scale-[1.02] hover:shadow-xl active:scale-[0.98]"
+                  style={{ background: 'linear-gradient(135deg, #16a34a, #15803d)' }}
                 >
-                  Meer informatie
+                  Betaal aanbetaling — {euro(offerte.total / 2)}
                 </a>
-              </div>
+                <p className="text-xs text-gray-400">Veilig betalen via KNAB</p>
+              </>
+            )}
+
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <button
+                onClick={() => downloadOffertePdf(offerte, company)}
+                className="inline-flex items-center gap-2 bg-white border-2 px-6 py-3 rounded-xl font-semibold hover:bg-gray-50 transition"
+                style={{ borderColor: brand, color: brand }}
+              >
+                <Download size={16} />
+                Download PDF
+              </button>
+              <a
+                href={`mailto:${company.email}?subject=Vraag%20over%20offerte%20${encodeURIComponent(offerte.number)}`}
+                className="inline-flex items-center gap-2 bg-white border-2 px-6 py-3 rounded-xl font-semibold hover:bg-gray-50 transition"
+                style={{ borderColor: brand, color: brand }}
+              >
+                Stel een vraag
+              </a>
             </div>
           </div>
         </div>

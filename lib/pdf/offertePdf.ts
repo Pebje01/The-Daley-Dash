@@ -3,6 +3,7 @@
 import jsPDF from 'jspdf'
 import { Offerte } from '../types'
 import { Company } from '../types'
+import { instrumentSerifBase64 } from './instrumentSerif'
 
 const euro = (n: number) =>
   new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -42,12 +43,16 @@ export function generateOffertePdf(offerte: Offerte, company: Company) {
   const brandLight = lighten(brandRgb, 0.85)
   const brandMuted = lighten(brandRgb, 0.5)
 
+  // Registreer Instrument Serif font
+  doc.addFileToVFS('InstrumentSerif-Regular.ttf', instrumentSerifBase64)
+  doc.addFont('InstrumentSerif-Regular.ttf', 'InstrumentSerif', 'normal')
+
   // ── Header ─────────────────────────────────────────────────────
   doc.setFillColor(...brandRgb)
   doc.rect(0, 0, pw, 36, 'F')
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(22)
+  doc.setFont('InstrumentSerif', 'normal')
+  doc.setFontSize(24)
   doc.setTextColor(255, 255, 255)
   doc.text('OFFERTE', ml, 18)
 
@@ -131,96 +136,163 @@ export function generateOffertePdf(offerte: Offerte, company: Company) {
     }
   }
 
-  for (const section of pdfSections) {
+  // Split diensten vs prijsoverzicht
+  const serviceSections = pdfSections.filter(s => s.title.toLowerCase() !== 'prijsoverzicht')
+  const pricingSection = pdfSections.find(s => s.title.toLowerCase() === 'prijsoverzicht')
+
+  // ── Diensten als opsomming ─────────────────────────────────────
+  for (const section of serviceSections) {
+    if (y > 250) { doc.addPage(); y = 20 }
+
     // Section header
     if (section.title) {
-      if (y > 255) { doc.addPage(); y = 20 }
       doc.setFillColor(...brandLight)
-      doc.rect(ml, y, cw, 7, 'F')
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(8)
+      doc.roundedRect(ml, y, cw, 8, 2, 2, 'F')
+      doc.setFont('InstrumentSerif', 'normal')
+      doc.setFontSize(12)
       doc.setTextColor(...brandDark)
-      doc.text(section.title.toUpperCase(), ml + 4, y + 5)
-      y += 10
+      doc.text(section.title, ml + 5, y + 5.5)
+      y += 12
     }
 
-    // Table header
-    doc.setFillColor(...brandLight)
-    doc.rect(ml, y, cw, 8, 'F')
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(7)
-    doc.setTextColor(...brandRgb)
-    doc.text('OMSCHRIJVING', ml + 4, y + 5.5)
-    doc.text('AANTAL', ml + 100, y + 5.5)
-    doc.text('PRIJS', ml + 120, y + 5.5)
-    doc.text('TOTAAL', rx - 4, y + 5.5, { align: 'right' })
-    y += 12
-
-    // Items
-    doc.setFontSize(9)
+    // Bullet-point lijst
     for (const item of section.items) {
-      if (y > 255) { doc.addPage(); y = 20 }
+      if (y > 260) { doc.addPage(); y = 20 }
+
+      // Bullet dot in brand kleur
+      doc.setFillColor(...brandRgb)
+      doc.circle(ml + 5, y - 1, 1, 'F')
+
+      // Beschrijving (bold) + details (normaal)
       doc.setFont('helvetica', 'bold')
+      doc.setFontSize(9)
       doc.setTextColor(30, 30, 30)
-      doc.text(item.description, ml + 4, y)
-      doc.setFont('helvetica', 'normal')
-      doc.text(String(item.quantity), ml + 100, y)
-      doc.text(euro(item.unitPrice), ml + 120, y)
-      doc.text(euro(item.quantity * item.unitPrice), rx - 4, y, { align: 'right' })
-      y += 4
+      doc.text(item.description, ml + 10, y)
+
       if (item.details) {
-        doc.setFontSize(7.5)
-        doc.setTextColor(120, 120, 120)
-        const lines = doc.splitTextToSize(item.details, 90)
-        doc.text(lines, ml + 4, y)
-        y += lines.length * 3.5
-        doc.setFontSize(9)
+        y += 4
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(8)
+        doc.setTextColor(100, 100, 100)
+        const detailLines = doc.splitTextToSize(item.details, cw - 10)
+        doc.text(detailLines, ml + 10, y)
+        y += (detailLines.length - 1) * 3.5
       }
-      doc.setDrawColor(230, 230, 230)
-      doc.line(ml, y + 1, rx, y + 1)
-      y += 5
+      y += 6
     }
-    y += 3
+    y += 4
   }
 
-  // ── Totals ─────────────────────────────────────────────────────
-  y += 5
+  // ── Prijsoverzicht ─────────────────────────────────────────────
+  if (y > 230) { doc.addPage(); y = 20 }
+  y += 4
+
+  doc.setFont('InstrumentSerif', 'normal')
+  doc.setFontSize(14)
+  doc.setTextColor(...brandRgb)
+  doc.text('Prijsoverzicht', ml, y)
+  y += 8
+
+  // Pricing items
+  if (pricingSection) {
+    for (const item of pricingSection.items) {
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(9)
+      doc.setTextColor(60, 60, 60)
+      doc.text(item.description, ml, y)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(30, 30, 30)
+      doc.text(euro(item.quantity * item.unitPrice), rx, y, { align: 'right' })
+      y += 6
+    }
+  }
+
+  // Divider
   const tx = ml + cw - 70
+  doc.setDrawColor(220, 220, 220)
+  doc.line(tx, y, rx, y)
+  y += 5
+
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(100, 100, 100)
   doc.text('Subtotaal', tx, y)
   doc.setTextColor(30, 30, 30)
-  doc.text(euro(offerte.subtotal), rx - 4, y, { align: 'right' })
+  doc.text(euro(offerte.subtotal), rx, y, { align: 'right' })
   y += 6
   doc.setTextColor(100, 100, 100)
   doc.text(`BTW ${offerte.btwPercentage}%`, tx, y)
   doc.setTextColor(30, 30, 30)
-  doc.text(euro(offerte.btwAmount), rx - 4, y, { align: 'right' })
+  doc.text(euro(offerte.btwAmount), rx, y, { align: 'right' })
   y += 3
   doc.setDrawColor(...brandRgb)
   doc.line(tx, y, rx, y)
   y += 6
+
+  // Totaal met brand achtergrond
+  doc.setFillColor(...brandLight)
+  doc.roundedRect(tx - 4, y - 5, rx - tx + 8, 12, 2, 2, 'F')
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(12)
   doc.setTextColor(...brandRgb)
-  doc.text('Totaal', tx, y)
-  doc.text(euro(offerte.total), rx - 4, y, { align: 'right' })
+  doc.text('Totaal incl. btw', tx, y + 1)
+  doc.text(euro(offerte.total), rx, y + 1, { align: 'right' })
+
+  // Aanbetaling
+  y += 14
+  doc.setFillColor(...brandRgb)
+  doc.roundedRect(tx - 4, y - 5, rx - tx + 8, 14, 2, 2, 'F')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(255, 255, 255)
+  doc.text('Aanbetaling (50%)', tx, y)
+  doc.setFontSize(11)
+  doc.text(euro(offerte.total / 2), rx, y, { align: 'right' })
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7)
+  doc.text(`Restant bij oplevering: ${euro(offerte.total / 2)}`, tx, y + 5)
+
+  // Betaallink
+  if (offerte.paymentUrl) {
+    y += 14
+    const linkText = `Betaal aanbetaling: ${offerte.paymentUrl}`
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(...brandRgb)
+    doc.textWithLink(linkText, ml, y, { url: offerte.paymentUrl })
+    doc.setDrawColor(...brandRgb)
+    doc.line(ml, y + 1, ml + doc.getTextWidth(linkText), y + 1)
+  }
 
   // ── Terms ────────────────────────────────────────────────────────
   const termsOrNotes = offerte.termsText || offerte.notes
   if (termsOrNotes) {
-    y += 14
-    if (y > 260) { doc.addPage(); y = 20 }
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
-    doc.setTextColor(100, 100, 100)
-    doc.text('VOORWAARDEN & OPMERKINGEN', ml, y)
-    y += 5
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(60, 60, 60)
-    const termLines = doc.splitTextToSize(termsOrNotes, cw)
-    doc.text(termLines, ml, y)
+    y += 18
+    if (y > 250) { doc.addPage(); y = 20 }
+
+    // Voorwaarden header
+    doc.setFillColor(...brandRgb)
+    doc.roundedRect(ml, y - 4, cw, 9, 2, 2, 'F')
+    doc.setFont('InstrumentSerif', 'normal')
+    doc.setFontSize(12)
+    doc.setTextColor(255, 255, 255)
+    doc.text('Voorwaarden & Opmerkingen', ml + 5, y + 1.5)
+    y += 10
+
+    // Bullet-point lijst van voorwaarden
+    const termLines = termsOrNotes.split('\n').filter((l: string) => l.trim())
+    for (const line of termLines) {
+      if (y > 270) { doc.addPage(); y = 20 }
+      const cleanLine = line.replace(/^[-•]\s*/, '')
+      doc.setFillColor(...brandRgb)
+      doc.circle(ml + 5, y - 1, 0.8, 'F')
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(8)
+      doc.setTextColor(60, 60, 60)
+      const wrapped = doc.splitTextToSize(cleanLine, cw - 10)
+      doc.text(wrapped, ml + 10, y)
+      y += wrapped.length * 3.5 + 2
+    }
   }
 
   // ── Footer ─────────────────────────────────────────────────────
@@ -234,17 +306,8 @@ export function generateOffertePdf(offerte: Offerte, company: Company) {
   return doc
 }
 
-export async function downloadOffertePdf(offerte: Offerte, company: Company) {
-  const { savePdfToFolder } = await import('./folderStorage')
+export function downloadOffertePdf(offerte: Offerte, company: Company) {
   const doc = generateOffertePdf(offerte, company)
-  const filename = `offerte-${offerte.number}.pdf`
-  const blob = doc.output('blob')
-
-  // Try saving to the offerte folder first
-  const savedToFolder = await savePdfToFolder(blob, filename)
-
-  if (!savedToFolder) {
-    // Fallback: normal browser download
-    doc.save(filename)
-  }
+  const filename = `${offerte.number}.pdf`
+  doc.save(filename)
 }

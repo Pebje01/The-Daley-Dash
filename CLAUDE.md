@@ -40,9 +40,10 @@ middleware.ts               # Auth redirect middleware
 - `npm run lint` — ESLint check
 
 ## Verificatie (BELANGRIJK)
-- Controleer NA ELKE wijziging of de dev server nog draait (`lsof -ti :3000`). Zo niet: herstart met `npx next dev --turbo`
-- Draai ALTIJD `npm run build` na code wijzigingen om TypeScript/build errors te checken
+- Controleer NA ELKE wijziging of de dev server nog draait (`lsof -ti :3000`). Zo niet: herstart met `npx next dev --turbo &`
+- Gebruik `npx tsc --noEmit` voor TypeScript-checks in plaats van `npm run build` (build kan de dev server killen)
 - Draai `npm run lint` na het schrijven van nieuwe code
+- NOOIT `npm run build` draaien terwijl de dev server draait — gebruik `npx tsc --noEmit` als alternatief
 - Bij UI-wijzigingen: maak een screenshot en vergelijk met het gewenste resultaat
 - Pak altijd de root cause aan, onderdruk geen errors
 - Bij bugs: schrijf eerst een beschrijving van het verwachte vs werkelijke gedrag

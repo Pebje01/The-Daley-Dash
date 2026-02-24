@@ -3,7 +3,25 @@
     "allow": [
       "Bash(npm run build:*)",
       "Bash(lsof:*)",
-      "Bash(npx next lint:*)"
+      "Bash(npx next lint:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(ls:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(git show:*)",
+      "Bash(gh repo list:*)",
+      "Bash(gh api:*)",
+      "Bash(brew install:*)",
+      "Bash(pdftotext:*)",
+      "Bash(echo:*)",
+      "Bash(SB_URL=\"https://fvywfygsjslojpvqrpxw.supabase.co/rest/v1\")",
+      "Bash(SB_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ2eXdmeWdzanNsb2pwdnFycHh3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTcwNDIwOCwiZXhwIjoyMDg3MjgwMjA4fQ.oxyS7-5Nsnzi_l5uCdp9W7FxIfAj9Q9QKMEKZwjqWJA\")",
+      "Bash(__NEW_LINE_a234df94e6aa81ca__ curl -s \"$SB_URL/offertes?select=number,client_name,company_id,status,subtotal,total,date&order=date\" -H \"apikey: $SB_KEY\" -H \"Authorization: Bearer $SB_KEY\")",
+      "Bash(npx next build:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx supabase:*)"
     ]
   }
 }

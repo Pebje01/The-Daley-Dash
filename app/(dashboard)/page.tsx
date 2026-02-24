@@ -18,8 +18,12 @@ export default function Dashboard() {
   const [offerteStats, setOfferteStats] = useState<{
     openOffertes: number
     totalOpenAmount: number
+    revenueYear: number
+    revenueYearIncl: number
+    revenueMonth: number
+    revenueMonthIncl: number
     recentOffertes: Offerte[]
-  }>({ openOffertes: 0, totalOpenAmount: 0, recentOffertes: [] })
+  }>({ openOffertes: 0, totalOpenAmount: 0, revenueYear: 0, revenueYearIncl: 0, revenueMonth: 0, revenueMonthIncl: 0, recentOffertes: [] })
 
   useEffect(() => {
     setLocalStats(getLocalStats())
@@ -70,8 +74,8 @@ export default function Dashboard() {
         {[
           { label: 'Openstaand bedrag', value: euro(localStats.totalOpenAmount), icon: <AlertCircle size={17} className="text-brand-status-orange" />, bg: 'bg-brand-pink', sub: `${localStats.openFacturen} openstaande facturen` },
           { label: 'Binnengekomen deze maand', value: euro(localStats.totalPaidThisMonth), icon: <TrendingUp size={17} className="text-brand-lime-accent" />, bg: 'bg-brand-lime', sub: `${paidThisMonthCount} betalingen geregistreerd` },
-          { label: 'Lopende abonnementen', value: subscriptionSummary.active, icon: <CheckCircle2 size={17} className="text-brand-lav-accent" />, bg: 'bg-brand-lavender-accent', sub: subscriptionSummary.active > 0 ? `${euro(subscriptionSummary.monthlyRecurring)} p/m` : subscriptionSummary.note },
-          { label: 'Open offertes', value: offerteStats.openOffertes, icon: <FileText size={17} className="text-brand-blue-accent" />, bg: 'bg-brand-light-blue', sub: euro(offerteStats.totalOpenAmount || 0) },
+          { label: 'Omzet dit jaar', value: euro(offerteStats.revenueYear), icon: <CheckCircle2 size={17} className="text-brand-lav-accent" />, bg: 'bg-brand-lavender-accent', sub: `incl. btw: ${euro(offerteStats.revenueYearIncl)}` },
+          { label: 'Omzet deze maand', value: euro(offerteStats.revenueMonth), icon: <FileText size={17} className="text-brand-blue-accent" />, bg: 'bg-brand-light-blue', sub: `incl. btw: ${euro(offerteStats.revenueMonthIncl)}` },
         ].map(s => (
           <div key={s.label} className="card">
             <div className="flex items-start justify-between mb-3">

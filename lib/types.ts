@@ -18,7 +18,7 @@ export interface Company {
   }
 }
 
-export type OfferteStatus = 'concept' | 'verzonden' | 'geaccepteerd' | 'afgewezen' | 'verlopen'
+export type OfferteStatus = 'concept' | 'opgeslagen' | 'verstuurd' | 'akkoord' | 'afgewezen' | 'verlopen'
 export type FactuurStatus = 'concept' | 'verzonden' | 'betaald' | 'te-laat' | 'geannuleerd'
 
 export interface LineItem {
@@ -56,6 +56,7 @@ export interface Offerte {
   notes?: string
   introText?: string
   termsText?: string
+  paymentUrl?: string
   // Client-facing
   slug?: string
   password?: string        // plain-text, only returned once after creation

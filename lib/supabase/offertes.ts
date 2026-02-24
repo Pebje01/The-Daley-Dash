@@ -24,6 +24,7 @@ interface DbOfferte {
   notes: string | null
   intro_text: string | null
   terms_text: string | null
+  payment_url: string | null
   slug: string | null
   password_hash: string | null
   is_public: boolean
@@ -81,6 +82,7 @@ function mapDbToOfferte(row: DbOfferte, items: DbLineItem[] = []): Offerte {
     notes: row.notes ?? undefined,
     introText: row.intro_text ?? undefined,
     termsText: row.terms_text ?? undefined,
+    paymentUrl: row.payment_url ?? undefined,
     slug: row.slug ?? undefined,
     passwordHash: row.password_hash ?? undefined,
     isPublic: row.is_public,
@@ -188,6 +190,7 @@ interface CreateOfferteData {
   notes?: string
   introText?: string
   termsText?: string
+  paymentUrl?: string
   slug?: string
   passwordHash?: string
   isPublic?: boolean
@@ -219,6 +222,7 @@ export async function createOfferte(data: CreateOfferteData): Promise<Offerte> {
       notes: data.notes ?? null,
       intro_text: data.introText ?? null,
       terms_text: data.termsText ?? null,
+      payment_url: data.paymentUrl ?? null,
       slug: data.slug ?? null,
       password_hash: data.passwordHash ?? null,
       is_public: data.isPublic ?? false,
@@ -268,6 +272,7 @@ export async function updateOfferte(
     notes: string
     introText: string
     termsText: string
+    paymentUrl: string
     slug: string
     passwordHash: string
     isPublic: boolean
@@ -292,6 +297,7 @@ export async function updateOfferte(
   if (data.notes !== undefined) update.notes = data.notes
   if (data.introText !== undefined) update.intro_text = data.introText
   if (data.termsText !== undefined) update.terms_text = data.termsText
+  if (data.paymentUrl !== undefined) update.payment_url = data.paymentUrl
   if (data.slug !== undefined) update.slug = data.slug
   if (data.passwordHash !== undefined) update.password_hash = data.passwordHash
   if (data.isPublic !== undefined) update.is_public = data.isPublic
@@ -370,21 +376,32 @@ export async function getTodayOfferteCount(companyId?: CompanyId): Promise<numbe
 export async function getOfferteStats() {
   const supabase = createClient()
   const now = new Date()
+  const yearStart = new Date(now.getFullYear(), 0, 1).toISOString()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
   const { data: all, error } = await supabase
     .from('offertes')
-    .select('id, status, total, created_at')
+    .select('id, status, total, subtotal, date, created_at')
   if (error) throw error
 
   const offertes = all ?? []
-  const openOffertes = offertes.filter((o: any) => o.status === 'verzonden').length
+  const openOffertes = offertes.filter((o: any) => o.status === 'verstuurd').length
   const totalOpenAmount = offertes
-    .filter((o: any) => o.status === 'verzonden')
+    .filter((o: any) => o.status === 'verstuurd')
     .reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
   const acceptedThisMonth = offertes
-    .filter((o: any) => o.status === 'geaccepteerd' && o.created_at >= monthStart)
+    .filter((o: any) => o.status === 'akkoord' && o.created_at >= monthStart)
     .reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
+
+  // Omzet berekeningen: alle offertes dit jaar (excl. concept en afgewezen)
+  const revenueStatuses = ['verstuurd', 'akkoord', 'opgeslagen']
+  const yearOffertes = offertes.filter((o: any) => revenueStatuses.includes(o.status) && o.date >= yearStart.split('T')[0])
+  const monthOffertes = offertes.filter((o: any) => revenueStatuses.includes(o.status) && o.date >= monthStart.split('T')[0])
+
+  const revenueYear = yearOffertes.reduce((sum: number, o: any) => sum + (o.subtotal ?? 0), 0)
+  const revenueYearIncl = yearOffertes.reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
+  const revenueMonth = monthOffertes.reduce((sum: number, o: any) => sum + (o.subtotal ?? 0), 0)
+  const revenueMonthIncl = monthOffertes.reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
 
   // Recent offertes (full data for dashboard)
   const recent = await getOffertes()
@@ -395,6 +412,10 @@ export async function getOfferteStats() {
     totalOffertes: offertes.length,
     totalOpenAmount,
     acceptedThisMonth,
+    revenueYear,
+    revenueYearIncl,
+    revenueMonth,
+    revenueMonthIncl,
     recentOffertes,
   }
 }

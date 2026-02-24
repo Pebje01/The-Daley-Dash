@@ -20,7 +20,7 @@ export async function POST(
 
   await updateOfferte(params.id, {
     isPublic: true,
-    status: 'verzonden',
+    status: 'verstuurd',
   })
 
   const baseUrl = new URL(request.url).origin

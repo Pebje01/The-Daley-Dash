@@ -12,7 +12,7 @@ export const COMPANIES: Company[] = [
     address: 'Amsterdam, Nederland',
     kvk: '00000000',
     btw: 'NL000000000B01',
-    iban: 'NL00 RABO 0000 0000 00',
+    iban: 'NL78 KNAB 0414 3949 17',
     prefix: { offerte: 'OF', factuur: 'F' },
   },
   {
@@ -26,7 +26,7 @@ export const COMPANIES: Company[] = [
     address: 'Noorderpad 47, 1461CD Zuidoostbeemster',
     kvk: '84818883',
     btw: 'NL004023224B90',
-    iban: 'NL00 RABO 0000 0000 00',
+    iban: 'NL78 KNAB 0414 3949 17',
     prefix: { offerte: 'WGB-OF', factuur: 'WGB-F' },
   },
   {
@@ -40,7 +40,7 @@ export const COMPANIES: Company[] = [
     address: 'Nederland',
     kvk: '00000000',
     btw: 'NL000000000B01',
-    iban: 'NL00 RABO 0000 0000 00',
+    iban: 'NL78 KNAB 0414 3949 17',
     prefix: { offerte: 'OF', factuur: 'F' },
   },
   {

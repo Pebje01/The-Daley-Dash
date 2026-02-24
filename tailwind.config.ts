@@ -58,6 +58,7 @@ const config: Config = {
       },
       fontFamily: {
         uxum: ["var(--font-uxum)", "Georgia", "serif"],
+        instrument: ["var(--font-instrument)", "Georgia", "serif"],
         sans: ["var(--font-geist)", "system-ui", "sans-serif"],
       },
       fontSize: {

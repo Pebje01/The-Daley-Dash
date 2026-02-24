@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import localFont from 'next/font/local'
+import { Instrument_Serif } from 'next/font/google'
 import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration'
 import ThemeProvider from '@/components/ThemeProvider'
 import './globals.css'
@@ -7,6 +8,14 @@ import './globals.css'
 const geist = localFont({
   src: './fonts/GeistVF.woff',
   variable: '--font-geist',
+  display: 'swap',
+})
+
+const instrumentSerif = Instrument_Serif({
+  weight: '400',
+  subsets: ['latin'],
+  style: ['normal', 'italic'],
+  variable: '--font-instrument',
   display: 'swap',
 })
 
@@ -37,7 +46,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="nl" className={`${geist.variable} ${uxum.variable}`} suppressHydrationWarning>
+    <html lang="nl" className={`${geist.variable} ${uxum.variable} ${instrumentSerif.variable}`} suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{

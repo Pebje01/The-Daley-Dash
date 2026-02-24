@@ -13,7 +13,7 @@ export async function POST(
     return NextResponse.json({ error: 'Offerte not found' }, { status: 404 })
   }
 
-  if (offerte.status === 'geaccepteerd') {
+  if (offerte.status === 'akkoord') {
     return NextResponse.json({ error: 'Already approved' }, { status: 400 })
   }
 
@@ -27,7 +27,7 @@ export async function POST(
 
   // Update offerte status
   await updateOfferte(offerte.id, {
-    status: 'geaccepteerd',
+    status: 'akkoord',
     approvedAt: now,
     approvedByName: clientName,
     approvedByEmail: clientEmail,

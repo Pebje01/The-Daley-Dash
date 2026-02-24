@@ -149,7 +149,7 @@ export default function OfferteDetailPage() {
     const total = subtotal + btwAmount
 
     try {
-      await fetch(`/api/offertes/${id}`, {
+      const patchRes = await fetch(`/api/offertes/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -164,8 +164,30 @@ export default function OfferteDetailPage() {
           termsText: termsText || undefined,
         }),
       })
+      if (!patchRes.ok) throw new Error('Opslaan mislukt')
+
+      // Haal bijgewerkte offerte op en download PDF automatisch
+      const freshRes = await fetch(`/api/offertes/${id}`)
+      if (freshRes.ok) {
+        const freshData: Offerte = await freshRes.json()
+        setOfferte(freshData)
+        setClient({
+          name: freshData.client.name || '',
+          contactPerson: freshData.client.contactPerson || '',
+          email: freshData.client.email || '',
+          phone: freshData.client.phone || '',
+        })
+        setSections(itemsToSections(freshData.items || []))
+        setBtwPct(freshData.btwPercentage)
+        setIntroText(freshData.introText || '')
+        setTermsText(freshData.termsText || '')
+        setCompanyId(freshData.companyId)
+
+        const pdfCompany = getCompany(freshData.companyId)
+        downloadOffertePdf(freshData, pdfCompany)
+      }
+
       setEditing(false)
-      fetchOfferte()
     } catch {
       alert('Opslaan mislukt')
     }
@@ -225,7 +247,7 @@ export default function OfferteDetailPage() {
   }, [])
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-8">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => router.push('/offertes')} className="btn-secondary px-2.5">
@@ -245,7 +267,7 @@ export default function OfferteDetailPage() {
               </button>
               {statusMenuOpen && (
                 <div className="absolute top-full left-0 mt-1 bg-brand-card-bg border border-brand-card-border rounded-brand shadow-lg z-20 min-w-[160px] py-1">
-                  {(['concept', 'verzonden', 'geaccepteerd', 'afgewezen', 'verlopen'] as OfferteStatus[])
+                  {(['concept', 'opgeslagen', 'verstuurd', 'akkoord', 'afgewezen', 'verlopen'] as OfferteStatus[])
                     .filter(s => s !== offerte.status)
                     .map(s => (
                       <button
@@ -271,15 +293,15 @@ export default function OfferteDetailPage() {
           <button onClick={() => setEditing(!editing)} className="btn-secondary">
             {editing ? 'Annuleer' : 'Bewerken'}
           </button>
-          {offerte.status === 'concept' && (
-            <button onClick={() => handleStatusChange('verzonden')} className="btn-primary">
-              <Send size={14} /> Markeer als verzonden
+          {(offerte.status === 'concept' || offerte.status === 'opgeslagen') && (
+            <button onClick={() => handleStatusChange('verstuurd')} className="btn-primary">
+              <Send size={14} /> Markeer als verstuurd
             </button>
           )}
-          {offerte.status === 'verzonden' && (
+          {offerte.status === 'verstuurd' && (
             <>
-              <button onClick={() => handleStatusChange('geaccepteerd')} className="btn-secondary text-brand-lime-accent">
-                <CheckCircle2 size={14} /> Geaccepteerd
+              <button onClick={() => handleStatusChange('akkoord')} className="btn-secondary text-brand-lime-accent">
+                <CheckCircle2 size={14} /> Akkoord
               </button>
               <button onClick={() => handleStatusChange('afgewezen')} className="btn-secondary text-brand-pink-accent">
                 <XCircle size={14} /> Afgewezen
@@ -467,9 +489,9 @@ export default function OfferteDetailPage() {
               <OfferteStatusBadge status={offerte.status} />
             </div>
             <div className="flex gap-2 flex-wrap mt-4">
-              {offerte.status === 'concept' && (
-                <button onClick={() => handleStatusChange('verzonden')} className="btn-primary">
-                  <Send size={14} /> Markeer als verzonden
+              {(offerte.status === 'concept' || offerte.status === 'opgeslagen') && (
+                <button onClick={() => handleStatusChange('verstuurd')} className="btn-primary">
+                  <Send size={14} /> Markeer als verstuurd
                 </button>
               )}
               {offerte.status !== 'concept' && (
@@ -477,14 +499,19 @@ export default function OfferteDetailPage() {
                   Concept
                 </button>
               )}
-              {offerte.status !== 'verzonden' && (
-                <button onClick={() => handleStatusChange('verzonden')} className="btn-secondary">
-                  Verzonden
+              {offerte.status !== 'opgeslagen' && (
+                <button onClick={() => handleStatusChange('opgeslagen')} className="btn-secondary">
+                  Opgeslagen
                 </button>
               )}
-              {offerte.status !== 'geaccepteerd' && (
-                <button onClick={() => handleStatusChange('geaccepteerd')} className="btn-secondary text-brand-lime-accent">
-                  <CheckCircle2 size={14} /> Geaccepteerd
+              {offerte.status !== 'verstuurd' && (
+                <button onClick={() => handleStatusChange('verstuurd')} className="btn-secondary">
+                  Verstuurd
+                </button>
+              )}
+              {offerte.status !== 'akkoord' && (
+                <button onClick={() => handleStatusChange('akkoord')} className="btn-secondary text-brand-lime-accent">
+                  <CheckCircle2 size={14} /> Akkoord
                 </button>
               )}
               {offerte.status !== 'afgewezen' && (

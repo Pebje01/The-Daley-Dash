@@ -2,8 +2,9 @@ import { OfferteStatus, FactuurStatus } from '@/lib/types'
 
 const offerteColors: Record<OfferteStatus, string> = {
   concept:      'bg-brand-page-medium text-brand-text-secondary',
-  verzonden:    'bg-brand-light-blue text-brand-blue-accent',
-  geaccepteerd: 'bg-brand-lime text-brand-lime-accent',
+  opgeslagen:   'bg-brand-lavender-accent text-brand-lav-accent',
+  verstuurd:    'bg-brand-light-blue text-brand-blue-accent',
+  akkoord:      'bg-brand-lime text-brand-lime-accent',
   afgewezen:    'bg-brand-pink text-brand-pink-accent',
   verlopen:     'bg-brand-pink text-brand-status-orange',
 }
@@ -18,8 +19,9 @@ const factuurColors: Record<FactuurStatus, string> = {
 
 const labels: Record<string, string> = {
   concept:      'Concept',
-  verzonden:    'Verzonden',
-  geaccepteerd: 'Geaccepteerd',
+  opgeslagen:   'Opgeslagen',
+  verstuurd:    'Verstuurd',
+  akkoord:      'Akkoord',
   afgewezen:    'Afgewezen',
   verlopen:     'Verlopen',
   betaald:      'Betaald',
