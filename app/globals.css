@@ -1,95 +1,187 @@
 /* ── Theme Variabelen ─────────────────────────────────────────── */
 
-:root {
-  /* Primary backgrounds — Sage grey sidebar */
-  --color-brand-lavender:          212 216 208;
-  --color-brand-lavender-light:    224 226 220;
-  --color-brand-lavender-dark:     185 190 180;
+/* ── Palette: Lila (default) ────────────────────────────────── */
 
-  /* Page backgrounds — Warm neutral grey */
+:root {
+  /* Primary backgrounds — pastel / editorial */
+  --color-brand-lavender:          221 214 236;
+  --color-brand-lavender-light:    236 231 244;
+  --color-brand-lavender-dark:     204 195 224;
+
+  /* Page backgrounds */
+  --color-brand-page-light:        236 236 236;
+  --color-brand-page-medium:       245 244 240;
+
+  /* Accent pastels */
+  --color-brand-pink:              234 214 219;
+  --color-brand-light-blue:        213 228 241;
+  --color-brand-lavender-accent:   215 208 232;
+  --color-brand-lime:              205 235 115;
+
+  /* Icon accents */
+  --color-brand-pink-accent:       166 118 127;
+  --color-brand-blue-accent:        96 134 167;
+  --color-brand-lav-accent:        129 113 166;
+  --color-brand-lime-accent:       122 150  44;
+
+  /* Cards */
+  --color-brand-card-bg:           245 244 240;
+  --color-brand-card-border:        17  17  17;
+
+  /* Highlights */
+  --color-brand-yellow-highlight:  255 241 115;
+
+  /* Text */
+  --color-brand-text-primary:       17  17  17;
+  --color-brand-text-secondary:    108 108 108;
+
+  /* Status */
+  --color-brand-status-green:      121 163 133;
+  --color-brand-status-orange:     222 172 124;
+  --color-brand-status-red:        218 126 126;
+
+  /* Overig */
+  --color-brand-purple:            129 113 166;
+
+  /* Sidebar overlay */
+  --color-sidebar-active:          255 255 255;
+  --color-sidebar-hover:           248 248 248;
+
+  /* Sidebar tekst */
+  --color-sidebar-text:             17  17  17;
+  --color-sidebar-text-muted:      108 108 108;
+}
+
+.dark {
+  /* Primary backgrounds — Donker paars */
+  --color-brand-lavender:           42  32  62;
+  --color-brand-lavender-light:     35  27  55;
+  --color-brand-lavender-dark:      60  45  85;
+
+  /* Page backgrounds — Donker navy-paars */
+  --color-brand-page-light:         22  18  35;
+  --color-brand-page-medium:        18  14  30;
+
+  /* Accent pastels — Diep gedesatureerd */
+  --color-brand-pink:               55  30  30;
+  --color-brand-light-blue:         25  35  55;
+  --color-brand-lavender-accent:    45  30  65;
+  --color-brand-lime:               30  40  22;
+
+  /* Icon accents — Iets feller voor contrast */
+  --color-brand-pink-accent:       210 140 125;
+  --color-brand-blue-accent:       130 165 200;
+  --color-brand-lav-accent:        170 145 200;
+  --color-brand-lime-accent:       155 175  95;
+
+  /* Cards — Donker oppervlak */
+  --color-brand-card-bg:            30  25  48;
+  --color-brand-card-border:        70  60 100;
+
+  /* Highlights */
+  --color-brand-yellow-highlight:   80  70  20;
+
+  /* Text — Licht voor leesbaarheid */
+  --color-brand-text-primary:      240 238 245;
+  --color-brand-text-secondary:    160 155 175;
+
+  /* Status — Iets feller voor donkere achtergrond */
+  --color-brand-status-green:      110 185 130;
+  --color-brand-status-orange:     230 180 120;
+  --color-brand-status-red:        230 110 110;
+
+  /* Overig */
+  --color-brand-purple:            150 135 185;
+
+  /* Sidebar overlay — Paars ipv wit */
+  --color-sidebar-active:           80  65 115;
+  --color-sidebar-hover:            60  48  90;
+
+  /* Sidebar tekst — Licht op donker */
+  --color-sidebar-text:            240 238 245;
+  --color-sidebar-text-muted:      160 155 175;
+}
+
+/* ── Palette: Sage (neutraal grey-green + lime) ────────────── */
+
+[data-palette="sage"] {
+  /* Sidebar — Donker antraciet */
+  --color-brand-lavender:           36  40  38;
+  --color-brand-lavender-light:     30  34  32;
+  --color-brand-lavender-dark:      55  60  56;
+
   --color-brand-page-light:        232 233 228;
   --color-brand-page-medium:       242 243 238;
 
-  /* Accent surfaces — Clean neutrals */
   --color-brand-pink:              228 222 218;
   --color-brand-light-blue:        220 228 236;
   --color-brand-lavender-accent:   222 224 218;
-  --color-brand-lime:              196 226 86;
+  --color-brand-lime:              196 226  86;
 
-  /* Icon / text accents */
-  --color-brand-pink-accent:       158 105 95;
+  --color-brand-pink-accent:       158 105  95;
   --color-brand-blue-accent:        85 120 155;
   --color-brand-lav-accent:        100 104  95;
   --color-brand-lime-accent:       112 145  35;
 
-  /* Cards — Clean white */
   --color-brand-card-bg:           250 251 248;
   --color-brand-card-border:        32  36  28;
 
-  /* Highlights */
   --color-brand-yellow-highlight:  196 226  86;
 
-  /* Text — Olive-black */
   --color-brand-text-primary:       22  25  20;
   --color-brand-text-secondary:    115 118 110;
 
-  /* Status — Clear functional colours */
   --color-brand-status-green:       72 165  98;
   --color-brand-status-orange:     208 160  78;
   --color-brand-status-red:        200  82  82;
 
-  /* Overig — Deep olive */
   --color-brand-purple:             40  45  36;
 
-  /* Sidebar overlay */
   --color-sidebar-active:          255 255 255;
-  --color-sidebar-hover:           244 245 240;
+  --color-sidebar-hover:           255 255 255;
+
+  /* Sidebar tekst — Licht op antraciet */
+  --color-sidebar-text:            235 238 232;
+  --color-sidebar-text-muted:      158 162 155;
 }
 
-.dark {
-  /* Primary backgrounds — Deep charcoal-olive sidebar */
+[data-palette="sage"].dark {
   --color-brand-lavender:           30  34  26;
   --color-brand-lavender-light:     24  27  20;
   --color-brand-lavender-dark:      48  52  42;
 
-  /* Page backgrounds — Near-black olive */
   --color-brand-page-light:         18  20  16;
   --color-brand-page-medium:        14  16  12;
 
-  /* Accent surfaces — Deep muted tones */
   --color-brand-pink:               44  34  30;
   --color-brand-light-blue:         26  34  42;
   --color-brand-lavender-accent:    36  40  32;
   --color-brand-lime:               48  60  26;
 
-  /* Icon accents — Bright enough for dark bg */
   --color-brand-pink-accent:       210 148 132;
   --color-brand-blue-accent:       125 162 200;
   --color-brand-lav-accent:        152 158 145;
   --color-brand-lime-accent:       162 192  82;
 
-  /* Cards — Dark surface */
   --color-brand-card-bg:            26  29  22;
   --color-brand-card-border:        62  68  55;
 
-  /* Highlights */
   --color-brand-yellow-highlight:   62  70  26;
 
-  /* Text — Light for readability */
   --color-brand-text-primary:      232 236 228;
   --color-brand-text-secondary:    152 156 145;
 
-  /* Status — Vivid for dark bg */
   --color-brand-status-green:       98 188 118;
   --color-brand-status-orange:     222 176  98;
   --color-brand-status-red:        222 105 105;
 
-  /* Overig — Lighter olive for links */
   --color-brand-purple:            158 172 142;
 
-  /* Sidebar overlay — Olive tints */
   --color-sidebar-active:           55  60  48;
   --color-sidebar-hover:            42  46  36;
+
+  --color-sidebar-text:            232 236 228;
+  --color-sidebar-text-muted:      152 156 145;
 }
 
 @tailwind base;

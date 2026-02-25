@@ -65,13 +65,13 @@ export default function Sidebar() {
     <aside className="w-sidebar-w h-screen bg-gradient-to-b from-brand-lavender-light to-brand-lavender flex flex-col fixed left-0 top-0 z-30">
       {/* Logo */}
       <div className="px-5 pt-6 pb-4">
-        <h1 className="font-uxum text-sidebar-t text-brand-text-primary">The Daley Dash</h1>
-        <p className="text-pill text-brand-text-secondary mt-0.5">
+        <h1 className="font-uxum text-sidebar-t text-sidebar-text">The Daley Dash</h1>
+        <p className="text-pill text-sidebar-muted mt-0.5">
           Jouw werkportaal
         </p>
       </div>
 
-      <hr className="border-brand-card-border/20 mx-4" />
+      <hr className="border-sidebar-text/10 mx-4" />
 
       {/* Navigation */}
       <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
@@ -83,8 +83,8 @@ export default function Sidebar() {
               href={href}
               className={`flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body transition-colors ${
                 active
-                  ? 'bg-sidebar-active/80 text-brand-text-primary font-medium'
-                  : 'text-brand-text-secondary hover:bg-sidebar-hover/40'
+                  ? 'bg-sidebar-active/80 text-sidebar-text font-medium'
+                  : 'text-sidebar-muted hover:bg-sidebar-hover/40'
               }`}
             >
               <Icon size={15} />
@@ -94,7 +94,7 @@ export default function Sidebar() {
         })}
 
         <div className="pt-4">
-          <p className="px-3 text-[10px] font-semibold text-brand-text-secondary/50 uppercase tracking-widest mb-2">Financieel</p>
+          <p className="px-3 text-[10px] font-semibold text-sidebar-muted/50 uppercase tracking-widest mb-2">Financieel</p>
           {financialNav.map(({ label, href, icon: Icon }) => {
             const active = path.startsWith(href)
             return (
@@ -103,8 +103,8 @@ export default function Sidebar() {
                 href={href}
                 className={`flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body transition-colors ${
                   active
-                    ? 'bg-sidebar-active/80 text-brand-text-primary font-medium'
-                    : 'text-brand-text-secondary hover:bg-sidebar-hover/40'
+                    ? 'bg-sidebar-active/80 text-sidebar-text font-medium'
+                    : 'text-sidebar-muted hover:bg-sidebar-hover/40'
                 }`}
               >
                 <Icon size={15} />
@@ -115,7 +115,7 @@ export default function Sidebar() {
         </div>
 
         <div className="pt-4">
-          <p className="px-3 text-[10px] font-semibold text-brand-text-secondary/50 uppercase tracking-widest mb-2">CRM</p>
+          <p className="px-3 text-[10px] font-semibold text-sidebar-muted/50 uppercase tracking-widest mb-2">CRM</p>
           {crmNav.map(({ label, href, icon: Icon }) => {
             const active = path.startsWith(href)
             return (
@@ -124,8 +124,8 @@ export default function Sidebar() {
                 href={href}
                 className={`flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body transition-colors ${
                   active
-                    ? 'bg-sidebar-active/80 text-brand-text-primary font-medium'
-                    : 'text-brand-text-secondary hover:bg-sidebar-hover/40'
+                    ? 'bg-sidebar-active/80 text-sidebar-text font-medium'
+                    : 'text-sidebar-muted hover:bg-sidebar-hover/40'
                 }`}
               >
                 <Icon size={15} />
@@ -137,12 +137,12 @@ export default function Sidebar() {
 
         {/* Companies */}
         <div className="pt-5">
-          <p className="px-3 text-[10px] font-semibold text-brand-text-secondary/50 uppercase tracking-widest mb-2">Bedrijven</p>
+          <p className="px-3 text-[10px] font-semibold text-sidebar-muted/50 uppercase tracking-widest mb-2">Bedrijven</p>
           {companies.map(c => (
             <Link
               key={c.id}
               href={`/bedrijven/${c.id}`}
-              className="flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body text-brand-text-secondary hover:bg-sidebar-hover/40 transition-colors group"
+              className="flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body text-sidebar-muted hover:bg-sidebar-hover/40 transition-colors group"
             >
               <span
                 className="w-2 h-2 rounded-full flex-shrink-0"
@@ -156,10 +156,10 @@ export default function Sidebar() {
       </nav>
 
       {/* Bottom */}
-      <div className="px-2 py-4 border-t border-brand-card-border/10 space-y-2">
+      <div className="px-2 py-4 border-t border-sidebar-text/10 space-y-2">
         <button
           onClick={() => setShowSettings(true)}
-          className="flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body text-brand-text-secondary hover:bg-sidebar-hover/40 transition-colors w-full text-left"
+          className="flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body text-sidebar-muted hover:bg-sidebar-hover/40 transition-colors w-full text-left"
         >
           <Settings size={15} />
           Instellingen
@@ -167,15 +167,15 @@ export default function Sidebar() {
 
         {user && (
           <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-6 h-6 rounded-full bg-brand-lavender-dark flex items-center justify-center text-[10px] text-brand-text-primary font-semibold">
+            <div className="w-6 h-6 rounded-full bg-brand-lavender-dark flex items-center justify-center text-[10px] text-sidebar-text font-semibold">
               {user.email?.charAt(0).toUpperCase()}
             </div>
-            <span className="text-caption text-brand-text-secondary truncate flex-1">
+            <span className="text-caption text-sidebar-muted truncate flex-1">
               {user.email}
             </span>
             <button
               onClick={handleLogout}
-              className="text-brand-text-secondary/50 hover:text-brand-text-primary transition-colors"
+              className="text-sidebar-muted/50 hover:text-sidebar-text transition-colors"
               title="Uitloggen"
             >
               <LogOut size={14} />

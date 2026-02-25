@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { X, Building2, Mail, Phone, MapPin, Hash, CreditCard } from 'lucide-react'
 import { COMPANIES } from '@/lib/companies'
-import { useTheme } from '@/components/ThemeProvider'
+import { useTheme, Palette } from '@/components/ThemeProvider'
 import { Sun, Moon, Monitor } from 'lucide-react'
 
 const themeOptions = [
@@ -17,7 +17,7 @@ export default function SettingsModal({ open, onClose, userEmail }: {
   onClose: () => void
   userEmail?: string
 }) {
-  const { theme, setTheme } = useTheme()
+  const { theme, setTheme, palette, setPalette } = useTheme()
   const overlayRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -77,6 +77,35 @@ export default function SettingsModal({ open, onClose, userEmail }: {
                 >
                   <Icon size={14} />
                   {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Kleurenpalet */}
+          <div>
+            <p className="text-[10px] font-semibold text-brand-text-secondary/50 uppercase tracking-widest mb-3">Kleurenpalet</p>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { value: 'lila' as Palette, label: 'Lila', desc: 'Zacht & editorial', colors: ['#DDD6EC', '#ECE7F4', '#CDE873', '#EAD6DB'] },
+                { value: 'sage' as Palette, label: 'Sage', desc: 'Strak & neutraal', colors: ['#D4D8D0', '#E0E2DC', '#C4E256', '#DEE2DC'] },
+              ]).map(p => (
+                <button
+                  key={p.value}
+                  onClick={() => setPalette(p.value)}
+                  className={`p-3 rounded-brand-sm border-2 text-left transition-all ${
+                    palette === p.value
+                      ? 'border-brand-card-border shadow-sm'
+                      : 'border-transparent hover:border-brand-card-border/20'
+                  }`}
+                >
+                  <div className="flex gap-1 mb-2">
+                    {p.colors.map((c, i) => (
+                      <span key={i} className="w-5 h-5 rounded-full border border-black/10" style={{ backgroundColor: c }} />
+                    ))}
+                  </div>
+                  <p className="text-body font-medium text-brand-text-primary">{p.label}</p>
+                  <p className="text-caption text-brand-text-secondary">{p.desc}</p>
                 </button>
               ))}
             </div>

@@ -54,6 +54,8 @@ const config: Config = {
         sidebar: {
           active: "rgb(var(--color-sidebar-active) / <alpha-value>)",
           hover:  "rgb(var(--color-sidebar-hover) / <alpha-value>)",
+          text:   "rgb(var(--color-sidebar-text) / <alpha-value>)",
+          muted:  "rgb(var(--color-sidebar-text-muted) / <alpha-value>)",
         },
       },
       fontFamily: {
