@@ -52,10 +52,11 @@ const config: Config = {
           purple:            "rgb(var(--color-brand-purple) / <alpha-value>)",
         },
         sidebar: {
-          active: "rgb(var(--color-sidebar-active) / <alpha-value>)",
-          hover:  "rgb(var(--color-sidebar-hover) / <alpha-value>)",
-          text:   "rgb(var(--color-sidebar-text) / <alpha-value>)",
-          muted:  "rgb(var(--color-sidebar-text-muted) / <alpha-value>)",
+          active:      "rgb(var(--color-sidebar-active) / <alpha-value>)",
+          hover:       "rgb(var(--color-sidebar-hover) / <alpha-value>)",
+          text:        "rgb(var(--color-sidebar-text) / <alpha-value>)",
+          muted:       "rgb(var(--color-sidebar-text-muted) / <alpha-value>)",
+          "text-active": "rgb(var(--color-sidebar-text-active) / <alpha-value>)",
         },
       },
       fontFamily: {

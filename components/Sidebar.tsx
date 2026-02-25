@@ -83,7 +83,7 @@ export default function Sidebar() {
               href={href}
               className={`flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body transition-colors ${
                 active
-                  ? 'bg-sidebar-active/80 text-sidebar-text font-medium'
+                  ? 'bg-sidebar-active/80 text-sidebar-text-active font-medium'
                   : 'text-sidebar-muted hover:bg-sidebar-hover/40'
               }`}
             >
@@ -103,7 +103,7 @@ export default function Sidebar() {
                 href={href}
                 className={`flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body transition-colors ${
                   active
-                    ? 'bg-sidebar-active/80 text-sidebar-text font-medium'
+                    ? 'bg-sidebar-active/80 text-sidebar-text-active font-medium'
                     : 'text-sidebar-muted hover:bg-sidebar-hover/40'
                 }`}
               >
@@ -124,7 +124,7 @@ export default function Sidebar() {
                 href={href}
                 className={`flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body transition-colors ${
                   active
-                    ? 'bg-sidebar-active/80 text-sidebar-text font-medium'
+                    ? 'bg-sidebar-active/80 text-sidebar-text-active font-medium'
                     : 'text-sidebar-muted hover:bg-sidebar-hover/40'
                 }`}
               >

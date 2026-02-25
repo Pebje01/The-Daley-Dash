@@ -50,6 +50,7 @@
   /* Sidebar tekst */
   --color-sidebar-text:             17  17  17;
   --color-sidebar-text-muted:      108 108 108;
+  --color-sidebar-text-active:      17  17  17;
 }
 
 .dark {
@@ -100,6 +101,7 @@
   /* Sidebar tekst — Licht op donker */
   --color-sidebar-text:            240 238 245;
   --color-sidebar-text-muted:      160 155 175;
+  --color-sidebar-text-active:     240 238 245;
 }
 
 /* ── Palette: Sage (neutraal grey-green + lime) ────────────── */
@@ -137,12 +139,13 @@
 
   --color-brand-purple:             40  45  36;
 
-  --color-sidebar-active:          255 255 255;
+  --color-sidebar-active:          238 250 147;
   --color-sidebar-hover:           255 255 255;
 
   /* Sidebar tekst — Licht op antraciet */
   --color-sidebar-text:            235 238 232;
   --color-sidebar-text-muted:      158 162 155;
+  --color-sidebar-text-active:      22  25  20;
 }
 
 [data-palette="sage"].dark {
@@ -177,11 +180,12 @@
 
   --color-brand-purple:            158 172 142;
 
-  --color-sidebar-active:           55  60  48;
+  --color-sidebar-active:           65  72  30;
   --color-sidebar-hover:            42  46  36;
 
   --color-sidebar-text:            232 236 228;
   --color-sidebar-text-muted:      152 156 145;
+  --color-sidebar-text-active:     238 250 147;
 }
 
 @tailwind base;
