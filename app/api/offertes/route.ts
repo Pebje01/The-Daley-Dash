@@ -4,9 +4,7 @@ import { getOffertes, createOfferte, getTodayOfferteCount } from '@/lib/supabase
 import { generateOfferteNumber } from '@/lib/offerte-utils'
 
 export async function GET(request: NextRequest) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Auth tijdelijk uitgeschakeld
 
   const { searchParams } = new URL(request.url)
   const status = searchParams.get('status') ?? 'alle'
@@ -23,9 +21,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Auth tijdelijk uitgeschakeld
 
   const body = await request.json()
   const { companyId, client, items, btwPercentage, notes, introText, termsText } = body

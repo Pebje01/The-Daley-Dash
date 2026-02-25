@@ -6,9 +6,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Auth tijdelijk uitgeschakeld
 
   const offerte = await getOfferte(params.id)
   if (!offerte) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -20,9 +18,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Auth tijdelijk uitgeschakeld
 
   const body = await request.json()
   const offerte = await updateOfferte(params.id, body)
@@ -33,9 +29,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Auth tijdelijk uitgeschakeld
 
   await deleteOfferte(params.id)
   return NextResponse.json({ ok: true })
