@@ -103,6 +103,53 @@ export interface Factuur {
   updatedAt: string
 }
 
+export type BetalingStatus = 'openstaand' | 'betaald' | 'mislukt' | 'terugbetaald'
+export type AbonnementStatus = 'actief' | 'gepauzeerd' | 'opgezegd' | 'verlopen'
+export type AbonnementInterval = 'maandelijks' | 'kwartaal' | 'jaarlijks'
+
+export interface Betaling {
+  id: string
+  factuurId?: string
+  companyId: CompanyId
+  client: Client
+  amount: number
+  status: BetalingStatus
+  method?: string              // 'ideal' | 'bancontact' | 'handmatig' | etc.
+  molliePaymentId?: string
+  reference?: string           // factuur nummer of omschrijving
+  paidAt?: string
+  notes?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Abonnement {
+  id: string
+  companyId: CompanyId
+  client: Client
+  description: string
+  amount: number               // bedrag per interval excl. BTW
+  btwPercentage: number
+  interval: AbonnementInterval
+  status: AbonnementStatus
+  startDate: string
+  endDate?: string
+  nextInvoiceDate?: string
+  lastInvoiceDate?: string
+  notes?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export const STATUS_CATEGORIES = {
+  // Offertes
+  closedWon: ['akkoord'] as OfferteStatus[],
+  closedLost: ['afgewezen', 'verlopen'] as OfferteStatus[],
+  // Facturen
+  factuurOpen: ['verzonden', 'te-laat'] as FactuurStatus[],
+  factuurClosed: ['betaald', 'geannuleerd'] as FactuurStatus[],
+}
+
 export interface DashboardStats {
   openOffertes: number
   openFacturen: number

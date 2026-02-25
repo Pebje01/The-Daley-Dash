@@ -135,6 +135,148 @@ CREATE POLICY "Anon can update public offerte status"
   WITH CHECK (is_public = true);
 
 -- ============================================================
+-- Facturen module
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS facturen (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  number TEXT UNIQUE NOT NULL,
+  company_id TEXT NOT NULL,
+  offerte_id UUID REFERENCES offertes(id) ON DELETE SET NULL,
+
+  -- Klantgegevens
+  client_name TEXT NOT NULL,
+  client_contact_person TEXT,
+  client_email TEXT,
+  client_phone TEXT,
+  client_address TEXT,
+  client_kvk TEXT,
+  client_btw TEXT,
+
+  -- Factuur details
+  date DATE NOT NULL,
+  due_date DATE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'concept',
+
+  -- Financieel
+  subtotal DECIMAL(10,2) NOT NULL DEFAULT 0,
+  btw_percentage DECIMAL(5,2) NOT NULL DEFAULT 21,
+  btw_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+  total DECIMAL(10,2) NOT NULL DEFAULT 0,
+
+  -- Betaling
+  paid_at TIMESTAMPTZ,
+  mollie_payment_id TEXT,
+  mollie_payment_url TEXT,
+
+  notes TEXT,
+
+  -- Timestamps
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS factuur_line_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  factuur_id UUID NOT NULL REFERENCES facturen(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  description TEXT NOT NULL,
+  details TEXT,
+  quantity DECIMAL(10,2) NOT NULL DEFAULT 1,
+  unit_price DECIMAL(10,2) NOT NULL DEFAULT 0,
+  section_title TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_facturen_company_id ON facturen(company_id);
+CREATE INDEX IF NOT EXISTS idx_facturen_status ON facturen(status);
+CREATE INDEX IF NOT EXISTS idx_facturen_created_at ON facturen(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_factuur_line_items_factuur_id ON factuur_line_items(factuur_id);
+
+ALTER TABLE facturen ENABLE ROW LEVEL SECURITY;
+ALTER TABLE factuur_line_items ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Auth users full access on facturen"
+  ON facturen FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Auth users full access on factuur_line_items"
+  ON factuur_line_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- ============================================================
+-- Betalingen module
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS betalingen (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  factuur_id UUID REFERENCES facturen(id) ON DELETE SET NULL,
+  company_id TEXT NOT NULL,
+
+  -- Klantgegevens
+  client_name TEXT NOT NULL,
+  client_email TEXT,
+
+  -- Betaling
+  amount DECIMAL(10,2) NOT NULL,
+  status TEXT NOT NULL DEFAULT 'openstaand',
+  method TEXT,
+  mollie_payment_id TEXT,
+  reference TEXT,
+  paid_at TIMESTAMPTZ,
+  notes TEXT,
+
+  -- Timestamps
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_betalingen_company_id ON betalingen(company_id);
+CREATE INDEX IF NOT EXISTS idx_betalingen_status ON betalingen(status);
+CREATE INDEX IF NOT EXISTS idx_betalingen_factuur_id ON betalingen(factuur_id);
+CREATE INDEX IF NOT EXISTS idx_betalingen_created_at ON betalingen(created_at DESC);
+
+ALTER TABLE betalingen ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Auth users full access on betalingen"
+  ON betalingen FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- ============================================================
+-- Abonnementen module
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS abonnementen (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id TEXT NOT NULL,
+
+  -- Klantgegevens
+  client_name TEXT NOT NULL,
+  client_contact_person TEXT,
+  client_email TEXT,
+  client_phone TEXT,
+  client_address TEXT,
+
+  -- Abonnement
+  description TEXT NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  btw_percentage DECIMAL(5,2) NOT NULL DEFAULT 21,
+  interval TEXT NOT NULL DEFAULT 'maandelijks',
+  status TEXT NOT NULL DEFAULT 'actief',
+  start_date DATE NOT NULL,
+  end_date DATE,
+  next_invoice_date DATE,
+  last_invoice_date DATE,
+  notes TEXT,
+
+  -- Timestamps
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_abonnementen_company_id ON abonnementen(company_id);
+CREATE INDEX IF NOT EXISTS idx_abonnementen_status ON abonnementen(status);
+CREATE INDEX IF NOT EXISTS idx_abonnementen_next_invoice_date ON abonnementen(next_invoice_date);
+
+ALTER TABLE abonnementen ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Auth users full access on abonnementen"
+  ON abonnementen FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- ============================================================
 -- ClickUp CRM Sync (Leads / Bedrijven / Contacten)
 -- ============================================================
 
