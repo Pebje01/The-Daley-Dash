@@ -88,7 +88,7 @@ export default function SettingsModal({ open, onClose, userEmail }: {
             <div className="grid grid-cols-2 gap-2">
               {([
                 { value: 'lila' as Palette, label: 'Lila', desc: 'Zacht & editorial', colors: ['#DDD6EC', '#ECE7F4', '#CDE873', '#EAD6DB'] },
-                { value: 'sage' as Palette, label: 'Sage', desc: 'Strak & neutraal', colors: ['#D4D8D0', '#E0E2DC', '#C4E256', '#DEE2DC'] },
+                { value: 'sage' as Palette, label: 'Sage', desc: 'Strak & neutraal', colors: ['#242826', '#E0E2DC', '#EEFA93', '#DEE2DC'] },
               ]).map(p => (
                 <button
                   key={p.value}
