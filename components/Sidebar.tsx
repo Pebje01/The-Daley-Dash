@@ -11,20 +11,26 @@ import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 import ThemeToggle from '@/components/ThemeToggle'
 
-const nav = [
+const mainNav = [
   { label: 'Dashboard', href: '/', icon: LayoutDashboard },
+]
+
+const financialNav = [
   { label: 'Offertes', href: '/offertes', icon: FileText },
   { label: 'Facturen', href: '/facturen', icon: Receipt },
   { label: 'Betalingen', href: '/betalingen', icon: CreditCard },
   { label: 'Abonnementen', href: '/abonnementen', icon: Repeat2 },
-  { label: 'CRM Sync', href: '/crm-sync', icon: RefreshCw },
+  { label: 'Klanten', href: '/klanten', icon: Users },
+]
+
+const crmNav = [
   { label: "Daley Jansen's List", href: '/crm/daley-list', icon: List },
   { label: 'Leads', href: '/crm/leads', icon: BadgeDollarSign },
   { label: 'Bedrijven', href: '/crm/bedrijven', icon: Building2 },
   { label: 'Contacten', href: '/crm/contacten', icon: ContactRound },
-  { label: 'Opdrachten (ClickUp)', href: '/crm/opdrachten', icon: BriefcaseBusiness },
-  { label: 'Facturatie (ClickUp)', href: '/crm/facturen', icon: ScrollText },
-  { label: 'Klanten', href: '/klanten', icon: Users },
+  { label: 'Opdrachten', href: '/crm/opdrachten', icon: BriefcaseBusiness },
+  { label: 'Facturatie', href: '/crm/facturen', icon: ScrollText },
+  { label: 'CRM Sync', href: '/crm-sync', icon: RefreshCw },
 ]
 
 const companies = [
@@ -55,7 +61,7 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-sidebar-w min-h-screen bg-gradient-to-b from-brand-lavender-light to-brand-lavender flex flex-col fixed left-0 top-0 z-30">
+    <aside className="w-sidebar-w h-screen bg-gradient-to-b from-brand-lavender-light to-brand-lavender flex flex-col fixed left-0 top-0 z-30">
       {/* Logo */}
       <div className="px-5 pt-6 pb-4">
         <h1 className="font-uxum text-sidebar-t text-brand-text-primary">The Daley Dash</h1>
@@ -67,9 +73,8 @@ export default function Sidebar() {
       <hr className="border-brand-card-border/20 mx-4" />
 
       {/* Navigation */}
-      <nav className="flex-1 px-2 py-4 space-y-0.5">
-        <p className="px-3 text-[10px] font-semibold text-brand-text-secondary/50 uppercase tracking-widest mb-2">Menu</p>
-        {nav.map(({ label, href, icon: Icon }) => {
+      <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
+        {mainNav.map(({ label, href, icon: Icon }) => {
           const active = href === '/' ? path === '/' : path.startsWith(href)
           return (
             <Link
@@ -86,6 +91,48 @@ export default function Sidebar() {
             </Link>
           )
         })}
+
+        <div className="pt-4">
+          <p className="px-3 text-[10px] font-semibold text-brand-text-secondary/50 uppercase tracking-widest mb-2">Financieel</p>
+          {financialNav.map(({ label, href, icon: Icon }) => {
+            const active = path.startsWith(href)
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body transition-colors ${
+                  active
+                    ? 'bg-sidebar-active/80 text-brand-text-primary font-medium'
+                    : 'text-brand-text-secondary hover:bg-sidebar-hover/40'
+                }`}
+              >
+                <Icon size={15} />
+                {label}
+              </Link>
+            )
+          })}
+        </div>
+
+        <div className="pt-4">
+          <p className="px-3 text-[10px] font-semibold text-brand-text-secondary/50 uppercase tracking-widest mb-2">CRM</p>
+          {crmNav.map(({ label, href, icon: Icon }) => {
+            const active = path.startsWith(href)
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body transition-colors ${
+                  active
+                    ? 'bg-sidebar-active/80 text-brand-text-primary font-medium'
+                    : 'text-brand-text-secondary hover:bg-sidebar-hover/40'
+                }`}
+              >
+                <Icon size={15} />
+                {label}
+              </Link>
+            )
+          })}
+        </div>
 
         {/* Companies */}
         <div className="pt-5">
