@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
-import ThemeToggle from '@/components/ThemeToggle'
+import SettingsModal from '@/components/SettingsModal'
 
 const mainNav = [
   { label: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -45,6 +45,7 @@ export default function Sidebar() {
   const path = usePathname()
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
@@ -156,15 +157,13 @@ export default function Sidebar() {
 
       {/* Bottom */}
       <div className="px-2 py-4 border-t border-brand-card-border/10 space-y-2">
-        <Link
-          href="/instellingen"
-          className="flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body text-brand-text-secondary hover:bg-sidebar-hover/40 transition-colors"
+        <button
+          onClick={() => setShowSettings(true)}
+          className="flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body text-brand-text-secondary hover:bg-sidebar-hover/40 transition-colors w-full text-left"
         >
           <Settings size={15} />
           Instellingen
-        </Link>
-
-        <ThemeToggle />
+        </button>
 
         {user && (
           <div className="flex items-center gap-3 px-3 py-2">
@@ -184,6 +183,12 @@ export default function Sidebar() {
           </div>
         )}
       </div>
+
+      <SettingsModal
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+        userEmail={user?.email ?? undefined}
+      />
     </aside>
   )
 }
