@@ -21,7 +21,8 @@
       "Bash(__NEW_LINE_a234df94e6aa81ca__ curl -s \"$SB_URL/offertes?select=number,client_name,company_id,status,subtotal,total,date&order=date\" -H \"apikey: $SB_KEY\" -H \"Authorization: Bearer $SB_KEY\")",
       "Bash(npx next build:*)",
       "Bash(npx tsc:*)",
-      "Bash(npx supabase:*)"
+      "Bash(npx supabase:*)",
+      "Bash(npm run lint)"
     ]
   }
 }

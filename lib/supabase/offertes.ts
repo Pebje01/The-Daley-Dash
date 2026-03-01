@@ -385,9 +385,14 @@ export async function getOfferteStats() {
   if (error) throw error
 
   const offertes = all ?? []
+  const conceptOffertes = offertes.filter((o: any) => o.status === 'concept').length
   const openOffertes = offertes.filter((o: any) => o.status === 'verstuurd').length
   const totalOpenAmount = offertes
     .filter((o: any) => o.status === 'verstuurd')
+    .reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
+  const akkoordOffertes = offertes.filter((o: any) => o.status === 'akkoord').length
+  const akkoordAmount = offertes
+    .filter((o: any) => o.status === 'akkoord')
     .reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
   const acceptedThisMonth = offertes
     .filter((o: any) => o.status === 'akkoord' && o.created_at >= monthStart)
@@ -412,9 +417,12 @@ export async function getOfferteStats() {
   const recentOffertes = recent.slice(0, 5)
 
   return {
+    conceptOffertes,
     openOffertes,
     totalOffertes: offertes.length,
     totalOpenAmount,
+    akkoordOffertes,
+    akkoordAmount,
     acceptedThisMonth,
     openMonthCount,
     openMonthAmount,
