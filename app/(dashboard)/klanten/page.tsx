@@ -1,8 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { getFacturen } from '@/lib/store'
 import { getCompany } from '@/lib/companies'
-import { Offerte } from '@/lib/types'
+import { Offerte, Factuur } from '@/lib/types'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -13,14 +12,17 @@ export default function KlantenPage() {
 
   useEffect(() => {
     async function load() {
-      // Fetch offertes from Supabase API
       let offertes: Offerte[] = []
+      let facturen: Factuur[] = []
       try {
-        const res = await fetch('/api/offertes')
-        if (res.ok) offertes = await res.json()
+        const [offRes, facRes] = await Promise.all([
+          fetch('/api/offertes'),
+          fetch('/api/facturen'),
+        ])
+        if (offRes.ok) offertes = await offRes.json()
+        if (facRes.ok) facturen = await facRes.json()
       } catch {}
 
-      const facturen = getFacturen()
       const map: Record<string, any> = {}
 
       offertes.forEach(o => {

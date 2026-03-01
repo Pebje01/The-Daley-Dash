@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Plus, Trash2, ArrowLeft, Save, GripVertical } from 'lucide-react'
 import { COMPANIES, getCompany } from '@/lib/companies'
 import { LineItem, CompanyId, Offerte } from '@/lib/types'
+import { useActiveCompany } from '@/components/CompanyContext'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -40,7 +41,8 @@ export default function NieuweFactuur() {
 function NieuweFactuurContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const initialCompany = (searchParams.get('bedrijf') as CompanyId) || 'tde'
+  const { activeCompany } = useActiveCompany()
+  const initialCompany = (searchParams.get('bedrijf') as CompanyId) || activeCompany
 
   const [companyId, setCompanyId] = useState<CompanyId>(initialCompany)
   const [client, setClient] = useState({

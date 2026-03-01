@@ -1,12 +1,12 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Plus, TrendingUp, AlertCircle, CheckCircle2, ArrowRight, FileText } from 'lucide-react'
 import { getCompany } from '@/lib/companies'
-import { getDashboardStats as getLocalStats } from '@/lib/store'
 import { FactuurStatusBadge, OfferteStatusBadge } from '@/components/StatusBadge'
-import { Offerte } from '@/lib/types'
+import { Offerte, Factuur } from '@/lib/types'
+import { useActiveCompany } from '@/components/CompanyContext'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -14,7 +14,7 @@ function euro(n: number) {
 
 export default function Dashboard() {
   const router = useRouter()
-  const [localStats, setLocalStats] = useState(() => getLocalStats())
+  const { activeCompany } = useActiveCompany()
   const [offerteStats, setOfferteStats] = useState<{
     openOffertes: number
     totalOpenAmount: number
@@ -26,31 +26,37 @@ export default function Dashboard() {
     revenueMonthIncl: number
     recentOffertes: Offerte[]
   }>({ openOffertes: 0, totalOpenAmount: 0, openMonthCount: 0, openMonthAmount: 0, revenueYear: 0, revenueYearIncl: 0, revenueMonth: 0, revenueMonthIncl: 0, recentOffertes: [] })
+  const [factuurStats, setFactuurStats] = useState<{
+    totalOpenAmount: number
+    paidThisMonth: number
+    recentFacturen: Factuur[]
+  }>({ totalOpenAmount: 0, paidThisMonth: 0, recentFacturen: [] })
 
-  useEffect(() => {
-    setLocalStats(getLocalStats())
-
-    // Fetch offerte stats from Supabase
+  const fetchData = useCallback(() => {
     fetch('/api/offertes/stats')
       .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data) setOfferteStats(data)
-      })
+      .then(data => { if (data) setOfferteStats(data) })
+      .catch(() => {})
+
+    fetch('/api/facturen/stats')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setFactuurStats(data) })
       .catch(() => {})
   }, [])
 
+  useEffect(() => {
+    fetchData()
+
+    const onFocus = () => fetchData()
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') fetchData()
+    })
+    return () => window.removeEventListener('focus', onFocus)
+  }, [fetchData])
+
   const now = new Date()
   const greeting = now.getHours() < 12 ? 'Goedemorgen' : now.getHours() < 18 ? 'Goedemiddag' : 'Goedenavond'
-  const paidThisMonthCount = localStats.recentFacturen.filter((f: any) => {
-    if (f.status !== 'betaald' || !f.paidAt) return false
-    const d = new Date(f.paidAt)
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
-  }).length
-  const subscriptionSummary = {
-    active: 0,
-    monthlyRecurring: 0,
-    note: 'Structuur staat klaar (voorwaarden later toevoegen)',
-  }
 
   return (
     <div className="p-8">
@@ -62,10 +68,10 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/offertes/nieuw" className="btn-secondary">
+          <Link href={`/offertes/nieuw?bedrijf=${activeCompany}`} className="btn-secondary">
             <Plus size={15} /> Nieuwe offerte
           </Link>
-          <Link href="/facturen/nieuw" className="btn-primary">
+          <Link href={`/facturen/nieuw?bedrijf=${activeCompany}`} className="btn-primary">
             <Plus size={15} /> Nieuwe factuur
           </Link>
         </div>
@@ -132,13 +138,13 @@ export default function Dashboard() {
         <RecentTable
           title="Recente facturen"
           href="/facturen"
-          items={localStats.recentFacturen}
+          items={factuurStats.recentFacturen}
           emptyHref="/facturen/nieuw"
           emptyCta="Maak je eerste factuur"
           renderRow={(f: any) => {
             const co = getCompany(f.companyId)
             return (
-              <tr key={f.id} className="hover:bg-brand-page-light cursor-pointer">
+              <tr key={f.id} className="hover:bg-brand-page-light cursor-pointer" onClick={() => router.push(`/facturen/${f.id}`)}>
                 <td className="py-2.5 pr-3">
                   <div className="text-caption text-brand-text-secondary">{f.number}</div>
                   <div className="font-semibold text-body">{f.client.name}</div>
@@ -165,11 +171,11 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="rounded-brand border-brand border-brand-card-border bg-brand-card-bg p-3">
               <p className="text-caption text-brand-text-secondary mb-1">Binnengekomen deze maand</p>
-              <p className="font-semibold text-body">{euro(localStats.totalPaidThisMonth)}</p>
+              <p className="font-semibold text-body">{euro(factuurStats.paidThisMonth)}</p>
             </div>
             <div className="rounded-brand border-brand border-brand-card-border bg-brand-card-bg p-3">
               <p className="text-caption text-brand-text-secondary mb-1">Openstaand</p>
-              <p className="font-semibold text-body">{euro(localStats.totalOpenAmount)}</p>
+              <p className="font-semibold text-body">{euro(factuurStats.totalOpenAmount)}</p>
             </div>
             <div className="rounded-brand border-brand border-brand-card-border bg-brand-card-bg p-3">
               <p className="text-caption text-brand-text-secondary mb-1">Mollie</p>

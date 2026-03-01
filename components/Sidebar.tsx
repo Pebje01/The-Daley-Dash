@@ -10,6 +10,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 import SettingsModal from '@/components/SettingsModal'
+import { useActiveCompany } from '@/components/CompanyContext'
 
 const mainNav = [
   { label: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -46,6 +47,7 @@ export default function Sidebar() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const { activeCompany, setActiveCompany } = useActiveCompany()
 
   useEffect(() => {
     const supabase = createClient()
@@ -135,23 +137,29 @@ export default function Sidebar() {
           })}
         </div>
 
-        {/* Companies */}
+        {/* Companies — kiezer voor actief bedrijf */}
         <div className="pt-5">
-          <p className="px-3 text-[10px] font-semibold text-sidebar-muted/50 uppercase tracking-widest mb-2">Bedrijven</p>
-          {companies.map(c => (
-            <Link
-              key={c.id}
-              href={`/bedrijven/${c.id}`}
-              className="flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body text-sidebar-muted hover:bg-sidebar-hover/40 transition-colors group"
-            >
-              <span
-                className="w-2 h-2 rounded-full flex-shrink-0"
-                style={{ backgroundColor: c.color }}
-              />
-              <span className="truncate">{c.name}</span>
-              <ChevronRight size={12} className="ml-auto opacity-0 group-hover:opacity-60" />
-            </Link>
-          ))}
+          <p className="px-3 text-[10px] font-semibold text-sidebar-muted/50 uppercase tracking-widest mb-2">Actief bedrijf</p>
+          {companies.map(c => {
+            const isActive = activeCompany === c.id
+            return (
+              <button
+                key={c.id}
+                onClick={() => setActiveCompany(c.id as any)}
+                className={`flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body transition-colors w-full text-left ${
+                  isActive
+                    ? 'bg-sidebar-active/80 text-sidebar-text-active font-medium'
+                    : 'text-sidebar-muted hover:bg-sidebar-hover/40'
+                }`}
+              >
+                <span
+                  className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isActive ? 'ring-2 ring-sidebar-text-active/30' : ''}`}
+                  style={{ backgroundColor: c.color }}
+                />
+                <span className="truncate">{c.name}</span>
+              </button>
+            )
+          })}
         </div>
       </nav>
 

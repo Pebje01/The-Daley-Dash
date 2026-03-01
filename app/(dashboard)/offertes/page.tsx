@@ -6,6 +6,7 @@ import { Plus, Search, RefreshCw, ChevronDown, Check } from 'lucide-react'
 import { getCompany, COMPANIES } from '@/lib/companies'
 import { Offerte, OfferteStatus, CompanyId } from '@/lib/types'
 import { OfferteStatusBadge } from '@/components/StatusBadge'
+import { useActiveCompany } from '@/components/CompanyContext'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -116,6 +117,7 @@ export default function OffertesPage() {
 function OffertesContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { activeCompany } = useActiveCompany()
   const [offertes, setOffertes] = useState<Offerte[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -171,7 +173,7 @@ function OffertesContent() {
 
   const newOfferteHref = companyFilter !== 'alle'
     ? `/offertes/nieuw?bedrijf=${companyFilter}`
-    : '/offertes/nieuw'
+    : `/offertes/nieuw?bedrijf=${activeCompany}`
 
   return (
     <div className="p-8 flex flex-col min-h-screen">

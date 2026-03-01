@@ -3,7 +3,8 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import {
   ArrowLeft, Send, Download, CheckCircle2, XCircle, Trash2,
-  Copy, ExternalLink, Eye, Clock, RefreshCw, Save, Plus, GripVertical, ChevronDown
+  Copy, ExternalLink, Eye, Clock, RefreshCw, Save, Plus, GripVertical, ChevronDown,
+  Sparkles, Loader2, ChevronLeft
 } from 'lucide-react'
 import { getCompany, COMPANIES } from '@/lib/companies'
 import { Offerte, LineItem, CompanyId, OfferteStatus } from '@/lib/types'
@@ -46,6 +47,7 @@ export default function OfferteDetailPage() {
   const [folderName, setFolderName] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
   const [statusMenuOpen, setStatusMenuOpen] = useState(false)
   const statusMenuRef = useRef<HTMLDivElement>(null)
 
@@ -56,6 +58,12 @@ export default function OfferteDetailPage() {
   const [introText, setIntroText] = useState('')
   const [termsText, setTermsText] = useState('')
   const [companyId, setCompanyId] = useState<CompanyId>('tde')
+
+  // AI herschrijf state
+  const [showAiRewrite, setShowAiRewrite] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [aiGenerating, setAiGenerating] = useState(false)
+  const [aiError, setAiError] = useState('')
 
   const fetchOfferte = useCallback(async () => {
     setLoading(true)
@@ -188,10 +196,68 @@ export default function OfferteDetailPage() {
       }
 
       setEditing(false)
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 5000)
     } catch {
       alert('Opslaan mislukt')
     }
     setSaving(false)
+  }
+
+  const handleAiRewrite = async () => {
+    setAiGenerating(true)
+    setAiError('')
+    try {
+      const res = await fetch('/api/offertes/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyId,
+          clientName: client.name,
+          contactPerson: client.contactPerson || undefined,
+          prompt: aiPrompt,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'AI generatie mislukt')
+      }
+      const result = await res.json()
+
+      // Pas AI resultaat toe op de edit-velden
+      const newSections: Section[] = result.sections.map((s: { title: string; items: { description: string; details?: string; quantity: number; unitPrice: number }[] }) => ({
+        id: crypto.randomUUID(),
+        title: s.title,
+        items: s.items.map((item: { description: string; details?: string; quantity: number; unitPrice: number }) => ({
+          id: crypto.randomUUID(),
+          description: item.description,
+          details: item.details || '',
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+        })),
+      }))
+
+      // Klantgegevens invullen (overschrijf alleen als AI iets gevonden heeft)
+      if (result.client) {
+        setClient(prev => ({
+          name: result.client.name || prev.name,
+          contactPerson: result.client.contactPerson || prev.contactPerson,
+          email: result.client.email || prev.email,
+          phone: result.client.phone || prev.phone,
+        }))
+      }
+
+      setSections(newSections)
+      setIntroText(result.introText || '')
+      setTermsText(result.termsText || '')
+      setBtwPct(result.btwPercentage || 21)
+      setShowAiRewrite(false)
+      setAiPrompt('')
+    } catch (e: unknown) {
+      setAiError(e instanceof Error ? e.message : 'AI generatie mislukt')
+    } finally {
+      setAiGenerating(false)
+    }
   }
 
   const copyToClipboard = (text: string) => {
@@ -317,9 +383,76 @@ export default function OfferteDetailPage() {
         </div>
       </div>
 
+      {saveSuccess && (
+        <div className="bg-brand-lime/20 border border-brand-lime-accent/30 text-brand-lime-accent rounded-brand px-4 py-3 mb-5 text-body flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <CheckCircle2 size={16} /> Offerte bijgewerkt — online pagina en PDF zijn opnieuw gegenereerd
+          </span>
+          <button onClick={() => setSaveSuccess(false)} className="text-brand-lime-accent/60 hover:text-brand-lime-accent transition-colors text-caption">
+            Sluiten
+          </button>
+        </div>
+      )}
+
       {editing ? (
         /* ── Edit mode ──────────────────────────────────────────────── */
         <div className="space-y-5">
+          {/* AI Herschrijf optie — bovenaan */}
+          {!showAiRewrite ? (
+            <button
+              onClick={() => setShowAiRewrite(true)}
+              className="flex items-center gap-1.5 text-caption text-brand-text-secondary hover:text-brand-text-primary transition-colors"
+            >
+              <Sparkles size={14} />
+              <span>Herschrijf met AI</span>
+            </button>
+          ) : (
+            <div className="card border-2 border-brand-lavender">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles size={16} className="text-brand-text-primary" />
+                <h2 className="font-semibold text-body">Herschrijf offerte met AI</h2>
+              </div>
+              <p className="text-caption text-brand-text-secondary mb-3">
+                Beschrijf wat je wilt — AI herkent klantgegevens, diensten en prijzen automatisch en vult alle velden in.
+              </p>
+              <textarea
+                className="input h-32 resize-none mb-1"
+                placeholder={`Bijv. "Offerte voor Jan de Vries van Makelaardij Amsterdam (jan@mak.nl, 06-12345678). Website redesign inclusief homepage en contactpagina."`}
+                value={aiPrompt}
+                onChange={e => setAiPrompt(e.target.value)}
+                disabled={aiGenerating}
+              />
+              <p className="text-caption text-brand-text-secondary/60 mb-3">
+                Vermeld klantgegevens en gewenste diensten. AI vult alles automatisch in.
+              </p>
+              {aiError && (
+                <div className="bg-brand-pink border border-brand-pink-accent/30 text-brand-status-red rounded-brand px-3 py-2 mb-3 text-caption">
+                  {aiError}
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => { setShowAiRewrite(false); setAiPrompt(''); setAiError('') }}
+                  className="btn-secondary"
+                  disabled={aiGenerating}
+                >
+                  <ChevronLeft size={14} /> Terug naar handmatig
+                </button>
+                <button
+                  onClick={handleAiRewrite}
+                  disabled={!aiPrompt.trim() || aiGenerating}
+                  className="btn-primary disabled:opacity-50"
+                >
+                  {aiGenerating ? (
+                    <><Loader2 size={15} className="animate-spin" /> AI verwerkt tekst…</>
+                  ) : (
+                    <><Sparkles size={15} /> Genereer offerte</>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="card">
             <h2 className="font-semibold text-body mb-4">Bedrijf</h2>
             <div className="flex gap-3">

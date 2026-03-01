@@ -5,6 +5,12 @@ import { COMPANY_AI_CONTEXT } from './company-prompts'
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
 export interface AIOfferteResult {
+  client: {
+    name: string
+    contactPerson?: string
+    email?: string
+    phone?: string
+  }
   introText: string
   sections: {
     title: string
@@ -21,7 +27,7 @@ export interface AIOfferteResult {
 
 interface GenerateOfferteParams {
   companyId: CompanyId
-  clientName: string
+  clientName?: string
   contactPerson?: string
   prompt: string
 }
@@ -44,22 +50,30 @@ ${context.pricingGuidelines}
 
 Stijl: ${context.tone}
 
-Je taak: genereer een professionele offerte op basis van de beschrijving van de gebruiker.
+Je taak: genereer een professionele offerte op basis van de beschrijving van de gebruiker. Extraheer ook alle klantgegevens die in de tekst worden vermeld.
 
 REGELS:
 - Schrijf in het Nederlands
+- Extraheer bedrijfsnaam, contactpersoon, e-mailadres en telefoonnummer van de klant uit de tekst (indien aanwezig)
 - Gebruik realistische, marktconforme prijzen op basis van de prijsindicaties
 - Groepeer items logisch in secties
 - Elke sectie moet een duidelijke titel hebben
 - Geef bij elk item een heldere omschrijving
 - Gebruik het "details" veld voor aanvullende specificaties (optioneel)
-- De introductietekst moet gericht zijn aan de klant: "${clientName}"${contactPerson ? ` (t.a.v. ${contactPerson})` : ''}
+- Maak een persoonlijke introductietekst gericht aan de klant
 - Sluit af met passende voorwaarden (betalingstermijn, geldigheid, etc.)
 - BTW percentage is standaard 21, gebruik 9 voor voedsel-gerelateerd, 0 voor vrijgesteld
+${clientName ? `- De klant heet: "${clientName}"${contactPerson ? ` (contactpersoon: ${contactPerson})` : ''}` : ''}
 
 Antwoord UITSLUITEND met een JSON object in dit exacte formaat (geen markdown, geen toelichting):
 {
-  "introText": "string - introductietekst voor de offerte",
+  "client": {
+    "name": "string - bedrijfsnaam van de klant (extraheer uit tekst)",
+    "contactPerson": "string | null - naam contactpersoon (extraheer uit tekst, null als niet vermeld)",
+    "email": "string | null - e-mailadres (extraheer uit tekst, null als niet vermeld)",
+    "phone": "string | null - telefoonnummer (extraheer uit tekst, null als niet vermeld)"
+  },
+  "introText": "string - persoonlijke introductietekst gericht aan de klant",
   "sections": [
     {
       "title": "string - sectietitel",
@@ -103,6 +117,12 @@ Antwoord UITSLUITEND met een JSON object in dit exacte formaat (geen markdown, g
 
   // Validate and sanitize
   const offerte: AIOfferteResult = {
+    client: {
+      name: typeof parsed.client?.name === 'string' ? parsed.client.name : (clientName || ''),
+      contactPerson: typeof parsed.client?.contactPerson === 'string' ? parsed.client.contactPerson : (contactPerson || undefined),
+      email: typeof parsed.client?.email === 'string' ? parsed.client.email : undefined,
+      phone: typeof parsed.client?.phone === 'string' ? parsed.client.phone : undefined,
+    },
     introText: typeof parsed.introText === 'string' ? parsed.introText : '',
     sections: Array.isArray(parsed.sections)
       ? parsed.sections.map((s: any) => ({

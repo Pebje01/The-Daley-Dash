@@ -1,10 +1,11 @@
 'use client'
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Trash2, ArrowLeft, Save, GripVertical, Sparkles, PenLine, RefreshCw, Check, ChevronLeft, Loader2 } from 'lucide-react'
+import { Plus, Trash2, ArrowLeft, Save, GripVertical, Sparkles, PenLine, RefreshCw, Check, ChevronLeft, Loader2, FileText } from 'lucide-react'
 import { COMPANIES, getCompany } from '@/lib/companies'
-import { LineItem, CompanyId } from '@/lib/types'
-import { downloadOffertePdf } from '@/lib/pdf/offertePdf'
+import { LineItem, CompanyId, Offerte } from '@/lib/types'
+import { generateOffertePdf, downloadOffertePdf } from '@/lib/pdf/offertePdf'
+import { useActiveCompany } from '@/components/CompanyContext'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -31,6 +32,12 @@ const emptySection = (): Section => ({
 })
 
 interface AIOfferteResult {
+  client: {
+    name: string
+    contactPerson?: string
+    email?: string
+    phone?: string
+  }
   introText: string
   sections: {
     title: string
@@ -53,12 +60,13 @@ export default function NieuweOfferte() {
   )
 }
 
-type FormMode = 'keuze' | 'handmatig' | 'ai-prompt' | 'ai-preview'
+type FormMode = 'keuze' | 'handmatig' | 'ai-preview' | 'preview'
 
 function NieuweOfferteContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const initialCompany = (searchParams.get('bedrijf') as CompanyId) || 'tde'
+  const { activeCompany } = useActiveCompany()
+  const initialCompany = (searchParams.get('bedrijf') as CompanyId) || activeCompany
 
   const [companyId, setCompanyId] = useState<CompanyId>(initialCompany)
   const [client, setClient] = useState({ name: '', contactPerson: '', email: '', phone: '' })
@@ -68,6 +76,7 @@ function NieuweOfferteContent() {
   const [termsText, setTermsText] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null)
 
   // AI state
   const [mode, setMode] = useState<FormMode>('keuze')
@@ -151,7 +160,7 @@ function NieuweOfferteContent() {
   const btwAmount = subtotal * (btwPct / 100)
   const total = subtotal + btwAmount
 
-  // AI generation
+  // AI generation — vult ALLE velden in (klant + diensten + intro + voorwaarden)
   const handleGenerateAI = async (extraInstructions?: string) => {
     setAiGenerating(true)
     setError('')
@@ -166,7 +175,7 @@ function NieuweOfferteContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           companyId,
-          clientName: client.name,
+          clientName: client.name || undefined,
           contactPerson: client.contactPerson || undefined,
           prompt: fullPrompt,
         }),
@@ -189,9 +198,17 @@ function NieuweOfferteContent() {
     }
   }
 
-  // Apply AI result to form
+  // Apply AI result to form — inclusief klantgegevens
   const handleApproveAI = () => {
     if (!aiResult) return
+
+    // Klantgegevens invullen vanuit AI (overschrijf alleen als AI iets gevonden heeft)
+    setClient(prev => ({
+      name: aiResult.client?.name || prev.name,
+      contactPerson: aiResult.client?.contactPerson || prev.contactPerson,
+      email: aiResult.client?.email || prev.email,
+      phone: aiResult.client?.phone || prev.phone,
+    }))
 
     const newSections: Section[] = aiResult.sections.map(s => ({
       id: crypto.randomUUID(),
@@ -258,6 +275,49 @@ function NieuweOfferteContent() {
     }
   }
 
+  // PDF Preview: maak een tijdelijk Offerte object en genereer PDF blob
+  const handleShowPreview = () => {
+    const now = new Date()
+    const validUntil = new Date(now)
+    validUntil.setDate(validUntil.getDate() + 14)
+
+    const tempOfferte: Offerte = {
+      id: 'preview',
+      number: 'PREVIEW',
+      companyId,
+      client: { name: client.name, contactPerson: client.contactPerson, email: client.email, phone: client.phone },
+      date: now.toISOString(),
+      validUntil: validUntil.toISOString(),
+      status: 'concept',
+      items: allItems.map((item, idx) => ({ ...item, id: item.id || `preview-${idx}` })),
+      subtotal,
+      btwPercentage: btwPct,
+      btwAmount,
+      total,
+      introText: introText || undefined,
+      termsText: termsText || undefined,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    }
+
+    try {
+      const doc = generateOffertePdf(tempOfferte, company)
+      const blob = doc.output('blob')
+      // Ruim vorige blob URL op
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl)
+      const url = URL.createObjectURL(blob)
+      setPdfBlobUrl(url)
+      setMode('preview')
+    } catch (e: any) {
+      setError('PDF preview genereren mislukt: ' + e.message)
+    }
+  }
+
+  // Cleanup blob URL bij unmount
+  useEffect(() => {
+    return () => { if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl) }
+  }, [pdfBlobUrl])
+
   // AI Preview helper: calculate totals from AI result
   const aiPreviewTotals = aiResult ? (() => {
     const sub = aiResult.sections.reduce((acc, s) =>
@@ -271,18 +331,18 @@ function NieuweOfferteContent() {
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => {
-          if (mode === 'ai-prompt') setMode('keuze')
-          else if (mode === 'ai-preview') setMode('ai-prompt')
+          if (mode === 'ai-preview') setMode('keuze')
+          else if (mode === 'preview') setMode('handmatig')
           else if (mode === 'handmatig') setMode('keuze')
           else router.back()
         }} className="btn-secondary px-2.5"><ArrowLeft size={15} /></button>
         <div>
           <h1 className="font-uxum text-sidebar-t text-brand-text-primary">Nieuwe offerte</h1>
           <p className="text-caption text-brand-text-secondary mt-0.5">
-            {mode === 'ai-prompt' && 'Beschrijf wat je wilt offreren — AI genereert de offerte'}
-            {mode === 'ai-preview' && 'Controleer de gegenereerde offerte'}
+            {mode === 'ai-preview' && 'Controleer de gegenereerde offerte — pas aan indien nodig'}
+            {mode === 'preview' && 'Controleer de PDF — keur goed om op te slaan en te downloaden'}
             {mode === 'handmatig' && 'Nummer wordt automatisch toegewezen op basis van datum'}
-            {mode === 'keuze' && 'Nummer wordt automatisch toegewezen op basis van datum'}
+            {mode === 'keuze' && 'Beschrijf je offerte — AI herkent automatisch klantgegevens en diensten'}
           </p>
         </div>
       </div>
@@ -294,15 +354,14 @@ function NieuweOfferteContent() {
       )}
 
       <div className="space-y-5">
-        {/* Bedrijf selectie — altijd zichtbaar behalve bij ai-preview */}
-        {mode !== 'ai-preview' && (
+        {/* Bedrijf selectie — verborgen bij ai-preview en pdf preview */}
+        {mode !== 'ai-preview' && mode !== 'preview' && (
           <div className="card">
             <h2 className="font-semibold text-body mb-4">Vanuit welk bedrijf?</h2>
             <div className="flex gap-3">
               {COMPANIES.map(c => (
                 <button key={c.id} onClick={() => setCompanyId(c.id as CompanyId)}
-                  disabled={mode === 'handmatig'}
-                  className={`flex-1 border-2 rounded-brand p-3 text-left transition-all ${companyId === c.id ? 'border-brand-card-border' : 'border-brand-page-medium hover:border-brand-lavender-dark'} ${mode === 'handmatig' ? 'opacity-60 cursor-default' : ''}`}>
+                  className={`flex-1 border-2 rounded-brand p-3 text-left transition-all ${companyId === c.id ? 'border-brand-card-border' : 'border-brand-page-medium hover:border-brand-lavender-dark'}`}>
                   <div className="flex items-center gap-2 mb-1">
                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color }} />
                     <span className="font-semibold text-caption">{c.shortName}</span>
@@ -314,102 +373,65 @@ function NieuweOfferteContent() {
           </div>
         )}
 
-        {/* Klantgegevens — altijd zichtbaar behalve bij ai-preview */}
-        {mode !== 'ai-preview' && (
+        {/* Klantgegevens — verborgen bij ai-preview en pdf preview */}
+        {mode !== 'ai-preview' && mode !== 'preview' && (
           <div className="card">
             <h2 className="font-semibold text-body mb-4">Klantgegevens</h2>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="label">Bedrijfsnaam *</label>
                 <input className="input" value={client.name} onChange={e => setClient(p => ({...p, name: e.target.value}))}
-                  disabled={mode === 'handmatig'}
                   placeholder="BONVUE" />
               </div>
               <div>
                 <label className="label">Contactpersoon</label>
                 <input className="input" value={client.contactPerson} onChange={e => setClient(p => ({...p, contactPerson: e.target.value}))}
-                  disabled={mode === 'handmatig'}
                   placeholder="Jan Jansen" />
               </div>
               <div>
                 <label className="label">E-mailadres</label>
                 <input className="input" type="email" value={client.email} onChange={e => setClient(p => ({...p, email: e.target.value}))}
-                  disabled={mode === 'handmatig'}
                   placeholder="jan@bedrijf.nl" />
               </div>
               <div>
                 <label className="label">Telefoonnummer</label>
                 <input className="input" value={client.phone} onChange={e => setClient(p => ({...p, phone: e.target.value}))}
-                  disabled={mode === 'handmatig'}
                   placeholder="+31 6 00000000" />
               </div>
             </div>
           </div>
         )}
 
-        {/* === KEUZE MODE === */}
+        {/* === KEUZE MODE — AI bovenaan === */}
         {mode === 'keuze' && (
-          <div className="card">
-            <h2 className="font-semibold text-body mb-4">Hoe wil je de offerte maken?</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={() => setMode('ai-prompt')}
-                disabled={!client.name}
-                className="border-2 border-brand-page-medium hover:border-brand-lavender-dark rounded-brand p-5 text-left transition-all group disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-brand-sm bg-brand-lavender-light flex items-center justify-center group-hover:bg-brand-lavender transition-colors">
-                    <Sparkles size={16} className="text-brand-text-primary" />
-                  </div>
-                  <span className="font-semibold text-body">Schrijf met AI</span>
-                </div>
-                <p className="text-caption text-brand-text-secondary leading-relaxed">
-                  Beschrijf wat je wilt offreren en AI genereert de volledige offerte met secties, prijzen en teksten.
-                </p>
-              </button>
-              <button
-                onClick={() => setMode('handmatig')}
-                disabled={!client.name}
-                className="border-2 border-brand-page-medium hover:border-brand-lavender-dark rounded-brand p-5 text-left transition-all group disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-brand-sm bg-brand-page-medium flex items-center justify-center group-hover:bg-brand-lavender-light transition-colors">
-                    <PenLine size={16} className="text-brand-text-primary" />
-                  </div>
-                  <span className="font-semibold text-body">Handmatig invullen</span>
-                </div>
-                <p className="text-caption text-brand-text-secondary leading-relaxed">
-                  Vul zelf alle secties, diensten en prijzen in via het formulier.
-                </p>
-              </button>
-            </div>
-            {!client.name && (
-              <p className="text-caption text-brand-text-secondary mt-3">Vul eerst een bedrijfsnaam in om verder te gaan.</p>
-            )}
-          </div>
-        )}
-
-        {/* === AI PROMPT MODE === */}
-        {mode === 'ai-prompt' && (
-          <div className="card">
-            <div className="flex items-center gap-2 mb-4">
-              <Sparkles size={16} className="text-brand-text-primary" />
-              <h2 className="font-semibold text-body">Beschrijf je offerte</h2>
+          <div className="card border-2 border-brand-lavender">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-brand-sm bg-brand-lavender-light flex items-center justify-center">
+                <Sparkles size={16} className="text-brand-text-primary" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-body">Vul offerte in met AI</h2>
+                <p className="text-caption text-brand-text-secondary">Beschrijf alles in één tekst — AI herkent automatisch de klantgegevens, diensten en prijzen</p>
+              </div>
             </div>
             <textarea
-              className="input h-36 resize-none mb-4"
-              placeholder={`Bijv. "Website redesign voor ${client.name || 'de klant'}, inclusief een nieuwe homepage, over ons pagina, contactpagina en blog. Moet responsive zijn en met een CMS. Ook SEO optimalisatie en Google Ads setup voor de eerste 3 maanden."`}
+              className="input h-40 resize-none mb-1"
+              placeholder={`Bijv. "Offerte voor Makelaardij Amsterdam (contact: Jan de Vries, jan@makelaardij.nl, 06-12345678). We maken een nieuwe website met homepage, over ons, contactpagina en woningzoeker. Inclusief huisstijl toepassing en 3 maanden onderhoud."`}
               value={aiPrompt}
               onChange={e => setAiPrompt(e.target.value)}
               disabled={aiGenerating}
             />
+            <p className="text-caption text-brand-text-secondary/60 mb-4">
+              Vermeld: bedrijfsnaam klant, contactpersoon, e-mail, telefoon en gewenste diensten. AI vult alle velden automatisch in.
+            </p>
             <div className="flex items-center justify-between">
               <button
-                onClick={() => setMode('keuze')}
-                className="btn-secondary"
+                onClick={() => setMode('handmatig')}
+                className="flex items-center gap-1.5 text-caption text-brand-text-secondary hover:text-brand-text-primary transition-colors"
                 disabled={aiGenerating}
               >
-                <ChevronLeft size={14} /> Terug
+                <PenLine size={13} />
+                <span>Liever handmatig invullen</span>
               </button>
               <button
                 onClick={() => handleGenerateAI()}
@@ -417,17 +439,11 @@ function NieuweOfferteContent() {
                 className="btn-primary disabled:opacity-50"
               >
                 {aiGenerating ? (
-                  <>
-                    <Loader2 size={15} className="animate-spin" /> Genereren…
-                  </>
+                  <><Loader2 size={15} className="animate-spin" /> AI verwerkt tekst…</>
                 ) : aiCooldown > 0 ? (
-                  <>
-                    Wacht {aiCooldown}s…
-                  </>
+                  <>Wacht {aiCooldown}s…</>
                 ) : (
-                  <>
-                    <Sparkles size={15} /> Genereer offerte
-                  </>
+                  <><Sparkles size={15} /> Genereer offerte</>
                 )}
               </button>
             </div>
@@ -446,13 +462,14 @@ function NieuweOfferteContent() {
               </div>
 
               <div className="px-6 py-5">
-                {/* Client info */}
+                {/* Client info — uit AI geëxtraheerd */}
                 <div className="grid grid-cols-2 gap-6 mb-5">
                   <div>
                     <h3 className="text-caption uppercase tracking-wide text-brand-text-secondary mb-1">Aan</h3>
-                    <p className="font-semibold text-body">{client.name}</p>
-                    {client.contactPerson && <p className="text-caption text-brand-text-secondary">t.a.v. {client.contactPerson}</p>}
-                    {client.email && <p className="text-caption text-brand-text-secondary">{client.email}</p>}
+                    <p className="font-semibold text-body">{aiResult.client?.name || client.name || '—'}</p>
+                    {(aiResult.client?.contactPerson || client.contactPerson) && <p className="text-caption text-brand-text-secondary">t.a.v. {aiResult.client?.contactPerson || client.contactPerson}</p>}
+                    {(aiResult.client?.email || client.email) && <p className="text-caption text-brand-text-secondary">{aiResult.client?.email || client.email}</p>}
+                    {(aiResult.client?.phone || client.phone) && <p className="text-caption text-brand-text-secondary">{aiResult.client?.phone || client.phone}</p>}
                   </div>
                   <div className="text-right">
                     <p className="text-caption text-brand-text-secondary">
@@ -537,7 +554,7 @@ function NieuweOfferteContent() {
                   <Check size={15} /> Goedkeuren & bewerken
                 </button>
                 <button
-                  onClick={() => setMode('ai-prompt')}
+                  onClick={() => setMode('keuze')}
                   className="btn-secondary"
                 >
                   <ChevronLeft size={14} /> Terug naar prompt
@@ -581,6 +598,15 @@ function NieuweOfferteContent() {
         {/* === HANDMATIG MODE — bestaand formulier === */}
         {mode === 'handmatig' && (
           <>
+            {/* Methode switcher */}
+            <button
+              onClick={() => setMode('keuze')}
+              className="flex items-center gap-1.5 text-caption text-brand-text-secondary hover:text-brand-text-primary transition-colors"
+            >
+              <ChevronLeft size={14} />
+              <span>Andere methode kiezen <span className="text-brand-text-secondary/50">(bijv. AI schrijven)</span></span>
+            </button>
+
             {/* Introductietekst */}
             <div className="card">
               <h2 className="font-semibold text-body mb-3">Introductietekst (optioneel)</h2>
@@ -698,13 +724,43 @@ function NieuweOfferteContent() {
 
             {/* Save bar */}
             <div className="bg-brand-page-light border-brand border-brand-card-border rounded-brand px-4 py-3 flex items-center justify-between">
-              <div className="text-caption text-brand-text-secondary">
-                <span className="font-semibold text-brand-text-primary">Bedrijf: </span>
-                <span style={{ color: company.color }}>{company.name}</span>
-                <span className="ml-3 text-brand-text-secondary/50">(nummer wordt automatisch gegenereerd)</span>
+              <div className="flex items-center gap-2">
+                <button onClick={handleShowPreview} disabled={!client.name || allItems.length === 0} className="btn-secondary disabled:opacity-50">
+                  <FileText size={15} /> Bekijk PDF voorbeeld
+                </button>
               </div>
-              <button onClick={handleSave} disabled={!client.name || saving} className="btn-primary disabled:opacity-50">
+              <button onClick={handleSave} disabled={!client.name || allItems.length === 0 || saving} className="btn-primary disabled:opacity-50">
                 <Save size={15} /> {saving ? 'Opslaan…' : 'Opslaan & PDF downloaden'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* === PDF PREVIEW MODE === */}
+        {mode === 'preview' && pdfBlobUrl && (
+          <>
+            <div className="card p-0 overflow-hidden">
+              <iframe
+                src={pdfBlobUrl}
+                className="w-full border-0"
+                style={{ height: '80vh' }}
+                title="PDF Voorbeeld"
+              />
+            </div>
+
+            <div className="bg-brand-page-light border-brand border-brand-card-border rounded-brand px-4 py-3 flex items-center justify-between">
+              <button
+                onClick={() => setMode('handmatig')}
+                className="btn-secondary"
+              >
+                <ArrowLeft size={14} /> Terug naar bewerken
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="btn-primary disabled:opacity-50"
+              >
+                <Save size={15} /> {saving ? 'Opslaan…' : 'Goedkeuren & opslaan'}
               </button>
             </div>
           </>

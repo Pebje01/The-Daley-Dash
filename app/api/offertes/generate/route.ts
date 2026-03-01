@@ -27,8 +27,8 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   const { companyId, clientName, contactPerson, prompt } = body
 
-  if (!companyId || !clientName || !prompt) {
-    return NextResponse.json({ error: 'companyId, clientName en prompt zijn verplicht' }, { status: 400 })
+  if (!companyId || !prompt) {
+    return NextResponse.json({ error: 'companyId en prompt zijn verplicht' }, { status: 400 })
   }
 
   const validCompanies: CompanyId[] = ['tde', 'wgb', 'daleyphotography', 'bleijenberg', 'montung']
