@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, FileText, Receipt, Users, Settings,
   CreditCard, Repeat2, RefreshCw, BadgeDollarSign, Building2, ContactRound, BriefcaseBusiness, ScrollText, List,
-  ChevronRight, LogOut
+  ChevronRight, LogOut, Landmark
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
@@ -22,6 +22,7 @@ const financialNav = [
   { label: 'Betalingen', href: '/betalingen', icon: CreditCard },
   { label: 'Abonnementen', href: '/abonnementen', icon: Repeat2 },
   { label: 'Klanten', href: '/klanten', icon: Users },
+  { label: 'Belasting', href: '/belasting', icon: Landmark },
 ]
 
 const crmNav = [

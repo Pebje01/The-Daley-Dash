@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { generateOfferteWithAI } from '@/lib/ai/generate-offerte'
 import { CompanyId } from '@/lib/types'
 
@@ -7,13 +6,12 @@ const RATE_LIMIT_MS = 30_000
 const lastRequestPerUser = new Map<string, number>()
 
 export async function POST(request: NextRequest) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Auth tijdelijk uitgeschakeld
+  const userId = 'local'
 
-  // Rate limit: max 1 request per 30 seconds per user
+  // Rate limit: max 1 request per 30 seconds
   const now = Date.now()
-  const lastRequest = lastRequestPerUser.get(user.id) ?? 0
+  const lastRequest = lastRequestPerUser.get(userId) ?? 0
   const waitMs = RATE_LIMIT_MS - (now - lastRequest)
   if (waitMs > 0) {
     const waitSec = Math.ceil(waitMs / 1000)
@@ -22,7 +20,7 @@ export async function POST(request: NextRequest) {
       { status: 429 }
     )
   }
-  lastRequestPerUser.set(user.id, now)
+  lastRequestPerUser.set(userId, now)
 
   const body = await request.json()
   const { companyId, clientName, contactPerson, prompt } = body

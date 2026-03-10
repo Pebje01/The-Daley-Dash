@@ -52,18 +52,22 @@ Stijl: ${context.tone}
 
 Je taak: genereer een professionele offerte op basis van de beschrijving van de gebruiker. Extraheer ook alle klantgegevens die in de tekst worden vermeld.
 
-REGELS:
+STRIKTE REGELS — VERPLICHT:
 - Schrijf in het Nederlands
 - Extraheer bedrijfsnaam, contactpersoon, e-mailadres en telefoonnummer van de klant uit de tekst (indien aanwezig)
 - Gebruik realistische, marktconforme prijzen op basis van de prijsindicaties
-- Groepeer items logisch in secties
-- Elke sectie moet een duidelijke titel hebben
-- Geef bij elk item een heldere omschrijving
-- Gebruik het "details" veld voor aanvullende specificaties (optioneel)
 - Maak een persoonlijke introductietekst gericht aan de klant
 - Sluit af met passende voorwaarden (betalingstermijn, geldigheid, etc.)
 - BTW percentage is standaard 21, gebruik 9 voor voedsel-gerelateerd, 0 voor vrijgesteld
 ${clientName ? `- De klant heet: "${clientName}"${contactPerson ? ` (contactpersoon: ${contactPerson})` : ''}` : ''}
+
+ABSOLUUT VERBODEN:
+- Voeg ALLEEN diensten/items toe die EXPLICIET in de tekst van de gebruiker worden genoemd
+- Als de klant zegt "een website en een logo" → maak precies 2 items: één voor de website, één voor het logo. NIET MEER.
+- Verzin GEEN extra diensten, opties, fases, sub-items of aanvullende werkzaamheden die niet in de tekst staan
+- Geen "strategie", "onderhoud", "SEO", "copywriting" of andere suggesties toevoegen tenzij expliciet gevraagd
+- Minder is meer: houd je strikt aan wat er letterlijk staat
+- Één item per dienst die genoemd wordt — geen opsplitsing in sub-diensten tenzij de gebruiker dat specificeert
 
 Antwoord UITSLUITEND met een JSON object in dit exacte formaat (geen markdown, geen toelichting):
 {

@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   // Auth tijdelijk uitgeschakeld
 
   const body = await request.json()
-  const { companyId, client, items, btwPercentage, notes, introText, termsText } = body
+  const { companyId, client, items, btwPercentage, notes, introText, termsText, date: customDate, validUntil: customValidUntil } = body
 
   if (!companyId || !client?.name || !items?.length) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -35,7 +35,8 @@ export async function POST(request: NextRequest) {
   const total = subtotal + btwAmount
 
   const now = new Date()
-  const validUntil = new Date(now.getTime() + 14 * 86400000).toISOString().split('T')[0]
+  const offerteDate = customDate || now.toISOString().split('T')[0]
+  const validUntil = customValidUntil || new Date(new Date(offerteDate).getTime() + 14 * 86400000).toISOString().split('T')[0]
   const todayCount = await getTodayOfferteCount() // globale dag-sequentie over alle bedrijven
 
   let createdOfferte = null
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
         number,
         companyId,
         client,
-        date: now.toISOString().split('T')[0],
+        date: offerteDate,
         validUntil,
         items,
         subtotal,

@@ -52,6 +52,8 @@ middleware.ts               # Auth redirect middleware
 - Draai `npm run lint` na het schrijven van nieuwe code
 - NOOIT `npm run build` draaien terwijl de dev server draait — gebruik `npx tsc --noEmit` als alternatief
 - Bij UI-wijzigingen: maak een screenshot en vergelijk met het gewenste resultaat
+- **Na elke UI-wijziging of build: loop de pagina visueel na in de browser.** Controleer of alles correct rendert, of de styling klopt met de huisstijl, en noteer verbeterpunten. Fix gevonden issues direct voordat je verder gaat.
+- **Wees proactief kritisch:** kijk na elke taak naar zwakke punten, UX-verbeteringen en ontbrekende functionaliteit. Geef concrete tips om het dashboard sterker te maken (bijv. betere foutafhandeling, lege states, responsive design, performance, toegankelijkheid). Meld dit aan de gebruiker vóórdat je de taak als afgerond beschouwt.
 - Pak altijd de root cause aan, onderdruk geen errors
 - Bij bugs: schrijf eerst een beschrijving van het verwachte vs werkelijke gedrag
 

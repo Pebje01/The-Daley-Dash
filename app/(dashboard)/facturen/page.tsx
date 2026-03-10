@@ -1,12 +1,15 @@
 'use client'
 import { Suspense, useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Search, RefreshCw, ChevronDown, Check } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
+import { Plus, Search, RefreshCw, ChevronDown, Check, Upload, FolderOpen } from 'lucide-react'
 import { getCompany, COMPANIES } from '@/lib/companies'
 import { Factuur, FactuurStatus, CompanyId } from '@/lib/types'
 import { FactuurStatusBadge } from '@/components/StatusBadge'
 import { useActiveCompany } from '@/components/CompanyContext'
+import { pickFacturenFolder, getFacturenFolder } from '@/lib/pdf/folderStorage'
+import { onDataChanged } from '@/lib/events'
+import { useDrawer } from '@/components/DrawerContext'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -113,9 +116,9 @@ export default function FacturenPage() {
 }
 
 function FacturenContent() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const { activeCompany } = useActiveCompany()
+  const { openDrawer } = useDrawer()
   const [facturen, setFacturen] = useState<Factuur[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -124,6 +127,12 @@ function FacturenContent() {
   const [companyFilter, setCompanyFilter] = useState<CompanyId | 'alle'>(
     (searchParams.get('bedrijf') as CompanyId) || 'alle'
   )
+  const [folderName, setFolderName] = useState<string | null>(null)
+
+  // Laad opgeslagen mapnaam bij mount
+  useEffect(() => {
+    getFacturenFolder().then(h => { if (h) setFolderName(h.name) })
+  }, [])
 
   const fetchFacturen = useCallback(async () => {
     setLoading(true)
@@ -142,6 +151,14 @@ function FacturenContent() {
   }, [statusFilter, companyFilter, search])
 
   useEffect(() => { fetchFacturen() }, [fetchFacturen])
+
+  // Luister naar data-changed events (bijv. vanuit de drawer)
+  useEffect(() => {
+    const cleanup = onDataChanged((type) => {
+      if (type === 'facturen') fetchFacturen()
+    })
+    return cleanup
+  }, [fetchFacturen])
 
   const filtered = facturen.filter(f => {
     if (!search) return true
@@ -183,12 +200,23 @@ function FacturenContent() {
           </p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={async () => {
+              const handle = await pickFacturenFolder()
+              if (handle) setFolderName(handle.name)
+            }}
+            className="btn-secondary px-2.5 flex items-center gap-1.5"
+            title={folderName ? `Map: ${folderName}` : 'Selecteer facturen map'}
+          >
+            <FolderOpen size={15} />
+            {folderName && <span className="text-caption max-w-[120px] truncate">{folderName}</span>}
+          </button>
           <button onClick={fetchFacturen} className="btn-secondary px-2.5" title="Vernieuwen">
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
           </button>
-          <Link href={newFactuurHref} className="btn-primary">
+          <button onClick={() => openDrawer({ type: 'factuur-nieuw' })} className="btn-primary">
             <Plus size={15} /> Nieuwe factuur
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -285,11 +313,48 @@ function FacturenContent() {
               <tr>
                 <td colSpan={7} className="text-center py-12 text-brand-text-secondary">
                   {facturen.length === 0 ? (
-                    <div>
-                      <p className="mb-2">Nog geen facturen aangemaakt</p>
-                      <Link href="/facturen/nieuw" className="text-brand-purple font-semibold underline underline-offset-2 text-body">
-                        Maak je eerste factuur
-                      </Link>
+                    <div className="max-w-md mx-auto">
+                      <p className="mb-4 text-body">Nog geen facturen aangemaakt</p>
+                      <div className="flex gap-3 justify-center">
+                        <button
+                          onClick={() => openDrawer({ type: 'factuur-nieuw' })}
+                          className="flex flex-col items-center gap-2 px-6 py-4 rounded-brand border border-brand-card-border hover:border-brand-purple hover:bg-brand-lavender-light/30 transition-all group"
+                        >
+                          <Plus size={20} className="text-brand-purple" />
+                          <span className="text-body font-semibold text-brand-text-primary">Maak factuur</span>
+                          <span className="text-caption text-brand-text-secondary">Begin een nieuwe factuur</span>
+                        </button>
+                        <label className="flex flex-col items-center gap-2 px-6 py-4 rounded-brand border border-brand-card-border hover:border-brand-purple hover:bg-brand-lavender-light/30 transition-all cursor-pointer group">
+                          <Upload size={20} className="text-brand-purple" />
+                          <span className="text-body font-semibold text-brand-text-primary">Importeer facturen</span>
+                          <span className="text-caption text-brand-text-secondary">Upload een JSON-bestand</span>
+                          <input
+                            type="file"
+                            accept=".json"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0]
+                              if (!file) return
+                              try {
+                                const text = await file.text()
+                                const data = JSON.parse(text)
+                                const items = Array.isArray(data) ? data : [data]
+                                for (const item of items) {
+                                  await fetch('/api/facturen', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(item),
+                                  })
+                                }
+                                fetchFacturen()
+                              } catch {
+                                alert('Import mislukt — controleer het bestandsformaat')
+                              }
+                              e.target.value = ''
+                            }}
+                          />
+                        </label>
+                      </div>
                     </div>
                   ) : 'Geen resultaten gevonden'}
                 </td>
@@ -301,7 +366,7 @@ function FacturenContent() {
                 <tr
                   key={f.id}
                   className={`hover:bg-brand-page-light cursor-pointer transition-colors ${isOverdue ? 'bg-brand-pink/30' : ''}`}
-                  onClick={() => router.push(`/facturen/${f.id}`)}
+                  onClick={() => openDrawer({ type: 'factuur-detail', id: f.id })}
                 >
                   <td className="px-5 py-3.5 font-mono text-caption text-brand-text-secondary">{f.number}</td>
                   <td className="px-5 py-3.5 font-semibold text-brand-text-primary">{f.client.name}</td>

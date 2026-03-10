@@ -23,6 +23,7 @@ declare global {
 const DB_NAME = 'daley-admin'
 const STORE_NAME = 'settings'
 const FOLDER_KEY = 'offerte-folder'
+const FACTUREN_FOLDER_KEY = 'facturen-folder'
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -71,6 +72,51 @@ export async function pickOfferteFolder(): Promise<FileSystemDirectoryHandle | n
       startIn: 'documents',
     })
     await setOfferteFolder(handle)
+    return handle
+  } catch {
+    // User cancelled
+    return null
+  }
+}
+
+/* ── Facturen folder ──────────────────────────────────────────── */
+
+/** Get the stored facturen directory handle (or null if not set) */
+export async function getFacturenFolder(): Promise<FileSystemDirectoryHandle | null> {
+  try {
+    const db = await openDb()
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readonly')
+      const store = tx.objectStore(STORE_NAME)
+      const req = store.get(FACTUREN_FOLDER_KEY)
+      req.onsuccess = () => resolve(req.result ?? null)
+      req.onerror = () => reject(req.error)
+    })
+  } catch {
+    return null
+  }
+}
+
+/** Store a facturen directory handle */
+export async function setFacturenFolder(handle: FileSystemDirectoryHandle): Promise<void> {
+  const db = await openDb()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite')
+    const store = tx.objectStore(STORE_NAME)
+    const req = store.put(handle, FACTUREN_FOLDER_KEY)
+    req.onsuccess = () => resolve()
+    req.onerror = () => reject(req.error)
+  })
+}
+
+/** Ask the user to pick a facturen folder */
+export async function pickFacturenFolder(): Promise<FileSystemDirectoryHandle | null> {
+  try {
+    const handle = await window.showDirectoryPicker({
+      mode: 'readwrite',
+      startIn: 'documents',
+    })
+    await setFacturenFolder(handle)
     return handle
   } catch {
     // User cancelled

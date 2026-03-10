@@ -306,6 +306,32 @@ export function generateOffertePdf(offerte: Offerte, company: Company) {
   return doc
 }
 
+/**
+ * Sla offerte PDF op in de geselecteerde map (File System Access API).
+ * Als er geen map is ingesteld of de browser het niet ondersteunt,
+ * valt hij terug op een standaard browser download.
+ * Retourneert 'folder' als opgeslagen in map, 'download' als browser download.
+ */
+export async function saveOffertePdf(offerte: Offerte, company: Company): Promise<'folder' | 'download'> {
+  const { savePdfToFolder } = await import('./folderStorage')
+  const doc = generateOffertePdf(offerte, company)
+  const filename = `${offerte.number}.pdf`
+
+  // Probeer op te slaan in de geselecteerde map
+  try {
+    const blob = doc.output('blob')
+    const savedToFolder = await savePdfToFolder(blob, filename)
+    if (savedToFolder) return 'folder'
+  } catch {
+    // File System Access API niet beschikbaar of andere fout
+  }
+
+  // Fallback: standaard browser download
+  doc.save(filename)
+  return 'download'
+}
+
+/** @deprecated Gebruik saveOffertePdf() in plaats hiervan */
 export function downloadOffertePdf(offerte: Offerte, company: Company) {
   const doc = generateOffertePdf(offerte, company)
   const filename = `${offerte.number}.pdf`

@@ -1,12 +1,14 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { Plus, TrendingUp, AlertCircle, CheckCircle2, ArrowRight, FileText, Clock, RefreshCw } from 'lucide-react'
 import { getCompany } from '@/lib/companies'
 import { FactuurStatusBadge, OfferteStatusBadge } from '@/components/StatusBadge'
 import { Offerte, Factuur, Abonnement } from '@/lib/types'
 import { useActiveCompany } from '@/components/CompanyContext'
+import { onDataChanged } from '@/lib/events'
+import { useDrawer } from '@/components/DrawerContext'
+import { createClient } from '@/lib/supabase/client'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -24,7 +26,7 @@ function calcMRR(abonnementen: Abonnement[]): number {
 }
 
 export default function Dashboard() {
-  const router = useRouter()
+  const { openDrawer } = useDrawer()
   const { activeCompany } = useActiveCompany()
 
   const [offerteStats, setOfferteStats] = useState<{
@@ -33,8 +35,12 @@ export default function Dashboard() {
     totalOpenAmount: number
     akkoordOffertes: number
     akkoordAmount: number
+    revenueYear: number
+    revenueYearIncl: number
+    revenueMonth: number
+    revenueMonthIncl: number
     recentOffertes: Offerte[]
-  }>({ conceptOffertes: 0, openOffertes: 0, totalOpenAmount: 0, akkoordOffertes: 0, akkoordAmount: 0, recentOffertes: [] })
+  }>({ conceptOffertes: 0, openOffertes: 0, totalOpenAmount: 0, akkoordOffertes: 0, akkoordAmount: 0, revenueYear: 0, revenueYearIncl: 0, revenueMonth: 0, revenueMonthIncl: 0, recentOffertes: [] })
 
   const [factuurStats, setFactuurStats] = useState<{
     openFacturen: number
@@ -67,11 +73,25 @@ export default function Dashboard() {
   useEffect(() => {
     fetchData()
     const onVisible = () => { if (document.visibilityState === 'visible') fetchData() }
+    // Luister naar data-changed events van andere pagina's
+    const cleanupDataChanged = onDataChanged(() => fetchData())
     window.addEventListener('focus', fetchData)
     document.addEventListener('visibilitychange', onVisible)
+
+    // Supabase Realtime: herlaad direct bij wijzigingen in offertes tabel
+    const supabase = createClient()
+    const channel = supabase
+      .channel('dashboard-offertes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'offertes' }, () => {
+        fetchData()
+      })
+      .subscribe()
+
     return () => {
+      cleanupDataChanged()
       window.removeEventListener('focus', fetchData)
       document.removeEventListener('visibilitychange', onVisible)
+      supabase.removeChannel(channel)
     }
   }, [fetchData])
 
@@ -94,37 +114,37 @@ export default function Dashboard() {
           <button onClick={fetchData} className="btn-secondary" title="Vernieuwen">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           </button>
-          <Link href={`/offertes/nieuw?bedrijf=${activeCompany}`} className="btn-secondary">
+          <button onClick={() => openDrawer({ type: 'offerte-nieuw' })} className="btn-secondary">
             <Plus size={15} /> Nieuwe offerte
-          </Link>
-          <Link href={`/facturen/nieuw?bedrijf=${activeCompany}`} className="btn-primary">
+          </button>
+          <button onClick={() => openDrawer({ type: 'factuur-nieuw' })} className="btn-primary">
             <Plus size={15} /> Nieuwe factuur
-          </Link>
+          </button>
         </div>
       </div>
 
-      {/* KPI Cards — gebaseerd op betaalde facturen */}
+      {/* KPI Cards — omzet op basis van akkoord offertes */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <Link href="/facturen?status=betaald" className="card hover:shadow-md transition-shadow cursor-pointer">
+        <Link href="/offertes?status=akkoord" className="card hover:shadow-md transition-shadow cursor-pointer">
           <div className="flex items-start justify-between mb-3">
             <p className="text-caption text-brand-text-secondary">Omzet dit jaar</p>
             <div className="w-8 h-8 rounded-brand-sm bg-brand-lavender-accent flex items-center justify-center">
               <CheckCircle2 size={17} className="text-brand-lav-accent" />
             </div>
           </div>
-          <p className="font-uxum text-stat text-brand-text-primary">{euro(factuurStats.revenueYear)}</p>
-          <p className="text-caption text-brand-text-secondary mt-1">incl. btw: {euro(factuurStats.revenueYearIncl)}</p>
+          <p className="font-uxum text-stat text-brand-text-primary">{euro(offerteStats.revenueYear)}</p>
+          <p className="text-caption text-brand-text-secondary mt-1">incl. btw: {euro(offerteStats.revenueYearIncl)}</p>
         </Link>
 
-        <Link href="/facturen?status=betaald" className="card hover:shadow-md transition-shadow cursor-pointer">
+        <Link href="/offertes?status=akkoord" className="card hover:shadow-md transition-shadow cursor-pointer">
           <div className="flex items-start justify-between mb-3">
             <p className="text-caption text-brand-text-secondary">Omzet deze maand</p>
             <div className="w-8 h-8 rounded-brand-sm bg-brand-lime flex items-center justify-center">
               <TrendingUp size={17} className="text-brand-lime-accent" />
             </div>
           </div>
-          <p className="font-uxum text-stat text-brand-text-primary">{euro(factuurStats.revenueMonth)}</p>
-          <p className="text-caption text-brand-text-secondary mt-1">incl. btw: {euro(factuurStats.revenueMonthIncl)}</p>
+          <p className="font-uxum text-stat text-brand-text-primary">{euro(offerteStats.revenueMonth)}</p>
+          <p className="text-caption text-brand-text-secondary mt-1">incl. btw: {euro(offerteStats.revenueMonthIncl)}</p>
         </Link>
 
         <Link href="/facturen?status=verzonden" className="card hover:shadow-md transition-shadow cursor-pointer">
@@ -195,7 +215,7 @@ export default function Dashboard() {
           {offerteStats.recentOffertes.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-body text-brand-text-secondary mb-2">Nog geen offertes</p>
-              <Link href="/offertes/nieuw" className="text-caption font-semibold text-brand-purple underline underline-offset-2">Maak je eerste offerte</Link>
+              <button onClick={() => openDrawer({ type: 'offerte-nieuw' })} className="text-caption font-semibold text-brand-purple underline underline-offset-2">Maak je eerste offerte</button>
             </div>
           ) : (
             <table className="w-full">
@@ -203,7 +223,7 @@ export default function Dashboard() {
                 {offerteStats.recentOffertes.map((o: Offerte) => {
                   const co = getCompany(o.companyId)
                   return (
-                    <tr key={o.id} className="hover:bg-brand-page-light cursor-pointer" onClick={() => router.push(`/offertes/${o.id}`)}>
+                    <tr key={o.id} className="hover:bg-brand-page-light cursor-pointer" onClick={() => openDrawer({ type: 'offerte-detail', id: o.id })}>
                       <td className="py-2.5 pr-3">
                         <div className="text-caption text-brand-text-secondary">{o.number}</div>
                         <div className="font-semibold text-body">{o.client.name}</div>
@@ -232,7 +252,7 @@ export default function Dashboard() {
           {factuurStats.recentFacturen.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-body text-brand-text-secondary mb-2">Nog geen facturen</p>
-              <Link href="/facturen/nieuw" className="text-caption font-semibold text-brand-purple underline underline-offset-2">Maak je eerste factuur</Link>
+              <button onClick={() => openDrawer({ type: 'factuur-nieuw' })} className="text-caption font-semibold text-brand-purple underline underline-offset-2">Maak je eerste factuur</button>
             </div>
           ) : (
             <table className="w-full">
@@ -240,7 +260,7 @@ export default function Dashboard() {
                 {factuurStats.recentFacturen.map((f: Factuur) => {
                   const co = getCompany(f.companyId)
                   return (
-                    <tr key={f.id} className="hover:bg-brand-page-light cursor-pointer" onClick={() => router.push(`/facturen/${f.id}`)}>
+                    <tr key={f.id} className="hover:bg-brand-page-light cursor-pointer" onClick={() => openDrawer({ type: 'factuur-detail', id: f.id })}>
                       <td className="py-2.5 pr-3">
                         <div className="text-caption text-brand-text-secondary">{f.number}</div>
                         <div className="font-semibold text-body">{f.client.name}</div>

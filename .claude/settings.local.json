@@ -22,7 +22,8 @@
       "Bash(npx next build:*)",
       "Bash(npx tsc:*)",
       "Bash(npx supabase:*)",
-      "Bash(npm run lint)"
+      "Bash(npm run lint)",
+      "mcp__b74cad20-f916-407a-9af3-a197b50542ce__gmail_search_messages"
     ]
   }
 }
