@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getBetalingen, createBetaling } from '@/lib/supabase/betalingen'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   // Auth tijdelijk uitgeschakeld
 

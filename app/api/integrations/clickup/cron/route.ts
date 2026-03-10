@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { syncClickUpCrm } from '@/lib/clickup/sync'
 
+export const dynamic = 'force-dynamic'
+
 function isAuthorizedCron(request: NextRequest) {
   const secret = process.env.CRON_SECRET
   if (!secret) return true

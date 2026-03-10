@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getOffertes, createOfferte, getTodayOfferteCount } from '@/lib/supabase/offertes'
 import { generateOfferteNumber } from '@/lib/offerte-utils'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   // Auth tijdelijk uitgeschakeld
 

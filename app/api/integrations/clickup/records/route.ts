@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 
 const ALLOWED_ENTITY_TYPES = new Set(['daley_list', 'lead', 'company', 'contact', 'assignment', 'clickup_invoice'])
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()

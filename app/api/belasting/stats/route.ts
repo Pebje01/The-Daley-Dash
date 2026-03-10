@@ -11,6 +11,8 @@ import {
 } from '@/lib/belasting'
 
 // Bedrijfsgroepen: eigen ZZP-bedrijven vs externe bedrijven
+export const dynamic = 'force-dynamic'
+
 const EIGEN_BEDRIJVEN = ['tde', 'wgb', 'daleyphotography']
 
 interface GroepStats {

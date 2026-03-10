@@ -21,7 +21,7 @@ interface DbFactuur {
   subtotal: number
   btw_percentage: number
   btw_amount: number
-  totaal: number
+  total: number
   paid_at: string | null
   mollie_payment_id: string | null
   mollie_payment_url: string | null
@@ -75,7 +75,7 @@ export function mapDbToFactuur(row: DbFactuur, items: DbFactuurLineItem[] = []):
     subtotal: row.subtotal,
     btwPercentage: row.btw_percentage,
     btwAmount: row.btw_amount,
-    total: row.totaal,
+    total: row.total,
     paidAt: row.paid_at ?? undefined,
     molliePaymentId: row.mollie_payment_id ?? undefined,
     molliePaymentUrl: row.mollie_payment_url ?? undefined,
@@ -188,7 +188,7 @@ export async function createFactuur(data: CreateFactuurData): Promise<Factuur> {
       subtotal: data.subtotal,
       btw_percentage: data.btwPercentage,
       btw_amount: data.btwAmount,
-      totaal: data.total,
+      total: data.total,
       notes: data.notes ?? null,
       slug: data.slug ?? null,
       created_at: now,
@@ -254,7 +254,7 @@ export async function updateFactuur(
   if (data.subtotal !== undefined) update.subtotal = data.subtotal
   if (data.btwPercentage !== undefined) update.btw_percentage = data.btwPercentage
   if (data.btwAmount !== undefined) update.btw_amount = data.btwAmount
-  if (data.total !== undefined) update.totaal = data.total
+  if (data.total !== undefined) update.total = data.total
   if (data.paidAt !== undefined) update.paid_at = data.paidAt
   if (data.molliePaymentId !== undefined) update.mollie_payment_id = data.molliePaymentId
   if (data.molliePaymentUrl !== undefined) update.mollie_payment_url = data.molliePaymentUrl
@@ -337,7 +337,7 @@ export async function getFactuurStats() {
 
   const { data: all, error } = await supabase
     .from('facturen')
-    .select('id, status, totaal, subtotal, date, due_date, paid_at, created_at')
+    .select('id, status, total, subtotal, date, due_date, paid_at, created_at')
   if (error) throw error
 
   const facturen = all ?? []
@@ -346,7 +346,7 @@ export async function getFactuurStats() {
   const openFacturen = facturen.filter((f: any) => f.status === 'verzonden').length
   const totalOpenAmount = facturen
     .filter((f: any) => f.status === 'verzonden')
-    .reduce((sum: number, f: any) => sum + (f.totaal ?? 0), 0)
+    .reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
 
   // Te laat (verzonden + due_date verstreken)
   const overdueFacturen = facturen.filter(
@@ -356,14 +356,14 @@ export async function getFactuurStats() {
   // Betaald deze maand
   const paidThisMonth = facturen
     .filter((f: any) => f.status === 'betaald' && f.paid_at && f.paid_at >= monthStart)
-    .reduce((sum: number, f: any) => sum + (f.totaal ?? 0), 0)
+    .reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
 
   // Openstaande facturen deze maand (verzonden)
   const openMonthFacturen = facturen.filter(
     (f: any) => f.status === 'verzonden' && f.date >= monthStart.split('T')[0]
   )
   const openMonthCount = openMonthFacturen.length
-  const openMonthAmount = openMonthFacturen.reduce((sum: number, f: any) => sum + (f.totaal ?? 0), 0)
+  const openMonthAmount = openMonthFacturen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
 
   // Omzet berekeningen: alleen betaalde facturen
   const yearFacturen = facturen.filter(
@@ -374,9 +374,9 @@ export async function getFactuurStats() {
   )
 
   const revenueYear = yearFacturen.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0)
-  const revenueYearIncl = yearFacturen.reduce((sum: number, f: any) => sum + (f.totaal ?? 0), 0)
+  const revenueYearIncl = yearFacturen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
   const revenueMonth = monthFacturen.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0)
-  const revenueMonthIncl = monthFacturen.reduce((sum: number, f: any) => sum + (f.totaal ?? 0), 0)
+  const revenueMonthIncl = monthFacturen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
 
   // Recent facturen (full data for dashboard)
   const recent = await getFacturen()

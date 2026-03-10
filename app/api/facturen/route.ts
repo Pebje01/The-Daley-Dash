@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getFacturen, createFactuur, getTodayFactuurCount } from '@/lib/supabase/facturen'
 import { generateFactuurNumber } from '@/lib/factuur-utils'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   // Auth tijdelijk uitgeschakeld
 
