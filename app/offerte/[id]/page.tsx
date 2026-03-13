@@ -44,7 +44,7 @@ function hexToRgba(hex: string, alpha: number) {
 }
 
 export default function OffertePublicPage() {
-  const { slug } = useParams<{ slug: string }>()
+  const { id } = useParams<{ id: string }>()
   const [offerte, setOfferte] = useState<Offerte | null>(null)
   const [company, setCompany] = useState<Company | null>(null)
   const [loading, setLoading] = useState(true)
@@ -54,7 +54,7 @@ export default function OffertePublicPage() {
   const loadOfferte = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/offerte-public/${slug}`)
+      const res = await fetch(`/api/offerte-public/${id}`)
       if (!res.ok) {
         setError('Offerte niet gevonden')
         setLoading(false)
@@ -67,7 +67,7 @@ export default function OffertePublicPage() {
       setError('Er ging iets mis bij het laden van de offerte')
     }
     setLoading(false)
-  }, [slug])
+  }, [id])
 
   useEffect(() => {
     loadOfferte()

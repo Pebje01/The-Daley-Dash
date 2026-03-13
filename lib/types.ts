@@ -57,6 +57,7 @@ export interface Offerte {
   introText?: string
   termsText?: string
   paymentUrl?: string
+  depositPercentage?: number
   // Client-facing
   slug?: string
   password?: string        // plain-text, only returned once after creation

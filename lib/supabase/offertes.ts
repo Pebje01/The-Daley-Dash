@@ -25,6 +25,7 @@ interface DbOfferte {
   intro_text: string | null
   terms_text: string | null
   payment_url: string | null
+  deposit_percentage: number | null
   slug: string | null
   password_hash: string | null
   is_public: boolean
@@ -83,6 +84,7 @@ export function mapDbToOfferte(row: DbOfferte, items: DbLineItem[] = []): Offert
     introText: row.intro_text ?? undefined,
     termsText: row.terms_text ?? undefined,
     paymentUrl: row.payment_url ?? undefined,
+    depositPercentage: row.deposit_percentage ?? undefined,
     slug: row.slug ?? undefined,
     passwordHash: row.password_hash ?? undefined,
     isPublic: row.is_public,

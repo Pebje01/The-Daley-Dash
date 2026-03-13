@@ -556,8 +556,8 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const publicUrl = offerte.slug
-    ? `${window.location.origin}/offerte/${offerte.slug}`
+  const publicUrl = offerte.id
+    ? `${window.location.origin}/offerte/${offerte.id}`
     : null
 
   // Section helpers

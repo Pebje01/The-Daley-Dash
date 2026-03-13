@@ -56,6 +56,8 @@ export default function Dashboard() {
 
   const [abonnementen, setAbonnementen] = useState<Abonnement[]>([])
   const [loading, setLoading] = useState(true)
+  const [greeting, setGreeting] = useState('')
+  const [now, setNow] = useState<Date | null>(null)
 
   const fetchData = useCallback(() => {
     setLoading(true)
@@ -95,8 +97,11 @@ export default function Dashboard() {
     }
   }, [fetchData])
 
-  const now = new Date()
-  const greeting = now.getHours() < 12 ? 'Goedemorgen' : now.getHours() < 18 ? 'Goedemiddag' : 'Goedenavond'
+  useEffect(() => {
+    const d = new Date()
+    setNow(d)
+    setGreeting(d.getHours() < 12 ? 'Goedemorgen' : d.getHours() < 18 ? 'Goedemiddag' : 'Goedenavond')
+  }, [])
   const mrr = calcMRR(abonnementen)
   const activeAbonnementen = abonnementen.filter(a => a.status === 'actief').length
 
@@ -107,7 +112,7 @@ export default function Dashboard() {
         <div>
           <h1 className="font-uxum text-headline text-brand-text-primary">{greeting}, Daley</h1>
           <p className="text-body text-brand-text-secondary mt-1">
-            {now.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' })}
+            {now?.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' }) ?? ''}
           </p>
         </div>
         <div className="flex gap-2 items-center">
