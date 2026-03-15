@@ -337,12 +337,12 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
     saveTimerRef.current = setTimeout(() => setSaveIndicator('idle'), 2000)
   }
 
-  const fetchOfferte = useCallback(async () => {
+  const fetchOfferte = useCallback(async (): Promise<Offerte | null> => {
     setLoading(true)
     try {
       const res = await fetch(`/api/offertes/${id}`)
       if (!res.ok) throw new Error('Not found')
-      const data = await res.json()
+      const data: Offerte = await res.json()
       setOfferte(data)
       setClient({
         name: data.client.name || '',
@@ -357,10 +357,13 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
       setCompanyId(data.companyId)
       setOfferteDate(data.date ? data.date.split('T')[0] : '')
       setValidUntilDate(data.validUntil ? data.validUntil.split('T')[0] : '')
+      setLoading(false)
+      return data
     } catch {
+      setLoading(false)
       goBack()
+      return null
     }
-    setLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
@@ -404,9 +407,13 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
         body: JSON.stringify(updates),
       })
       if (!res.ok) throw new Error()
-      await fetchOfferte()
+      const updated = await fetchOfferte()
       dataChanged('offertes')
       showSaveIndicator('saved')
+      // Auto-save PDF naar map als die is ingesteld
+      if (updated && folderName) {
+        saveOffertePdf(updated, getCompany(updated.companyId)).catch(() => {})
+      }
     } catch {
       await fetchOfferte() // revert
       showSaveIndicator('error')

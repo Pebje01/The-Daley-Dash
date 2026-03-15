@@ -1,4 +1,5 @@
 import { Company } from './types'
+import { wgbLogoBase64 } from './pdf/wgbLogo'
 
 export const COMPANIES: Company[] = [
   {
@@ -28,6 +29,7 @@ export const COMPANIES: Company[] = [
     btw: 'NL004023224B90',
     iban: 'NL78 KNAB 0414 3949 17',
     prefix: { offerte: 'WGB-OF', factuur: 'WGB-F' },
+    logoBase64: wgbLogoBase64,
   },
   {
     id: 'daleyphotography',

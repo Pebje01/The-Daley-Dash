@@ -41,6 +41,86 @@ public/                     # Statische bestanden
 middleware.ts               # Auth redirect middleware
 ```
 
+## Deployment & Architectuur
+
+### Dashboard vs. publieke offertes
+- Het **dashboard** (`/(dashboard)/*`) is bedoeld voor lokaal gebruik of afgeschermd op Vercel
+- De **publieke offertepagina's** (`/offerte/[id]`) worden live gezet per bedrijfsdomein
+- Alles communiceert met Supabase — ook lokaal draaien is prima zolang `.env.local` klopt
+
+### Multi-domein aanpak
+- Één Vercel deployment, meerdere domeinen eraan gekoppeld:
+  - `wegrewbrands.nl` → WGB offertes
+  - `thedaleydash.nl` → TDE offertes
+  - etc.
+- De offertepagina leest `company_id` uit Supabase en toont automatisch de juiste huisstijl
+- Klanten zien: `wegrewbrands.nl/offerte/of-260315-01`
+
+### Dashboard afschermen in productie
+- `middleware.ts` beschermt `/(dashboard)/*` via Supabase auth
+- Nog toe te voegen: productie-IP-check of extra wachtwoordlaag zodat dashboard alleen voor eigenaar toegankelijk is
+
+### Offertenummering
+- Format: `OF-YYMMDD-NN` (bijv. `OF-260315-01`)
+- Slug = nummer in lowercase = publieke URL
+- Bij datumwijziging in dashboard: nummer én slug updaten automatisch mee (volgnummer blijft behouden)
+- `deposit_percentage` per offerte instelbaar (standaard 50%, afwijkend bijv. 30% voor PGS Housing)
+
+## PDF en online offertepagina (KRITIEK: altijd synchroon)
+
+**De PDF en de online offertepagina (`/offerte/[id]`) moeten altijd 100% identiek zijn qua inhoud.**
+
+### Wat altijd moet overeenkomen:
+- Alle line items (descriptions, details, secties)
+- Intro-tekst
+- Voorwaarden en opmerkingen
+- Bedragen (subtotaal, BTW, totaal, aanbetaling, restant)
+- Aanbetalingspercentage (dynamisch per offerte via `depositPercentage`)
+- Datum, offertenummer, geldig-tot datum
+- Betaalknop tekst, kleur en onderschrift ("Veilig betalen via iDEAL")
+- Restant-tekst: altijd "Restant (X%):" — NIET "bij oplevering" of iets anders
+
+### Wanneer PDF regenereren:
+- Bij **elke wijziging** aan een offerte in het dashboard (via `saveField`) moet automatisch een nieuwe PDF worden opgeslagen via `saveOffertePdf()`
+- De PDF wordt alleen opgeslagen als er een folder geselecteerd is (`folderName` aanwezig)
+- Gebruik altijd de meest recente offerte-data (niet stale React state) voor PDF generatie
+
+### Aanbetalingsknop:
+- Kleur: donkergroen `#16a34a` (RGB: 22, 163, 74)
+- Tekst: `Betaal aanbetaling: {euro(depositAmount)}`
+- Onderschrift: `Veilig betalen via iDEAL`
+- Gecentreerd, zowel in PDF als op de online pagina
+
+## Schrijfstijl algemeen
+- Gebruik **geen em dashes** (—). Gebruik in plaats daarvan een komma, punt, of herformuleer de zin.
+
+## Offerte schrijfstijl (BELANGRIJK)
+
+### Inhoudsvlakken (line items / details veld)
+- Gebruik **bullet points** (•), geen lange aaneengesloten zinnen
+- Sectienaam = de `description` (kort en duidelijk, bijv. "Website voor makelaarsdienst Amsterdam")
+- Details = bullet points met wat er inbegrepen is — kort, feitelijk, geen marketing-taal
+- Geen AI-achtige omschrijvingen zoals "strak, clean en esthetisch passend bij..."
+- Kortingen vermelden als laatste bullet: `• Introductiekorting 50% — normaaltarief € X.XXX`
+- Prijzen alleen als extra info in details, nooit als hoofdtekst
+
+### Voorbeeld goede stijl:
+```
+description: "Website voor makelaarsdienst Amsterdam"
+details:
+• Custom meertalig design (NL/EN)
+• Pagina's: Home, About Us, Diensten & Contact
+• Contactformulier
+• Gericht op expats & internationale doelgroep
+• Teksten aangeleverd door opdrachtgever
+• Introductiekorting 50% — normaaltarief € 1.450
+```
+
+### Intro-tekst
+- Persoonlijk en direct: "Hey [naam], dank je wel voor je aanvraag..."
+- Max 2-3 zinnen, geen opsomming
+- Geen AI-jargon
+
 ## Commands
 - `npm run dev` — start dev server op localhost:3000
 - `npm run build` — productie build (BELANGRIJK: draai na elke reeks wijzigingen)

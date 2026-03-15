@@ -12,7 +12,7 @@ function euro(n: number) {
 }
 
 function formatDate(date: string) {
-  return new Date(date).toLocaleDateString('nl-NL', {
+  return new Date(date.split('T')[0] + 'T00:00:00').toLocaleDateString('nl-NL', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -49,7 +49,6 @@ export default function OffertePublicPage() {
   const [company, setCompany] = useState<Company | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-
 
   const loadOfferte = useCallback(async () => {
     setLoading(true)
@@ -290,7 +289,7 @@ export default function OffertePublicPage() {
               >
                 <div>
                   <span className="font-bold text-white text-base">Aanbetaling ({depositPct}%)</span>
-                  <p className="text-white/70 text-xs mt-0.5">Restant bij oplevering: {euro(remainingAmount)}</p>
+                  <p className="text-white/70 text-xs mt-0.5">Restant ({100 - depositPct}%): {euro(remainingAmount)}</p>
                 </div>
                 <span className="font-bold text-white text-xl">{euro(depositAmount)}</span>
               </div>
@@ -324,9 +323,9 @@ export default function OffertePublicPage() {
                   className="inline-block px-12 py-4 rounded-2xl font-bold text-white text-lg shadow-lg transition hover:scale-[1.02] hover:shadow-xl active:scale-[0.98]"
                   style={{ background: 'linear-gradient(135deg, #16a34a, #15803d)' }}
                 >
-                  Betaal aanbetaling — {euro(depositAmount)}
+                  Betaal aanbetaling: {euro(depositAmount)}
                 </a>
-                <p className="text-xs text-gray-400">Veilig betalen via KNAB</p>
+                <p className="text-xs text-gray-400">Veilig betalen via iDEAL</p>
               </>
             )}
 

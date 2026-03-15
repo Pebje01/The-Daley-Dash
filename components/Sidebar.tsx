@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, FileText, Receipt, Users, Settings,
   CreditCard, Repeat2, RefreshCw, BadgeDollarSign, Building2, ContactRound, BriefcaseBusiness, ScrollText, List,
-  ChevronRight, LogOut, Landmark
+  ChevronRight, LogOut, Landmark, CheckSquare
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
@@ -110,6 +110,19 @@ export default function Sidebar() {
                     : 'text-sidebar-muted hover:bg-sidebar-hover/40'
                 }`}
               >
+                <Icon size={15} />
+                {label}
+              </Link>
+            )
+          })}
+        </div>
+
+        <div className="pt-4">
+          <p className="px-3 text-[10px] font-semibold text-sidebar-muted/50 uppercase tracking-widest mb-2">Planning</p>
+          {[{ label: 'Taken', href: '/taken', icon: CheckSquare }].map(({ label, href, icon: Icon }) => {
+            const active = path.startsWith(href)
+            return (
+              <Link key={href} href={href} className={`flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body transition-colors ${active ? 'bg-sidebar-active/80 text-sidebar-text-active font-medium' : 'text-sidebar-muted hover:bg-sidebar-hover/40'}`}>
                 <Icon size={15} />
                 {label}
               </Link>

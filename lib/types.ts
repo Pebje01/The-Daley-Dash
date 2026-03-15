@@ -1,5 +1,14 @@
 export type CompanyId = 'tde' | 'wgb' | 'daleyphotography' | 'bleijenberg' | 'montung'
 
+export interface Taak {
+  id: string
+  title: string
+  description?: string
+  done: boolean
+  scheduledDate?: string  // ISO date — als gezet én <= vandaag: verschijnt in Vandaag-kolom
+  createdAt: string
+}
+
 export interface Company {
   id: CompanyId
   name: string
@@ -16,6 +25,7 @@ export interface Company {
     offerte: string
     factuur: string
   }
+  logoBase64?: string
 }
 
 export type OfferteStatus = 'concept' | 'opgeslagen' | 'verstuurd' | 'akkoord' | 'afgewezen' | 'verlopen'

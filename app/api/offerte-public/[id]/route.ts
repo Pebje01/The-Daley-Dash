@@ -11,10 +11,12 @@ export async function GET(
   try {
     const supabase = createClient()
 
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.id)
+
     const { data, error } = await supabase
       .from('offertes')
       .select('*')
-      .eq('id', params.id)
+      .eq(isUuid ? 'id' : 'slug', params.id)
       .single()
 
     if (error || !data) {

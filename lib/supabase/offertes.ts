@@ -287,9 +287,28 @@ export async function updateOfferte(
 
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
 
-  if (data.number !== undefined) update.number = data.number
   if (data.companyId !== undefined) update.company_id = data.companyId
-  if (data.date !== undefined) update.date = data.date
+  if (data.date !== undefined) {
+    update.date = data.date
+    // Automatisch nummer en slug updaten op basis van nieuwe datum
+    // Haal huidige offerte op om het volgnummer te behouden
+    const { data: current } = await supabase
+      .from('offertes')
+      .select('number, slug')
+      .eq('id', id)
+      .single()
+    if (current?.number && data.number === undefined) {
+      const seq = current.number.split('-').pop() ?? '01'
+      const d = new Date(data.date)
+      const yy = String(d.getFullYear()).slice(2)
+      const mm = String(d.getMonth() + 1).padStart(2, '0')
+      const dd = String(d.getDate()).padStart(2, '0')
+      const newNumber = `${current.number.split('-')[0]}-${yy}${mm}${dd}-${seq}`
+      update.number = newNumber
+      update.slug = newNumber.toLowerCase()
+    }
+  }
+  if (data.number !== undefined) update.number = data.number
   if (data.validUntil !== undefined) update.valid_until = data.validUntil
   if (data.status !== undefined) update.status = data.status
   if (data.subtotal !== undefined) update.subtotal = data.subtotal
