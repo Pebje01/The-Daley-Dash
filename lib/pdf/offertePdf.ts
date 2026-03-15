@@ -319,7 +319,7 @@ export function generateOffertePdf(offerte: Offerte, company: Company) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8.5)
   doc.setTextColor(110, 110, 110)
-  doc.text('Subtotaal', tx, y)
+  doc.text('Subtotaal excl. BTW', tx, y)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(40, 40, 40)
   doc.text(euro(offerte.subtotal), mr, y, { align: 'right' })

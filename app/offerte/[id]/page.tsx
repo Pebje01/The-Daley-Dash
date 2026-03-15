@@ -269,7 +269,7 @@ export default function OffertePublicPage() {
 
             <div className="max-w-md ml-auto text-sm">
               <div className="flex justify-between py-2 pt-3 mt-2 border-t border-gray-200">
-                <span className="font-semibold text-gray-800">Subtotaal</span>
+                <span className="font-semibold text-gray-800">Subtotaal excl. BTW</span>
                 <span className="font-semibold">{euro(offerte.subtotal)}</span>
               </div>
               <div className="flex justify-between py-2">
