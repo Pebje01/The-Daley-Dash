@@ -20,9 +20,18 @@ export async function PATCH(
 ) {
   // Auth tijdelijk uitgeschakeld
 
-  const body = await request.json()
-  const factuur = await updateFactuur(params.id, body)
-  return NextResponse.json(factuur)
+  try {
+    const body = await request.json()
+    const factuur = await updateFactuur(params.id, body)
+    return NextResponse.json(factuur)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : (err as any)?.message ?? JSON.stringify(err)
+    console.error(`PATCH /api/facturen/${params.id} fout:`, msg, err)
+    return NextResponse.json(
+      { error: msg },
+      { status: 500 }
+    )
+  }
 }
 
 export async function DELETE(

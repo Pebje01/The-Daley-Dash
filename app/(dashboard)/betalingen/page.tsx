@@ -50,7 +50,9 @@ export default function BetalingenPage() {
       if (search) params.set('search', search)
       const res = await fetch(`/api/betalingen?${params}`)
       if (res.ok) setBetalingen(await res.json())
-    } catch { /* */ }
+    } catch (e) {
+      console.error('loadBetalingen fout:', e)
+    }
     setLoading(false)
   }
 
@@ -150,7 +152,7 @@ export default function BetalingenPage() {
                 const company = getCompany(b.companyId)
                 return (
                   <tr key={b.id} className="hover:bg-brand-page-light/50 transition-colors">
-                    <td className="px-4 py-3 font-semibold">{b.reference || '—'}</td>
+                    <td className="px-4 py-3 font-semibold">{b.reference || '–'}</td>
                     <td className="px-4 py-3">{b.client.name}</td>
                     <td className="px-4 py-3">
                       {company && (
@@ -161,7 +163,7 @@ export default function BetalingenPage() {
                       )}
                     </td>
                     <td className="px-4 py-3"><BetalingStatusBadge status={b.status} /></td>
-                    <td className="px-4 py-3 text-brand-text-secondary capitalize">{b.method || '—'}</td>
+                    <td className="px-4 py-3 text-brand-text-secondary capitalize">{b.method || '–'}</td>
                     <td className="px-4 py-3 text-brand-text-secondary">
                       {b.paidAt ? new Date(b.paidAt).toLocaleDateString('nl-NL') : new Date(b.createdAt).toLocaleDateString('nl-NL')}
                     </td>
@@ -178,22 +180,11 @@ export default function BetalingenPage() {
       <div className="card">
         <div className="flex items-center gap-2 mb-3">
           <CreditCard size={15} />
-          <h2 className="font-semibold text-body">Mollie integratie</h2>
+          <h2 className="font-semibold text-body">Mollie betaallinks</h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="rounded-brand border-brand border-brand-card-border bg-brand-page-light p-4">
-            <p className="text-caption text-brand-text-secondary mb-1">Koppeling</p>
-            <p className="font-semibold text-body">Nog niet gekoppeld</p>
-          </div>
-          <div className="rounded-brand border-brand border-brand-card-border bg-brand-page-light p-4">
-            <p className="text-caption text-brand-text-secondary mb-1">Sync logs</p>
-            <p className="font-semibold text-body">Beschikbaar na koppeling</p>
-          </div>
-          <div className="rounded-brand border-brand border-brand-card-border bg-brand-page-light p-4">
-            <p className="text-caption text-brand-text-secondary mb-1">Webhook status</p>
-            <p className="font-semibold text-body">Beschikbaar na koppeling</p>
-          </div>
-        </div>
+        <p className="text-body text-brand-text-secondary">
+          Voeg een Mollie betaal-URL toe per factuur via de factuurdetailpagina. De link verschijnt automatisch op de PDF en op de publieke factuurpagina als groene betaalknop.
+        </p>
       </div>
     </div>
   )

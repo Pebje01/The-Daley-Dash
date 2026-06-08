@@ -397,8 +397,8 @@ export async function getTodayOfferteCount(companyId?: CompanyId): Promise<numbe
 export async function getOfferteStats() {
   const supabase = createClient()
   const now = new Date()
-  const yearStart = new Date(now.getFullYear(), 0, 1).toISOString()
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  const yearStart = `${now.getFullYear()}-01-01`
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
 
   const { data: all, error } = await supabase
     .from('offertes')
@@ -420,13 +420,13 @@ export async function getOfferteStats() {
     .reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
 
   // Openstaande offertes deze maand (verstuurd)
-  const openMonthOffertes = offertes.filter((o: any) => o.status === 'verstuurd' && o.date >= monthStart.split('T')[0])
+  const openMonthOffertes = offertes.filter((o: any) => o.status === 'verstuurd' && o.date >= monthStart)
   const openMonthCount = openMonthOffertes.length
   const openMonthAmount = openMonthOffertes.reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
 
-  // Omzet berekeningen: alleen goedgekeurde offertes
-  const yearOffertes = offertes.filter((o: any) => o.status === 'akkoord' && o.date >= yearStart.split('T')[0])
-  const monthOffertes = offertes.filter((o: any) => o.status === 'akkoord' && o.date >= monthStart.split('T')[0])
+  // Omzet berekeningen: alleen goedgekeurde offertes vanaf 2026
+  const yearOffertes = offertes.filter((o: any) => o.status === 'akkoord' && o.date >= yearStart)
+  const monthOffertes = offertes.filter((o: any) => o.status === 'akkoord' && o.date >= monthStart)
 
   const revenueYear = yearOffertes.reduce((sum: number, o: any) => sum + (o.subtotal ?? 0), 0)
   const revenueYearIncl = yearOffertes.reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)

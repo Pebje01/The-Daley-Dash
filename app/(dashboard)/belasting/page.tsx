@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { Landmark, RefreshCw, Info, TrendingUp, Receipt, PiggyBank, Calculator, Building2 } from 'lucide-react'
+import { Landmark, RefreshCw, Info, TrendingUp, Receipt, PiggyBank, Calculator } from 'lucide-react'
 import type { IBBreakdown, KwartaalData, MaandData } from '@/lib/belasting'
 
 function euro(n: number) {
@@ -25,7 +25,6 @@ interface BelastingResponse {
   jaar: number
   huidigKwartaal: number
   eigen: GroepStats
-  apart: GroepStats[]
 }
 
 export default function BelastingPage() {
@@ -82,7 +81,7 @@ export default function BelastingPage() {
 
   if (!data) return null
 
-  const { eigen, apart, jaar, huidigKwartaal: huidigKw } = data
+  const { eigen, jaar, huidigKwartaal: huidigKw } = data
 
   return (
     <div className="p-8">
@@ -107,39 +106,12 @@ export default function BelastingPage() {
         toonIB
         toonMaandoverzicht
       />
-
-      {/* ═══ APARTE BEDRIJVEN ═══ */}
-      {apart.filter(g => g.totaalOmzetExcl > 0 || g.totaalBtw > 0).map(groep => (
-        <div key={groep.label} className="mt-10">
-          <div className="flex items-center gap-2 mb-4">
-            <Building2 size={18} className="text-brand-text-secondary" />
-            <h2 className="font-uxum text-subtitle text-brand-text-primary">{groep.label}</h2>
-          </div>
-          <GroepSectie
-            groep={groep}
-            jaar={jaar}
-            huidigKw={huidigKw}
-            toonIB={false}
-            toonMaandoverzicht={false}
-          />
-        </div>
-      ))}
-
-      {/* Lege state voor aparte bedrijven */}
-      {apart.every(g => g.totaalOmzetExcl === 0 && g.totaalBtw === 0) && (
-        <div className="mt-10 card text-center py-8">
-          <Building2 size={24} className="text-brand-text-secondary mx-auto mb-2" />
-          <p className="text-body text-brand-text-secondary">
-            Geen omzet voor Bleijenberg of Montung in {jaar}
-          </p>
-        </div>
-      )}
     </div>
   )
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Groep sectie component — herbruikbaar voor eigen + apart
+// Groep sectie component, herbruikbaar voor eigen + apart
 // ═══════════════════════════════════════════════════════════════
 
 function GroepSectie({ groep, jaar, huidigKw, toonIB, toonMaandoverzicht }: {
@@ -250,7 +222,7 @@ function GroepSectie({ groep, jaar, huidigKw, toonIB, toonMaandoverzicht }: {
                     <span className="text-brand-text-primary font-semibold">{euro(kw.btwBedrag)}</span>
                   </div>
                   <div className="flex justify-between text-caption pt-1 border-t border-brand-card-border">
-                    <span className="text-brand-text-secondary">Offertes</span>
+                    <span className="text-brand-text-secondary">Facturen</span>
                     <span className="text-brand-text-primary">{kw.aantalFacturen}</span>
                   </div>
                 </div>

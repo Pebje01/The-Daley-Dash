@@ -173,7 +173,7 @@ export default function NieuweOfferteContent({
   const btwAmount = subtotal * (btwPct / 100)
   const total = subtotal + btwAmount
 
-  // AI generation — vult ALLE velden in (klant + diensten + intro + voorwaarden)
+  // AI generation, vult ALLE velden in (klant + diensten + intro + voorwaarden)
   const handleGenerateAI = async (extraInstructions?: string) => {
     setAiGenerating(true)
     setError('')
@@ -211,7 +211,7 @@ export default function NieuweOfferteContent({
     }
   }
 
-  // Apply AI result to form — inclusief klantgegevens
+  // Apply AI result to form, inclusief klantgegevens
   const handleApproveAI = () => {
     if (!aiResult) return
 
@@ -358,10 +358,10 @@ export default function NieuweOfferteContent({
         <div>
           <h1 className="font-uxum text-sidebar-t text-brand-text-primary">Nieuwe offerte</h1>
           <p className="text-caption text-brand-text-secondary mt-0.5">
-            {mode === 'ai-preview' && 'Controleer de gegenereerde offerte — pas aan indien nodig'}
-            {mode === 'preview' && 'Controleer de PDF — keur goed om op te slaan en te downloaden'}
+            {mode === 'ai-preview' && 'Controleer de gegenereerde offerte, pas aan indien nodig'}
+            {mode === 'preview' && 'Controleer de PDF, keur goed om op te slaan en te downloaden'}
             {mode === 'handmatig' && 'Nummer wordt automatisch toegewezen op basis van datum'}
-            {mode === 'keuze' && 'Beschrijf je offerte — AI herkent automatisch klantgegevens en diensten'}
+            {mode === 'keuze' && 'Beschrijf je offerte, AI herkent automatisch klantgegevens en diensten'}
           </p>
         </div>
       </div>
@@ -373,7 +373,7 @@ export default function NieuweOfferteContent({
       )}
 
       <div className="space-y-5">
-        {/* Bedrijf selectie — verborgen bij ai-preview en pdf preview */}
+        {/* Bedrijf selectie, verborgen bij ai-preview en pdf preview */}
         {mode !== 'ai-preview' && mode !== 'preview' && (
           <div className="card">
             <h2 className="font-semibold text-body mb-4">Vanuit welk bedrijf?</h2>
@@ -392,7 +392,7 @@ export default function NieuweOfferteContent({
           </div>
         )}
 
-        {/* Klantgegevens — verborgen bij ai-preview en pdf preview */}
+        {/* Klantgegevens, verborgen bij ai-preview en pdf preview */}
         {mode !== 'ai-preview' && mode !== 'preview' && (
           <div className="card">
             <h2 className="font-semibold text-body mb-4">Klantgegevens</h2>
@@ -421,7 +421,7 @@ export default function NieuweOfferteContent({
           </div>
         )}
 
-        {/* === KEUZE MODE — AI bovenaan === */}
+        {/* === KEUZE MODE, AI bovenaan === */}
         {mode === 'keuze' && (
           <div className="card border-2 border-brand-lavender">
             <div className="flex items-center gap-2 mb-3">
@@ -430,7 +430,7 @@ export default function NieuweOfferteContent({
               </div>
               <div>
                 <h2 className="font-semibold text-body">Vul offerte in met AI</h2>
-                <p className="text-caption text-brand-text-secondary">Beschrijf alles in één tekst — AI herkent automatisch de klantgegevens, diensten en prijzen</p>
+                <p className="text-caption text-brand-text-secondary">Beschrijf alles in één tekst, AI herkent automatisch de klantgegevens, diensten en prijzen</p>
               </div>
             </div>
             <textarea
@@ -481,11 +481,11 @@ export default function NieuweOfferteContent({
               </div>
 
               <div className="px-6 py-5">
-                {/* Client info — uit AI geëxtraheerd */}
+                {/* Client info, uit AI geëxtraheerd */}
                 <div className="grid grid-cols-2 gap-6 mb-5">
                   <div>
                     <h3 className="text-caption uppercase tracking-wide text-brand-text-secondary mb-1">Aan</h3>
-                    <p className="font-semibold text-body">{aiResult.client?.name || client.name || '—'}</p>
+                    <p className="font-semibold text-body">{aiResult.client?.name || client.name || '–'}</p>
                     {(aiResult.client?.contactPerson || client.contactPerson) && <p className="text-caption text-brand-text-secondary">t.a.v. {aiResult.client?.contactPerson || client.contactPerson}</p>}
                     {(aiResult.client?.email || client.email) && <p className="text-caption text-brand-text-secondary">{aiResult.client?.email || client.email}</p>}
                     {(aiResult.client?.phone || client.phone) && <p className="text-caption text-brand-text-secondary">{aiResult.client?.phone || client.phone}</p>}
@@ -614,7 +614,7 @@ export default function NieuweOfferteContent({
           </>
         )}
 
-        {/* === HANDMATIG MODE — bestaand formulier === */}
+        {/* === HANDMATIG MODE, bestaand formulier === */}
         {mode === 'handmatig' && (
           <>
             {/* Methode switcher */}

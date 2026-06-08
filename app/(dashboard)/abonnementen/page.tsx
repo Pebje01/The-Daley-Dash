@@ -68,7 +68,9 @@ export default function AbonnementenPage() {
       if (search) params.set('search', search)
       const res = await fetch(`/api/abonnementen?${params}`)
       if (res.ok) setAbonnementen(await res.json())
-    } catch { /* */ }
+    } catch (e) {
+      console.error('loadAbonnementen fout:', e)
+    }
     setLoading(false)
   }
 
@@ -108,8 +110,14 @@ export default function AbonnementenPage() {
         setFormClientName(''); setFormClientEmail(''); setFormDescription('')
         setFormAmount(''); setFormNotes('')
         loadAbonnementen()
+      } else {
+        const err = await res.json().catch(() => ({ error: 'Onbekende fout' }))
+        alert(`Opslaan mislukt: ${err.error}`)
       }
-    } catch { /* */ }
+    } catch (e) {
+      console.error('abonnement opslaan fout:', e)
+      alert('Kon abonnement niet opslaan, zie console.')
+    }
     setSaving(false)
   }
 
@@ -304,7 +312,7 @@ export default function AbonnementenPage() {
                     <td className="px-4 py-3 text-brand-text-secondary">{intervalLabels[a.interval]}</td>
                     <td className="px-4 py-3 text-right font-semibold">{euro(a.amount)}</td>
                     <td className="px-4 py-3 text-brand-text-secondary">
-                      {a.nextInvoiceDate ? new Date(a.nextInvoiceDate).toLocaleDateString('nl-NL') : '—'}
+                      {a.nextInvoiceDate ? new Date(a.nextInvoiceDate).toLocaleDateString('nl-NL') : '–'}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button onClick={() => handleDelete(a.id)} className="text-brand-text-secondary/50 hover:text-red-500 transition-colors">

@@ -23,7 +23,10 @@
       "Bash(npx tsc:*)",
       "Bash(npx supabase:*)",
       "Bash(npm run lint)",
-      "mcp__b74cad20-f916-407a-9af3-a197b50542ce__gmail_search_messages"
+      "mcp__b74cad20-f916-407a-9af3-a197b50542ce__gmail_search_messages",
+      "WebFetch(domain:apt-longhorn.10web.cloud)",
+      "WebSearch",
+      "mcp__Claude_Preview__preview_start"
     ]
   }
 }

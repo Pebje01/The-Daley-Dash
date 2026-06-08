@@ -1,7 +1,8 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { Plus, TrendingUp, AlertCircle, CheckCircle2, ArrowRight, FileText, Clock, RefreshCw } from 'lucide-react'
+import ActiesWidget from '@/components/ActiesWidget'
 import { getCompany } from '@/lib/companies'
 import { FactuurStatusBadge, OfferteStatusBadge } from '@/components/StatusBadge'
 import { Offerte, Factuur, Abonnement } from '@/lib/types'
@@ -51,45 +52,58 @@ export default function Dashboard() {
     revenueYearIncl: number
     revenueMonth: number
     revenueMonthIncl: number
+    verwachteOmzet: number
+    verwachteOmzetIncl: number
     recentFacturen: Factuur[]
-  }>({ openFacturen: 0, totalOpenAmount: 0, overdueFacturen: 0, paidThisMonth: 0, revenueYear: 0, revenueYearIncl: 0, revenueMonth: 0, revenueMonthIncl: 0, recentFacturen: [] })
+    perMaand: { maand: string; openstaand: number; uren: number; totaal: number }[]
+  }>({ openFacturen: 0, totalOpenAmount: 0, overdueFacturen: 0, paidThisMonth: 0, revenueYear: 0, revenueYearIncl: 0, revenueMonth: 0, revenueMonthIncl: 0, verwachteOmzet: 0, verwachteOmzetIncl: 0, recentFacturen: [], perMaand: [] })
 
   const [abonnementen, setAbonnementen] = useState<Abonnement[]>([])
   const [loading, setLoading] = useState(true)
   const [greeting, setGreeting] = useState('')
   const [now, setNow] = useState<Date | null>(null)
 
-  const fetchData = useCallback(() => {
-    setLoading(true)
-    Promise.all([
-      fetch('/api/offertes/stats').then(r => r.ok ? r.json() : null),
-      fetch('/api/facturen/stats').then(r => r.ok ? r.json() : null),
-      fetch('/api/abonnementen?status=actief').then(r => r.ok ? r.json() : null),
-    ]).then(([off, fac, abo]) => {
-      if (off) setOfferteStats(off)
-      if (fac) setFactuurStats(fac)
-      if (abo) setAbonnementen(abo)
-    }).finally(() => setLoading(false))
+  const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const fetchData = useCallback((minimumDuur = 0) => {
+    // Debounce: samenvoegen van meerdere triggers binnen 300ms tot één fetch
+    if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current)
+    fetchTimerRef.current = setTimeout(() => {
+      setLoading(true)
+      const start = Date.now()
+      Promise.all([
+        fetch('/api/offertes/stats').then(r => r.ok ? r.json() : null),
+        fetch('/api/facturen/stats').then(r => r.ok ? r.json() : null),
+        fetch('/api/abonnementen?status=actief').then(r => r.ok ? r.json() : null),
+      ]).then(([off, fac, abo]) => {
+        if (off) setOfferteStats(off)
+        if (fac) setFactuurStats(fac)
+        if (abo) setAbonnementen(abo)
+      }).finally(() => {
+        const wacht = minimumDuur - (Date.now() - start)
+        if (wacht > 0) setTimeout(() => setLoading(false), wacht)
+        else setLoading(false)
+      })
+    }, 300)
   }, [])
 
   useEffect(() => {
     fetchData()
     const onVisible = () => { if (document.visibilityState === 'visible') fetchData() }
-    // Luister naar data-changed events van andere pagina's
     const cleanupDataChanged = onDataChanged(() => fetchData())
     window.addEventListener('focus', fetchData)
     document.addEventListener('visibilitychange', onVisible)
 
-    // Supabase Realtime: herlaad direct bij wijzigingen in offertes tabel
+    // Supabase Realtime: herlaad bij wijzigingen in offertes of facturen
     const supabase = createClient()
     const channel = supabase
-      .channel('dashboard-offertes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'offertes' }, () => {
-        fetchData()
-      })
+      .channel('dashboard-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'offertes' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'facturen' }, () => fetchData())
       .subscribe()
 
     return () => {
+      if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current)
       cleanupDataChanged()
       window.removeEventListener('focus', fetchData)
       document.removeEventListener('visibilitychange', onVisible)
@@ -116,7 +130,7 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex gap-2 items-center">
-          <button onClick={fetchData} className="btn-secondary" title="Vernieuwen">
+          <button onClick={() => { setLoading(true); fetchData(600) }} className="btn-secondary" title="Vernieuwen">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           </button>
           <button onClick={() => openDrawer({ type: 'offerte-nieuw' })} className="btn-secondary">
@@ -128,39 +142,41 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* KPI Cards — omzet op basis van akkoord offertes */}
+      <ActiesWidget />
+
+      {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <Link href="/offertes?status=akkoord" className="card hover:shadow-md transition-shadow cursor-pointer">
+        <Link href="/facturen?periode=jaar" className="card hover:shadow-md transition-shadow cursor-pointer">
           <div className="flex items-start justify-between mb-3">
             <p className="text-caption text-brand-text-secondary">Omzet dit jaar</p>
             <div className="w-8 h-8 rounded-brand-sm bg-brand-lavender-accent flex items-center justify-center">
               <CheckCircle2 size={17} className="text-brand-lav-accent" />
             </div>
           </div>
-          <p className="font-uxum text-stat text-brand-text-primary">{euro(offerteStats.revenueYear)}</p>
-          <p className="text-caption text-brand-text-secondary mt-1">incl. btw: {euro(offerteStats.revenueYearIncl)}</p>
+          <p className="font-uxum text-stat text-brand-text-primary">{euro(factuurStats.revenueYear)}</p>
+          <p className="text-caption text-brand-text-secondary mt-1">incl. btw: {euro(factuurStats.revenueYearIncl)}</p>
         </Link>
 
-        <Link href="/offertes?status=akkoord" className="card hover:shadow-md transition-shadow cursor-pointer">
+        <Link href="/facturen?periode=maand" className="card hover:shadow-md transition-shadow cursor-pointer">
           <div className="flex items-start justify-between mb-3">
             <p className="text-caption text-brand-text-secondary">Omzet deze maand</p>
             <div className="w-8 h-8 rounded-brand-sm bg-brand-lime flex items-center justify-center">
               <TrendingUp size={17} className="text-brand-lime-accent" />
             </div>
           </div>
-          <p className="font-uxum text-stat text-brand-text-primary">{euro(offerteStats.revenueMonth)}</p>
-          <p className="text-caption text-brand-text-secondary mt-1">incl. btw: {euro(offerteStats.revenueMonthIncl)}</p>
+          <p className="font-uxum text-stat text-brand-text-primary">{euro(factuurStats.revenueMonth)}</p>
+          <p className="text-caption text-brand-text-secondary mt-1">incl. btw: {euro(factuurStats.revenueMonthIncl)}</p>
         </Link>
 
-        <Link href="/facturen?status=verzonden" className="card hover:shadow-md transition-shadow cursor-pointer">
+        <Link href="/offertes?status=akkoord" className="card hover:shadow-md transition-shadow cursor-pointer">
           <div className="flex items-start justify-between mb-3">
-            <p className="text-caption text-brand-text-secondary">Openstaande facturen</p>
+            <p className="text-caption text-brand-text-secondary">Verwachte omzet</p>
             <div className="w-8 h-8 rounded-brand-sm bg-brand-light-blue flex items-center justify-center">
               <FileText size={17} className="text-brand-blue-accent" />
             </div>
           </div>
-          <p className="font-uxum text-stat text-brand-text-primary">{euro(factuurStats.totalOpenAmount)}</p>
-          <p className="text-caption text-brand-text-secondary mt-1">{factuurStats.openFacturen} facturen openstaand</p>
+          <p className="font-uxum text-stat text-brand-text-primary">{euro(factuurStats.verwachteOmzet)}</p>
+          <p className="text-caption text-brand-text-secondary mt-1">incl. btw: {euro(factuurStats.verwachteOmzetIncl)}</p>
         </Link>
 
         <Link href="/facturen?status=te-laat" className={`card hover:shadow-md transition-shadow cursor-pointer ${factuurStats.overdueFacturen > 0 ? 'border-red-200 bg-red-50' : ''}`}>
@@ -283,6 +299,44 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Verwachte omzet per maand */}
+      {factuurStats.perMaand.length > 0 && (
+        <div className="card mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-body">Verwachte omzet per maand</h2>
+            <span className="text-caption text-brand-text-secondary">excl. btw</span>
+          </div>
+          <table className="w-full text-body">
+            <thead>
+              <tr className="border-b border-brand-page-medium">
+                <th className="text-left pb-2 text-caption text-brand-text-secondary font-medium">Maand</th>
+                <th className="text-right pb-2 text-caption text-brand-text-secondary font-medium">Openstaand</th>
+                <th className="text-right pb-2 text-caption text-brand-text-secondary font-medium">Extra uren</th>
+                <th className="text-right pb-2 text-caption text-brand-text-secondary font-medium">Totaal</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-brand-page-medium">
+              {factuurStats.perMaand.map(r => {
+                const [year, month] = r.maand.split('-')
+                const label = new Date(Number(year), Number(month) - 1, 1).toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' })
+                const isCurrentMonth = r.maand === now?.toISOString().substring(0, 7)
+                return (
+                  <tr key={r.maand} className={isCurrentMonth ? 'bg-brand-lavender-accent/30' : ''}>
+                    <td className={`py-2.5 font-medium ${isCurrentMonth ? 'text-brand-text-primary' : 'text-brand-text-secondary'}`}>
+                      {label}
+                      {isCurrentMonth && <span className="ml-2 text-pill px-1.5 py-0.5 rounded bg-brand-lavender text-brand-lav-accent font-semibold">nu</span>}
+                    </td>
+                    <td className="py-2.5 text-right text-brand-text-secondary">{r.openstaand > 0 ? euro(r.openstaand) : <span className="text-brand-text-secondary/40">–</span>}</td>
+                    <td className="py-2.5 text-right text-brand-text-secondary">{r.uren > 0 ? euro(r.uren) : <span className="text-brand-text-secondary/40">–</span>}</td>
+                    <td className="py-2.5 text-right font-semibold text-brand-text-primary">{euro(r.totaal)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Betalingen + Abonnementen */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">

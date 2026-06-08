@@ -1,6 +1,10 @@
+import { Suspense } from 'react'
 import ClickUpCrmRecordsPage from '@/components/ClickUpCrmRecordsPage'
 
 export default function CrmOpdrachtenPage() {
-  return <ClickUpCrmRecordsPage entity="assignment" />
+  return (
+    <Suspense>
+      <ClickUpCrmRecordsPage entity="assignment" />
+    </Suspense>
+  )
 }
-

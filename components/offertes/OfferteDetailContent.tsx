@@ -700,7 +700,7 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
               <h2 className="font-semibold text-body">Herschrijf offerte met AI</h2>
             </div>
             <p className="text-caption text-brand-text-secondary mb-3">
-              Beschrijf wat je wilt — AI herkent klantgegevens, diensten en prijzen automatisch en vult alle velden in.
+              Beschrijf wat je wilt, AI herkent klantgegevens, diensten en prijzen automatisch en vult alle velden in.
             </p>
             <textarea
               className="input h-32 resize-none mb-1"

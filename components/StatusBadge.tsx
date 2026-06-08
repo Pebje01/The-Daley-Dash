@@ -3,15 +3,16 @@ import { OfferteStatus, FactuurStatus } from '@/lib/types'
 const offerteColors: Record<OfferteStatus, string> = {
   concept:      'bg-brand-page-medium text-brand-text-secondary',
   opgeslagen:   'bg-brand-lavender-accent text-brand-lav-accent',
-  verstuurd:    'bg-brand-light-blue text-brand-blue-accent',
+  verstuurd:    'bg-brand-blue-accent text-white',
   akkoord:      'bg-brand-lime text-brand-lime-accent',
   afgewezen:    'bg-brand-pink text-brand-pink-accent',
   verlopen:     'bg-brand-pink text-brand-status-orange',
+  'on-hold':    'bg-brand-status-orange/15 text-brand-status-orange',
 }
 
 const factuurColors: Record<FactuurStatus, string> = {
   concept:     'bg-brand-page-medium text-brand-text-secondary',
-  verzonden:   'bg-brand-light-blue text-brand-blue-accent',
+  verzonden:   'bg-brand-blue-accent text-white',
   betaald:     'bg-brand-lime text-brand-lime-accent',
   'te-laat':   'bg-brand-pink text-brand-pink-accent',
   geannuleerd: 'bg-brand-page-medium text-brand-text-secondary',
@@ -20,10 +21,12 @@ const factuurColors: Record<FactuurStatus, string> = {
 const labels: Record<string, string> = {
   concept:      'Concept',
   opgeslagen:   'Opgeslagen',
+  verzonden:    'Verzonden',
   verstuurd:    'Verstuurd',
   akkoord:      'Akkoord',
   afgewezen:    'Afgewezen',
   verlopen:     'Verlopen',
+  'on-hold':    'On hold',
   betaald:      'Betaald',
   'te-laat':    'Te laat',
   geannuleerd:  'Geannuleerd',

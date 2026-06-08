@@ -62,7 +62,7 @@ export default function SlideOverPanel({ open, onClose, title, children }: Slide
 
       {/* Panel */}
       <div
-        className={`absolute top-0 right-0 h-full w-full md:w-auto md:max-w-3xl bg-brand-card-bg border-l border-brand-card-border shadow-2xl flex flex-col ${closing ? 'drawer-exit' : 'drawer-enter'}`}
+        className={`absolute top-0 right-0 h-full w-full md:w-full md:max-w-4xl bg-brand-card-bg border-l border-brand-card-border shadow-2xl flex flex-col ${closing ? 'drawer-exit' : 'drawer-enter'}`}
       >
         {/* Sticky header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-brand-card-border/20 bg-brand-card-bg sticky top-0 z-10">

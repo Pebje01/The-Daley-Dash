@@ -11,7 +11,7 @@ interface SyncOverview {
 }
 
 function fmt(dt?: string | null) {
-  if (!dt) return '—'
+  if (!dt) return '–'
   return new Date(dt).toLocaleString('nl-NL')
 }
 
@@ -125,7 +125,7 @@ export default function CrmSyncPage() {
           </div>
           <div className="flex justify-between gap-6">
             <dt className="text-brand-text-secondary">Laatste fout</dt>
-            <dd className="text-right max-w-[60%] break-words">{data?.state?.last_error || '—'}</dd>
+            <dd className="text-right max-w-[60%] break-words">{data?.state?.last_error || '–'}</dd>
           </div>
         </dl>
       </div>

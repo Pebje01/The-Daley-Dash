@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClickUpRecord } from '@/lib/clickup/sync'
+import type { ClickUpCrmEntityType } from '@/lib/clickup/config'
 
 const ALLOWED_ENTITY_TYPES = new Set(['daley_list', 'lead', 'company', 'contact', 'assignment', 'clickup_invoice'])
 
@@ -7,8 +9,6 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(request.url)
   const entity = (searchParams.get('entity') || '').toLowerCase()
@@ -37,4 +37,31 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ items: data || [] })
+}
+
+export async function POST(request: NextRequest) {
+
+  try {
+    const body = await request.json()
+    const { entity_type, name, status, description, due_date, custom_fields } = body
+
+    if (!entity_type || !ALLOWED_ENTITY_TYPES.has(entity_type)) {
+      return NextResponse.json({ error: 'Invalid entity_type' }, { status: 400 })
+    }
+    if (!name?.trim()) {
+      return NextResponse.json({ error: 'Name is required' }, { status: 400 })
+    }
+
+    const record = await createClickUpRecord(entity_type as ClickUpCrmEntityType, {
+      name: name.trim(),
+      status,
+      description,
+      due_date,
+      custom_fields,
+    })
+
+    return NextResponse.json({ item: record }, { status: 201 })
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || 'Aanmaken mislukt' }, { status: 500 })
+  }
 }

@@ -3,11 +3,13 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft, Send, Download, CheckCircle2, XCircle, Trash2,
-  Clock, RefreshCw, Save, Plus, GripVertical, ChevronDown, CreditCard
+  Clock, RefreshCw, Save, Plus, GripVertical, ChevronDown, CreditCard,
+  FileText, FolderOpen
 } from 'lucide-react'
 import { getCompany, COMPANIES } from '@/lib/companies'
 import { Factuur, LineItem, CompanyId, FactuurStatus } from '@/lib/types'
 import { FactuurStatusBadge } from '@/components/StatusBadge'
+import { getFacturenFolder, pickFacturenFolder } from '@/lib/pdf/folderStorage'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -49,6 +51,8 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
   const [saving, setSaving] = useState(false)
   const [statusMenuOpen, setStatusMenuOpen] = useState(false)
   const statusMenuRef = useRef<HTMLDivElement>(null)
+  const [pdfSaving, setPdfSaving] = useState(false)
+  const [pdfFolderName, setPdfFolderName] = useState<string | null>(null)
 
   // Navigation helper: use onClose for drawer mode, router for page mode
   const goBack = () => {
@@ -63,6 +67,7 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
   const [sections, setSections] = useState<Section[]>([])
   const [btwPct, setBtwPct] = useState(21)
   const [notes, setNotes] = useState('')
+  const [molliePaymentUrl, setMolliePaymentUrl] = useState('')
   const [companyId, setCompanyId] = useState<CompanyId>('tde')
   const [factuurDate, setFactuurDate] = useState('')
   const [factuurDueDate, setFactuurDueDate] = useState('')
@@ -86,6 +91,7 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
       setSections(itemsToSections(data.items || []))
       setBtwPct(data.btwPercentage)
       setNotes(data.notes || '')
+      setMolliePaymentUrl(data.molliePaymentUrl || '')
       setCompanyId(data.companyId)
       setFactuurDate(data.date ? data.date.split('T')[0] : '')
       setFactuurDueDate(data.dueDate ? data.dueDate.split('T')[0] : '')
@@ -97,6 +103,48 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
   }, [id])
 
   useEffect(() => { fetchFactuur() }, [fetchFactuur])
+
+  // Sync: herlaad deze factuur zodra het venster weer focus/zichtbaar wordt,
+  // zodat wijzigingen die elders zijn gedaan (bijv. in de database) hier
+  // automatisch verschijnen.
+  useEffect(() => {
+    const onFocus = () => fetchFactuur()
+    const onVisible = () => { if (document.visibilityState === 'visible') fetchFactuur() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [fetchFactuur])
+
+  // Haal facturen mapnaam op voor weergave in knop
+  useEffect(() => {
+    getFacturenFolder().then(h => setPdfFolderName(h?.name ?? null)).catch(() => {})
+  }, [])
+
+  const handleSavePdf = async () => {
+    if (!factuur) return
+    setPdfSaving(true)
+    try {
+      // Regenereer via de gedeelde server-generator: zelfde stijl en map als de
+      // factuur die automatisch vanuit uren is aangemaakt (single source of truth).
+      const res = await fetch(`/api/facturen/${id}/regenerate-pdf`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data.error || 'PDF opslaan mislukt')
+      }
+    } catch (err) {
+      console.error('PDF opslaan mislukt:', err)
+      alert('PDF opslaan mislukt')
+    }
+    setPdfSaving(false)
+  }
+
+  const handlePickFolder = async () => {
+    const handle = await pickFacturenFolder()
+    if (handle) setPdfFolderName(handle.name)
+  }
 
   // Sluit status dropdown bij klik buiten het menu
   useEffect(() => {
@@ -190,6 +238,7 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
           btwAmount,
           total,
           notes: notes || undefined,
+          molliePaymentUrl: molliePaymentUrl || undefined,
           date: factuurDate || undefined,
           dueDate: factuurDueDate || undefined,
         }),
@@ -213,6 +262,7 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
         setSections(itemsToSections(freshData.items || []))
         setBtwPct(freshData.btwPercentage)
         setNotes(freshData.notes || '')
+        setMolliePaymentUrl(freshData.molliePaymentUrl || '')
         setCompanyId(freshData.companyId)
         setFactuurDate(freshData.date ? freshData.date.split('T')[0] : '')
         setFactuurDueDate(freshData.dueDate ? freshData.dueDate.split('T')[0] : '')
@@ -270,15 +320,15 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
   return (
     <div className={isDrawer ? 'p-6' : ''}>
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
         {!isDrawer && (
-          <button onClick={goBack} className="btn-secondary px-2.5">
+          <button onClick={goBack} className="btn-secondary px-2.5 self-start">
             <ArrowLeft size={15} />
           </button>
         )}
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="font-uxum text-sidebar-t text-brand-text-primary">{factuur.number}</h1>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="font-uxum text-sidebar-t text-brand-text-primary whitespace-nowrap">{factuur.number}</h1>
             {/* Klikbare status dropdown */}
             <div className="relative" ref={statusMenuRef}>
               <button
@@ -312,7 +362,27 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
             {factuur.client.name} · <span style={{ color: company.color }}>{company.name}</span>
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap justify-end">
+        <div className="flex gap-2 flex-wrap justify-start sm:justify-end">
+          {/* PDF opslaan */}
+          <button
+            onClick={handlePickFolder}
+            className="btn-secondary px-2.5"
+            title={pdfFolderName ? `Facturen map: ${pdfFolderName}` : 'Selecteer facturen map'}
+          >
+            <FolderOpen size={14} />
+            {pdfFolderName && (
+              <span className="text-caption max-w-[100px] truncate">{pdfFolderName}</span>
+            )}
+          </button>
+          <button
+            onClick={handleSavePdf}
+            disabled={pdfSaving}
+            className="btn-secondary"
+            title="Factuur opslaan als PDF"
+          >
+            <FileText size={14} />
+            {pdfSaving ? 'Opslaan...' : 'PDF opslaan'}
+          </button>
           <button onClick={() => setEditing(!editing)} className="btn-secondary">
             {editing ? 'Annuleer' : 'Bewerken'}
           </button>
@@ -498,6 +568,21 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
             </div>
           </div>
 
+          {/* Mollie betaal-URL */}
+          <div className="card space-y-2">
+            <h2 className="font-semibold text-body">Mollie betaallink</h2>
+            <p className="text-caption text-brand-text-secondary">
+              Plak hier een Mollie betaal-URL. De link verschijnt automatisch als groene knop op de PDF en publieke offerte-/factuurpagina.
+            </p>
+            <input
+              type="url"
+              className="input w-full"
+              placeholder="https://www.mollie.com/checkout/..."
+              value={molliePaymentUrl}
+              onChange={e => setMolliePaymentUrl(e.target.value)}
+            />
+          </div>
+
           {/* Notities */}
           <div className="card">
             <h2 className="font-semibold text-body mb-3">Notities</h2>
@@ -577,31 +662,31 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
 
           {/* Info grid */}
           <div className="card">
-            <div className="grid grid-cols-2 gap-6">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="min-w-0">
                 <h3 className="text-caption text-brand-text-secondary uppercase tracking-wide mb-3">Factuur details</h3>
                 <dl className="space-y-2 text-body">
-                  <div className="flex justify-between">
-                    <dt className="text-brand-text-secondary">Nummer</dt>
+                  <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5 sm:gap-4">
+                    <dt className="text-brand-text-secondary shrink-0">Nummer</dt>
                     <dd className="font-mono">{factuur.number}</dd>
                   </div>
-                  <div className="flex justify-between">
-                    <dt className="text-brand-text-secondary">Bedrijf</dt>
+                  <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5 sm:gap-4">
+                    <dt className="text-brand-text-secondary shrink-0">Bedrijf</dt>
                     <dd><span className="text-pill px-2 py-0.5 rounded font-semibold" style={{ backgroundColor: company.bgColor, color: company.color }}>{company.name}</span></dd>
                   </div>
-                  <div className="flex justify-between">
-                    <dt className="text-brand-text-secondary">Datum</dt>
+                  <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5 sm:gap-4">
+                    <dt className="text-brand-text-secondary shrink-0">Datum</dt>
                     <dd>{new Date(factuur.date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}</dd>
                   </div>
-                  <div className="flex justify-between">
-                    <dt className="text-brand-text-secondary">Vervaldatum</dt>
+                  <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5 sm:gap-4">
+                    <dt className="text-brand-text-secondary shrink-0">Vervaldatum</dt>
                     <dd className={isOverdue ? 'text-brand-status-red font-semibold' : ''}>
                       {new Date(factuur.dueDate).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
                     </dd>
                   </div>
                   {factuur.offerteId && (
-                    <div className="flex justify-between">
-                      <dt className="text-brand-text-secondary">Gekoppelde offerte</dt>
+                    <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5 sm:gap-4">
+                      <dt className="text-brand-text-secondary shrink-0">Gekoppelde offerte</dt>
                       <dd>
                         <button
                           onClick={() => router.push(`/offertes/${factuur.offerteId}`)}
@@ -614,46 +699,46 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
                   )}
                 </dl>
               </div>
-              <div>
+              <div className="min-w-0">
                 <h3 className="text-caption text-brand-text-secondary uppercase tracking-wide mb-3">Klant</h3>
                 <dl className="space-y-2 text-body">
-                  <div className="flex justify-between">
-                    <dt className="text-brand-text-secondary">Naam</dt>
+                  <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5 sm:gap-4">
+                    <dt className="text-brand-text-secondary shrink-0">Naam</dt>
                     <dd className="font-semibold">{factuur.client.name}</dd>
                   </div>
                   {factuur.client.contactPerson && (
-                    <div className="flex justify-between">
-                      <dt className="text-brand-text-secondary">Contactpersoon</dt>
+                    <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5 sm:gap-4">
+                      <dt className="text-brand-text-secondary shrink-0">Contactpersoon</dt>
                       <dd>{factuur.client.contactPerson}</dd>
                     </div>
                   )}
                   {factuur.client.email && (
-                    <div className="flex justify-between">
-                      <dt className="text-brand-text-secondary">E-mail</dt>
+                    <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5 sm:gap-4">
+                      <dt className="text-brand-text-secondary shrink-0">E-mail</dt>
                       <dd>{factuur.client.email}</dd>
                     </div>
                   )}
                   {factuur.client.phone && (
-                    <div className="flex justify-between">
-                      <dt className="text-brand-text-secondary">Telefoon</dt>
+                    <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5 sm:gap-4">
+                      <dt className="text-brand-text-secondary shrink-0">Telefoon</dt>
                       <dd>{factuur.client.phone}</dd>
                     </div>
                   )}
                   {factuur.client.address && (
-                    <div className="flex justify-between">
-                      <dt className="text-brand-text-secondary">Adres</dt>
-                      <dd>{factuur.client.address}</dd>
+                    <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5 sm:gap-4">
+                      <dt className="text-brand-text-secondary shrink-0">Adres</dt>
+                      <dd className="sm:text-right break-words min-w-0">{factuur.client.address}</dd>
                     </div>
                   )}
                   {factuur.client.kvk && (
-                    <div className="flex justify-between">
-                      <dt className="text-brand-text-secondary">KVK</dt>
+                    <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5 sm:gap-4">
+                      <dt className="text-brand-text-secondary shrink-0">KVK</dt>
                       <dd>{factuur.client.kvk}</dd>
                     </div>
                   )}
                   {factuur.client.btw && (
-                    <div className="flex justify-between">
-                      <dt className="text-brand-text-secondary">BTW-nummer</dt>
+                    <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5 sm:gap-4">
+                      <dt className="text-brand-text-secondary shrink-0">BTW-nummer</dt>
                       <dd>{factuur.client.btw}</dd>
                     </div>
                   )}
@@ -664,13 +749,14 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
 
           {/* Line items grouped by section */}
           <div className="card p-0 overflow-hidden">
+            <div className="overflow-x-auto">
             <table className="w-full text-body">
               <thead className="bg-brand-page-light border-b border-brand-page-medium">
                 <tr>
-                  <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide">Omschrijving</th>
-                  <th className="text-center px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide">Aantal</th>
-                  <th className="text-right px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide">Prijs</th>
-                  <th className="text-right px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide">Totaal</th>
+                  <th className="text-left px-3 sm:px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide">Omschrijving</th>
+                  <th className="text-center px-3 sm:px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide">Aantal</th>
+                  <th className="text-right px-3 sm:px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide">Prijs</th>
+                  <th className="text-right px-3 sm:px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide">Totaal</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand-page-medium">
@@ -678,27 +764,28 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
                   <>
                     {section.title && (
                       <tr key={`section-${sIdx}`} className="bg-brand-page-light/50">
-                        <td colSpan={4} className="px-5 py-2.5 font-semibold text-brand-text-primary text-caption uppercase tracking-wide">
+                        <td colSpan={4} className="px-3 sm:px-5 py-2.5 font-semibold text-brand-text-primary text-caption uppercase tracking-wide">
                           {section.title}
                         </td>
                       </tr>
                     )}
                     {section.items.map(item => (
                       <tr key={item.id}>
-                        <td className="px-5 py-3.5">
+                        <td className="px-3 sm:px-5 py-3.5">
                           <div className="font-semibold text-brand-text-primary">{item.description}</div>
                           {item.details && <div className="text-caption text-brand-text-secondary mt-0.5">{item.details}</div>}
                         </td>
-                        <td className="px-5 py-3.5 text-center text-brand-text-secondary">{item.quantity}</td>
-                        <td className="px-5 py-3.5 text-right text-brand-text-secondary">{euro(item.unitPrice)}</td>
-                        <td className="px-5 py-3.5 text-right font-semibold text-brand-text-primary">{euro(item.quantity * item.unitPrice)}</td>
+                        <td className="px-3 sm:px-5 py-3.5 text-center text-brand-text-secondary">{item.quantity}</td>
+                        <td className="px-3 sm:px-5 py-3.5 text-right text-brand-text-secondary">{euro(item.unitPrice)}</td>
+                        <td className="px-3 sm:px-5 py-3.5 text-right font-semibold text-brand-text-primary">{euro(item.quantity * item.unitPrice)}</td>
                       </tr>
                     ))}
                   </>
                 ))}
               </tbody>
             </table>
-            <div className="border-t border-brand-page-medium px-5 py-4">
+            </div>
+            <div className="border-t border-brand-page-medium px-3 sm:px-5 py-4">
               <div className="ml-auto max-w-xs space-y-2">
                 <div className="flex justify-between text-body">
                   <span className="text-brand-text-secondary">Subtotaal</span>
@@ -715,6 +802,37 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
               </div>
             </div>
           </div>
+
+          {/* Mollie betaallink */}
+          {factuur.molliePaymentUrl && (
+            <div className="card">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-caption text-brand-text-secondary uppercase tracking-wide mb-1">Mollie betaallink</h3>
+                  <p className="text-caption text-brand-text-primary truncate">{factuur.molliePaymentUrl}</p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(factuur.molliePaymentUrl!)
+                    }}
+                    className="btn-secondary"
+                    title="Kopieer link"
+                  >
+                    Kopieer
+                  </button>
+                  <a
+                    href={factuur.molliePaymentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-primary"
+                  >
+                    Open
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Notes */}
           {factuur.notes && (

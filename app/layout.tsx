@@ -31,7 +31,7 @@ const uxum = localFont({
 
 export const metadata: Metadata = {
   title: 'The Daley Dash',
-  description: 'Jouw werkportaal — offertes, facturen & meer',
+  description: 'Jouw werkportaal: offertes, facturen en meer',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,

@@ -1,6 +1,10 @@
+import { Suspense } from 'react'
 import ClickUpCrmRecordsPage from '@/components/ClickUpCrmRecordsPage'
 
 export default function CrmDaleyListPage() {
-  return <ClickUpCrmRecordsPage entity="daley_list" />
+  return (
+    <Suspense>
+      <ClickUpCrmRecordsPage entity="daley_list" />
+    </Suspense>
+  )
 }
-

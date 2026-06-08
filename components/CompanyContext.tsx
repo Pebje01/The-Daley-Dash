@@ -17,7 +17,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored && ['tde', 'wgb', 'daleyphotography', 'bleijenberg', 'montung'].includes(stored)) {
+    if (stored && ['tde', 'wgb', 'daleyphotography'].includes(stored)) {
       setActiveCompanyState(stored as CompanyId)
     }
   }, [])

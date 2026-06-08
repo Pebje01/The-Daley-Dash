@@ -216,15 +216,15 @@ export default function OffertePublicPage() {
                 </div>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-widest text-white/50 mb-2">Contactpersoon</p>
-                  <p className="text-base text-white border-b border-white/20 pb-3">{offerte.client.contactPerson || '—'}</p>
+                  <p className="text-base text-white border-b border-white/20 pb-3">{offerte.client.contactPerson || '–'}</p>
                 </div>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-widest text-white/50 mb-2">Email</p>
-                  <p className="text-base text-white border-b border-white/20 pb-3">{offerte.client.email || '—'}</p>
+                  <p className="text-base text-white border-b border-white/20 pb-3">{offerte.client.email || '–'}</p>
                 </div>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-widest text-white/50 mb-2">Telefoonnummer</p>
-                  <p className="text-base text-white border-b border-white/20 pb-3">{offerte.client.phone || '—'}</p>
+                  <p className="text-base text-white border-b border-white/20 pb-3">{offerte.client.phone || '–'}</p>
                 </div>
               </div>
             </div>
@@ -251,7 +251,7 @@ export default function OffertePublicPage() {
                           <span className="mr-3" style={{ color: brand }}>•</span>
                           <span>
                             <strong className="text-gray-800">{item.description}</strong>
-                            {item.details && <span className="text-gray-500"> — {item.details}</span>}
+                            {item.details && <span className="text-gray-500">, {item.details}</span>}
                           </span>
                         </li>
                       ))}

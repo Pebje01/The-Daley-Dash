@@ -15,8 +15,9 @@ declare global {
     queryPermission(descriptor: { mode: 'read' | 'readwrite' }): Promise<PermissionState>
     requestPermission(descriptor: { mode: 'read' | 'readwrite' }): Promise<PermissionState>
   }
-  interface FileSystemFileHandle {
+  interface FileSystemFileHandle extends FileSystemHandle {
     createWritable(): Promise<WritableStreamDefaultWriter | any>
+    getFile(): Promise<File>
   }
 }
 
@@ -207,6 +208,81 @@ async function resolveTargetDirectory(baseDir: FileSystemDirectoryHandle): Promi
   }
 
   return baseDir
+}
+
+/** Recursively search for a PDF file starting with the factuur number */
+async function searchDirForPdf(
+  numberUpper: string,
+  dirHandle: FileSystemDirectoryHandle,
+  depth: number
+): Promise<FileSystemFileHandle | null> {
+  const entries: FileSystemHandle[] = []
+  try {
+    for await (const entry of dirHandle.values()) {
+      entries.push(entry)
+    }
+  } catch {
+    return null
+  }
+
+  for (const entry of entries) {
+    if (
+      entry.kind === 'file' &&
+      entry.name.toUpperCase().startsWith(numberUpper) &&
+      entry.name.toLowerCase().endsWith('.pdf')
+    ) {
+      return entry as FileSystemFileHandle
+    }
+  }
+
+  if (depth > 0) {
+    for (const entry of entries) {
+      if (entry.kind === 'directory') {
+        const found = await searchDirForPdf(numberUpper, entry as FileSystemDirectoryHandle, depth - 1)
+        if (found) return found
+      }
+    }
+  }
+
+  return null
+}
+
+/** Find a factuur PDF by number in the stored facturen folder (searches 2 levels deep) */
+export async function findFactuurPdfHandle(
+  number: string,
+  baseHandle: FileSystemDirectoryHandle
+): Promise<FileSystemFileHandle | null> {
+  return searchDirForPdf(number.toUpperCase(), baseHandle, 2)
+}
+
+/** Save a PDF blob to the facturen folder. Returns true if saved, false if no folder selected. */
+export async function saveFactuurPdfToFolder(blob: Blob, filename: string): Promise<boolean> {
+  let dirHandle = await getFacturenFolder()
+
+  if (dirHandle) {
+    try {
+      const permission = await dirHandle.queryPermission({ mode: 'readwrite' })
+      if (permission !== 'granted') {
+        const requested = await dirHandle.requestPermission({ mode: 'readwrite' })
+        if (requested !== 'granted') dirHandle = null
+      }
+    } catch {
+      dirHandle = null
+    }
+  }
+
+  if (!dirHandle) return false
+
+  try {
+    const targetDir = await resolveTargetDirectory(dirHandle)
+    const fileHandle = await targetDir.getFileHandle(filename, { create: true })
+    const writable = await fileHandle.createWritable()
+    await writable.write(blob)
+    await writable.close()
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** Save a PDF blob to the offerte folder. Returns true if saved to folder, false if fallback download. */

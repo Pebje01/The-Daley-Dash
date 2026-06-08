@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, FileText, Receipt, Users, Settings,
   CreditCard, Repeat2, RefreshCw, BadgeDollarSign, Building2, ContactRound, BriefcaseBusiness, ScrollText, List,
-  ChevronRight, LogOut, Landmark, CheckSquare
+  ChevronRight, LogOut, Landmark, CheckSquare, Clock, FileBarChart, Menu, X,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
@@ -23,6 +23,7 @@ const financialNav = [
   { label: 'Abonnementen', href: '/abonnementen', icon: Repeat2 },
   { label: 'Klanten', href: '/klanten', icon: Users },
   { label: 'Belasting', href: '/belasting', icon: Landmark },
+  { label: 'Aangifte voorbereiding', href: '/belasting/aangifte', icon: FileBarChart, sub: true },
 ]
 
 const crmNav = [
@@ -39,8 +40,6 @@ const companies = [
   { id: 'tde',        name: 'The Daley Edit',  color: '#C8963E' },
   { id: 'wgb',        name: 'We Grow Brands',  color: '#03483A' },
   { id: 'daleyphotography', name: 'Daley Photography', color: '#111827' },
-  { id: 'bleijenberg',name: 'Bleijenberg',     color: '#1D4ED8' },
-  { id: 'montung',    name: 'Montung',         color: '#7C3AED' },
 ]
 
 export default function Sidebar() {
@@ -48,7 +47,11 @@ export default function Sidebar() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const { activeCompany, setActiveCompany } = useActiveCompany()
+
+  // Sluit het mobiele menu zodra je naar een andere pagina navigeert
+  useEffect(() => { setMobileOpen(false) }, [path])
 
   useEffect(() => {
     const supabase = createClient()
@@ -65,13 +68,33 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-sidebar-w h-screen bg-gradient-to-b from-brand-lavender-light to-brand-lavender flex flex-col fixed left-0 top-0 z-30">
+    <>
+      {/* Hamburger knop, alleen op mobiel */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="fixed top-2.5 left-3 z-30 md:hidden bg-brand-lavender text-sidebar-text rounded-brand-sm p-2 shadow-sm"
+        aria-label="Menu openen"
+      >
+        <Menu size={20} />
+      </button>
+
+      {/* Donkere overlay achter het mobiele menu */}
+      {mobileOpen && (
+        <div className="fixed inset-0 bg-black/40 z-30 md:hidden" onClick={() => setMobileOpen(false)} />
+      )}
+
+      <aside className={`w-sidebar-w h-screen bg-gradient-to-b from-brand-lavender-light to-brand-lavender flex flex-col fixed left-0 top-0 z-40 transition-transform duration-200 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
       {/* Logo */}
-      <div className="px-5 pt-6 pb-4">
-        <h1 className="font-uxum text-sidebar-t text-sidebar-text">The Daley Dash</h1>
-        <p className="text-pill text-sidebar-muted mt-0.5">
-          Jouw werkportaal
-        </p>
+      <div className="px-5 pt-6 pb-4 flex items-start justify-between">
+        <div>
+          <h1 className="font-uxum text-sidebar-t text-sidebar-text">The Daley Dash</h1>
+          <p className="text-pill text-sidebar-muted mt-0.5">
+            Jouw werkportaal
+          </p>
+        </div>
+        <button onClick={() => setMobileOpen(false)} className="md:hidden text-sidebar-text/70 hover:text-sidebar-text p-1 -mr-1" aria-label="Menu sluiten">
+          <X size={20} />
+        </button>
       </div>
 
       <hr className="border-sidebar-text/10 mx-4" />
@@ -98,19 +121,21 @@ export default function Sidebar() {
 
         <div className="pt-4">
           <p className="px-3 text-[10px] font-semibold text-sidebar-muted/50 uppercase tracking-widest mb-2">Financieel</p>
-          {financialNav.map(({ label, href, icon: Icon }) => {
-            const active = path.startsWith(href)
+          {financialNav.map(({ label, href, icon: Icon, sub }) => {
+            const active = href === '/belasting' ? path === '/belasting' || (path.startsWith('/belasting/') && !path.startsWith('/belasting/aangifte')) : path.startsWith(href)
             return (
               <Link
                 key={href}
                 href={href}
-                className={`flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body transition-colors ${
+                className={`flex items-center gap-3 rounded-brand-sm text-body transition-colors ${
+                  sub ? 'px-3 pl-7 py-1.5 text-caption' : 'px-3 py-2'
+                } ${
                   active
                     ? 'bg-sidebar-active/80 text-sidebar-text-active font-medium'
                     : 'text-sidebar-muted hover:bg-sidebar-hover/40'
                 }`}
               >
-                <Icon size={15} />
+                <Icon size={sub ? 13 : 15} />
                 {label}
               </Link>
             )
@@ -119,7 +144,7 @@ export default function Sidebar() {
 
         <div className="pt-4">
           <p className="px-3 text-[10px] font-semibold text-sidebar-muted/50 uppercase tracking-widest mb-2">Planning</p>
-          {[{ label: 'Taken', href: '/taken', icon: CheckSquare }].map(({ label, href, icon: Icon }) => {
+          {[{ label: 'Taken', href: '/taken', icon: CheckSquare }, { label: 'Urenregistratie', href: '/uren', icon: Clock }].map(({ label, href, icon: Icon }) => {
             const active = path.startsWith(href)
             return (
               <Link key={href} href={href} className={`flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body transition-colors ${active ? 'bg-sidebar-active/80 text-sidebar-text-active font-medium' : 'text-sidebar-muted hover:bg-sidebar-hover/40'}`}>
@@ -151,7 +176,7 @@ export default function Sidebar() {
           })}
         </div>
 
-        {/* Companies — kiezer voor actief bedrijf */}
+        {/* Companies, kiezer voor actief bedrijf */}
         <div className="pt-5">
           <p className="px-3 text-[10px] font-semibold text-sidebar-muted/50 uppercase tracking-widest mb-2">Actief bedrijf</p>
           {companies.map(c => {
@@ -212,5 +237,6 @@ export default function Sidebar() {
         userEmail={user?.email ?? undefined}
       />
     </aside>
+    </>
   )
 }

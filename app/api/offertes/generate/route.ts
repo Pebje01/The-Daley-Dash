@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'companyId en prompt zijn verplicht' }, { status: 400 })
   }
 
-  const validCompanies: CompanyId[] = ['tde', 'wgb', 'daleyphotography', 'bleijenberg', 'montung']
+  const validCompanies: CompanyId[] = ['tde', 'wgb', 'daleyphotography']
   if (!validCompanies.includes(companyId)) {
     return NextResponse.json({ error: 'Ongeldig bedrijf' }, { status: 400 })
   }

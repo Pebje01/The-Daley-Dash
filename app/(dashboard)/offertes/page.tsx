@@ -1,15 +1,18 @@
 'use client'
-import { Suspense, useEffect, useState, useCallback, useRef } from 'react'
+import { Suspense, useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Plus, Search, RefreshCw, ChevronDown, Trash2, Upload, FolderOpen } from 'lucide-react'
+import { Plus, Search, RefreshCw, ChevronDown, Trash2, Upload, FolderOpen, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
+import LocaleBestandenSection from '@/components/LocaleBestandenSection'
 import { getCompany, COMPANIES } from '@/lib/companies'
 import { Offerte, OfferteStatus, CompanyId } from '@/lib/types'
 import { OfferteStatusBadge } from '@/components/StatusBadge'
 import { useActiveCompany } from '@/components/CompanyContext'
+import SyncAllesKnop from '@/components/SyncAllesKnop'
 import { dataChanged, onDataChanged } from '@/lib/events'
 import { pickOfferteFolder, getOfferteFolder } from '@/lib/pdf/folderStorage'
 import { useDrawer } from '@/components/DrawerContext'
+import { createClient } from '@/lib/supabase/client'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -22,6 +25,7 @@ const STATUS_LIST: { key: OfferteStatus; label: string; dotClass: string }[] = [
   { key: 'akkoord', label: 'AKKOORD', dotClass: 'bg-brand-lime-accent' },
   { key: 'afgewezen', label: 'AFGEWEZEN', dotClass: 'bg-brand-pink-accent' },
   { key: 'verlopen', label: 'VERLOPEN', dotClass: 'bg-brand-status-orange' },
+  { key: 'on-hold', label: 'ON HOLD', dotClass: 'bg-brand-status-orange' },
 ]
 
 function InlineStatusSelect({
@@ -99,7 +103,7 @@ function InlineStatusSelect({
   )
 }
 
-// ClickUp-stijl inline bewerkbare cel — enkelklik om te bewerken
+// ClickUp-stijl inline bewerkbare cel, enkelklik om te bewerken
 function InlineEditableCell({
   value,
   type = 'text',
@@ -231,7 +235,10 @@ const STATUS_TABS: { key: OfferteStatus | 'alle'; label: string }[] = [
   { key: 'akkoord', label: 'Akkoord' },
   { key: 'afgewezen', label: 'Afgewezen' },
   { key: 'verlopen', label: 'Verlopen' },
+  { key: 'on-hold', label: 'On hold' },
 ]
+
+type OfferteSortField = 'number' | 'client' | 'companyId' | 'date' | 'validUntil' | 'amount' | 'status'
 
 export default function OffertesPage() {
   return (
@@ -256,6 +263,28 @@ function OffertesContent() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; number: string; clientName: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [folderName, setFolderName] = useState<string | null>(null)
+  const [localFileMap, setLocalFileMap] = useState<Map<string, string>>(new Map())
+  const [sortField, setSortField] = useState<OfferteSortField>('date')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  useEffect(() => {
+    fetch('/api/admin/scan')
+      .then(r => r.json())
+      .then((all: { number: string | null; absolutePath: string; type: string }[]) => {
+        const map = new Map<string, string>()
+        all.filter(f => f.type === 'offerte' && f.number).forEach(f => map.set(f.number!.toUpperCase(), f.absolutePath))
+        setLocalFileMap(map)
+      })
+      .catch(() => {})
+  }, [])
+
+  const callFileAction = async (absolutePath: string, action: 'open' | 'reveal') => {
+    await fetch('/api/admin/reveal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ absolutePath, action }),
+    }).catch(() => {})
+  }
 
   // Laad opgeslagen mapnaam bij mount
   useEffect(() => {
@@ -288,11 +317,45 @@ function OffertesContent() {
     return cleanup
   }, [fetchOffertes])
 
+  // Supabase Realtime: herlaad direct bij wijzigingen in offertes tabel
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase
+      .channel('offertes-list')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'offertes' }, () => fetchOffertes())
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [fetchOffertes])
+
   const filtered = offertes.filter(o => {
     if (!search) return true
     const q = search.toLowerCase()
     return o.client.name.toLowerCase().includes(q) || o.number.toLowerCase().includes(q)
   })
+
+  const handleSort = useCallback((field: OfferteSortField) => {
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortField(field); setSortDir('asc') }
+  }, [sortField])
+
+  const si = (field: OfferteSortField) =>
+    sortField === field
+      ? sortDir === 'asc' ? <ArrowUp size={11} className="shrink-0" /> : <ArrowDown size={11} className="shrink-0" />
+      : <ArrowUpDown size={11} className="opacity-30 shrink-0" />
+
+  const sorted = useMemo(() => [...filtered].sort((a, b) => {
+    let cmp = 0
+    switch (sortField) {
+      case 'number': cmp = (a.number ?? '').localeCompare(b.number ?? ''); break
+      case 'client': cmp = (a.client.name ?? '').localeCompare(b.client.name ?? ''); break
+      case 'companyId': cmp = (a.companyId ?? '').localeCompare(b.companyId ?? ''); break
+      case 'date': cmp = (a.date ?? '').localeCompare(b.date ?? ''); break
+      case 'validUntil': cmp = (a.validUntil ?? '').localeCompare(b.validUntil ?? ''); break
+      case 'amount': cmp = (showInclBtw ? a.total : a.subtotal) - (showInclBtw ? b.total : b.subtotal); break
+      case 'status': cmp = (a.status ?? '').localeCompare(b.status ?? ''); break
+    }
+    return sortDir === 'asc' ? cmp : -cmp
+  }), [filtered, sortField, sortDir, showInclBtw])
 
   const handleStatusChange = async (offerteId: string, newStatus: OfferteStatus) => {
     // Optimistic update
@@ -400,8 +463,9 @@ function OffertesContent() {
             {folderName && <span className="text-caption max-w-[120px] truncate">{folderName}</span>}
           </button>
           <button onClick={fetchOffertes} className="btn-secondary px-2.5" title="Vernieuwen">
-            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           </button>
+          <SyncAllesKnop />
           <button onClick={() => openDrawer({ type: 'offerte-nieuw' })} className="btn-primary">
             <Plus size={15} /> Nieuwe offerte
           </button>
@@ -505,27 +569,39 @@ function OffertesContent() {
       )}
 
       {/* Table */}
-      <div className="card p-0 overflow-hidden flex-1">
+      <div className="card p-0 overflow-hidden">
         <table className="w-full text-body">
           <thead className="bg-brand-page-light border-b border-brand-card-border/30">
             <tr>
-              <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide">Nummer</th>
-              <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">Klant</th>
-              <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">Bedrijf</th>
-              <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">Datum</th>
-              <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">Geldig tot</th>
-              <th className="text-right px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">
-                <button
-                  onClick={() => setShowInclBtw(!showInclBtw)}
-                  className="inline-flex items-center gap-1.5 hover:text-brand-text-primary transition-colors"
-                >
-                  Bedrag
-                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-brand-page-medium text-brand-text-secondary normal-case">
-                    {showInclBtw ? 'incl' : 'excl'}
-                  </span>
-                </button>
+              <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide">
+                <button onClick={() => handleSort('number')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Nummer {si('number')}</button>
               </th>
-              <th className="text-right px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">Status</th>
+              <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">
+                <button onClick={() => handleSort('client')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Klant {si('client')}</button>
+              </th>
+              <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">
+                <button onClick={() => handleSort('companyId')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Bedrijf {si('companyId')}</button>
+              </th>
+              <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">
+                <button onClick={() => handleSort('date')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Datum {si('date')}</button>
+              </th>
+              <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">
+                <button onClick={() => handleSort('validUntil')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Geldig tot {si('validUntil')}</button>
+              </th>
+              <th className="text-right px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => setShowInclBtw(!showInclBtw)}
+                    className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-brand-page-medium text-brand-text-secondary hover:text-brand-text-primary transition-colors normal-case"
+                  >
+                    {showInclBtw ? 'incl' : 'excl'}
+                  </button>
+                  <button onClick={() => handleSort('amount')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Bedrag {si('amount')}</button>
+                </div>
+              </th>
+              <th className="text-right px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">
+                <button onClick={() => handleSort('status')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Status {si('status')}</button>
+              </th>
               <th className="px-3 py-3 border-l border-brand-card-border/15" />
             </tr>
           </thead>
@@ -576,7 +652,7 @@ function OffertesContent() {
                                 dataChanged('offertes')
                                 fetchOffertes()
                               } catch {
-                                alert('Import mislukt — controleer het bestandsformaat')
+                                alert('Import mislukt, controleer het bestandsformaat')
                               }
                               e.target.value = ''
                             }}
@@ -587,7 +663,7 @@ function OffertesContent() {
                   ) : 'Geen resultaten gevonden'}
                 </td>
               </tr>
-            ) : filtered.map(o => {
+            ) : sorted.map(o => {
               const co = getCompany(o.companyId)
               const isExpired = o.status === 'verstuurd' && new Date(o.validUntil) < new Date()
               return (
@@ -595,17 +671,40 @@ function OffertesContent() {
                   key={o.id}
                   className="hover:bg-brand-page-light transition-colors group"
                 >
-                  {/* Nummer — opent drawer */}
-                  <td className="px-5 py-3.5">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openDrawer({ type: 'offerte-detail', id: o.id }) }}
-                      className="font-mono text-caption text-brand-purple hover:text-brand-purple/80 underline underline-offset-2 decoration-brand-purple/30 hover:decoration-brand-purple/60 transition-colors"
-                    >
-                      {o.number}
-                    </button>
+                  {/* Nummer, opent drawer + lokale bestandsknoppen */}
+                  <td className="px-5 py-3.5" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openDrawer({ type: 'offerte-detail', id: o.id })}
+                        className="font-mono text-caption text-brand-purple hover:text-brand-purple/80 underline underline-offset-2 decoration-brand-purple/30 hover:decoration-brand-purple/60 transition-colors"
+                      >
+                        {o.number}
+                      </button>
+                      {(() => {
+                        const localPath = localFileMap.get(o.number.toUpperCase())
+                        return localPath ? (
+                          <>
+                            <button
+                              onClick={() => callFileAction(localPath, 'open')}
+                              title="Open PDF"
+                              className="text-brand-text-secondary hover:text-brand-purple transition-colors opacity-0 group-hover:opacity-100"
+                            >
+                              <ExternalLink size={12} />
+                            </button>
+                            <button
+                              onClick={() => callFileAction(localPath, 'reveal')}
+                              title="Toon in Finder"
+                              className="text-brand-text-secondary hover:text-brand-purple transition-colors opacity-0 group-hover:opacity-100"
+                            >
+                              <FolderOpen size={12} />
+                            </button>
+                          </>
+                        ) : null
+                      })()}
+                    </div>
                   </td>
 
-                  {/* Klant — bewerkbaar */}
+                  {/* Klant, bewerkbaar */}
                   <InlineEditableCell
                     value={o.client.name}
                     type="text"
@@ -614,14 +713,14 @@ function OffertesContent() {
                     className="px-5 py-3.5 font-semibold text-brand-text-primary border-l border-brand-card-border/10"
                   />
 
-                  {/* Bedrijf — read-only */}
+                  {/* Bedrijf, read-only */}
                   <td className="px-5 py-3.5 border-l border-brand-card-border/10">
                     <span className="text-pill px-2 py-0.5 rounded font-semibold" style={{ backgroundColor: co.bgColor, color: co.color }}>
                       {co.shortName}
                     </span>
                   </td>
 
-                  {/* Datum — bewerkbaar */}
+                  {/* Datum, bewerkbaar */}
                   <InlineEditableCell
                     value={o.date.split('T')[0]}
                     type="date"
@@ -630,15 +729,15 @@ function OffertesContent() {
                     className="px-5 py-3.5 text-brand-text-secondary border-l border-brand-card-border/10"
                   />
 
-                  {/* Geldig tot — automatisch berekend, read-only */}
+                  {/* Geldig tot, automatisch berekend, read-only */}
                   <td className={`px-5 py-3.5 border-l border-brand-card-border/10 ${isExpired ? 'text-brand-status-red font-semibold' : 'text-brand-text-secondary'}`}>
                     {new Date(o.validUntil).toLocaleDateString('nl-NL')}
                   </td>
 
-                  {/* Bedrag — read-only */}
+                  {/* Bedrag, read-only */}
                   <td className="px-5 py-3.5 text-right font-semibold text-brand-text-primary border-l border-brand-card-border/10">{euro(showInclBtw ? o.total : o.subtotal)}</td>
 
-                  {/* Status — bewerkbaar via bestaande dropdown */}
+                  {/* Status, bewerkbaar via bestaande dropdown */}
                   <td className="px-5 py-3.5 text-right border-l border-brand-card-border/10">
                     <InlineStatusSelect
                       status={isExpired ? 'verlopen' : o.status}
@@ -647,12 +746,9 @@ function OffertesContent() {
                   </td>
 
                   {/* Acties */}
-                  <td className="px-3 py-3.5 text-right border-l border-brand-card-border/10">
+                  <td className="px-3 py-3.5 text-right border-l border-brand-card-border/10" onClick={e => e.stopPropagation()}>
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setDeleteTarget({ id: o.id, number: o.number, clientName: o.client.name })
-                      }}
+                      onClick={() => setDeleteTarget({ id: o.id, number: o.number, clientName: o.client.name })}
                       className="p-1.5 rounded-brand-sm text-brand-text-secondary hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
                       title="Verwijderen"
                     >
@@ -665,6 +761,8 @@ function OffertesContent() {
           </tbody>
         </table>
       </div>
+
+      <LocaleBestandenSection type="offerte" />
     </div>
   )
 }

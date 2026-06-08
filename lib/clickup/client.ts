@@ -46,7 +46,11 @@ export async function clickUpFetch<T>(path: string, init?: RequestInit, params?:
     throw new Error(`ClickUp API ${res.status}: ${body || res.statusText}`)
   }
 
-  return res.json() as Promise<T>
+  // ClickUp returns empty bodies for some endpoints (DELETE, custom field updates)
+  if (res.status === 204) return undefined as T
+  const text = await res.text()
+  if (!text) return undefined as T
+  return JSON.parse(text) as T
 }
 
 export async function getListTasks(listId: string, page = 0): Promise<{ tasks: ClickUpTask[]; lastPage?: boolean }> {
@@ -75,6 +79,59 @@ export async function getAllListTasks(listId: string): Promise<ClickUpTask[]> {
   }
 
   return all
+}
+
+export async function getTask(taskId: string): Promise<ClickUpTask> {
+  return clickUpFetch<ClickUpTask>(`/task/${taskId}`)
+}
+
+export interface CreateTaskPayload {
+  name: string
+  description?: string
+  status?: string
+  due_date?: number | null
+  assignees?: number[]
+  tags?: string[]
+  custom_fields?: Array<{ id: string; value: any }>
+}
+
+export async function createTask(listId: string, payload: CreateTaskPayload): Promise<ClickUpTask> {
+  return clickUpFetch<ClickUpTask>(`/list/${listId}/task`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export interface UpdateTaskPayload {
+  name?: string
+  description?: string
+  status?: string
+  due_date?: number | null
+  assignees?: { add?: number[]; rem?: number[] }
+  custom_fields?: Array<{ id: string; value: any }>
+}
+
+export async function updateTask(taskId: string, payload: UpdateTaskPayload): Promise<ClickUpTask> {
+  const { custom_fields, ...rest } = payload
+
+  // ClickUp requires custom_fields to be set via separate endpoint
+  if (custom_fields?.length) {
+    for (const field of custom_fields) {
+      await clickUpFetch(`/task/${taskId}/field/${field.id}`, {
+        method: 'POST',
+        body: JSON.stringify({ value: field.value }),
+      })
+    }
+  }
+
+  return clickUpFetch<ClickUpTask>(`/task/${taskId}`, {
+    method: 'PUT',
+    body: JSON.stringify(rest),
+  })
+}
+
+export async function deleteTask(taskId: string): Promise<void> {
+  await clickUpFetch<any>(`/task/${taskId}`, { method: 'DELETE' })
 }
 
 export async function getTeams() {

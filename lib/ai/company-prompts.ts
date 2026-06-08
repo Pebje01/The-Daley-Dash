@@ -50,33 +50,4 @@ export const COMPANY_AI_CONTEXT: Record<CompanyId, CompanyAIContext> = {
     pricingGuidelines: 'Fotoshoots vanaf €250-€450. Branding shoots vanaf €450-€1.200. Productfotografie per product of setprijs afhankelijk van aantallen. Uurtarief indicatie €65-€95 exclusief btw.',
     tone: 'Creatief en professioneel. Duidelijk over deliverables, aantal beelden, gebruiksrechten en planning.',
   },
-  bleijenberg: {
-    description: 'Bleijenberg is een vakkundig bouw- en renovatiebedrijf gespecialiseerd in woningrenovaties, verbouwingen en onderhoud.',
-    services: [
-      'Woningrenovatie (keuken, badkamer, woonkamer)',
-      'Aanbouw & uitbouw',
-      'Dakwerk & isolatie',
-      'Schilderwerk (binnen & buiten)',
-      'Tegelwerk',
-      'Loodgieterwerk',
-      'Timmerwerkzaamheden',
-      'Algemeen onderhoud',
-    ],
-    pricingGuidelines: 'Uurtarief rond €45-€55 excl. materiaal. Badkamerrenovatie €5.000-€15.000. Keukenplaatsing vanaf €2.500 (excl. keuken). Schilderwerk per m² €15-€25.',
-    tone: 'Nuchter en vakkundig. Duidelijke omschrijvingen van werkzaamheden en materialen.',
-  },
-  montung: {
-    description: 'Montung is een montage- en installatiebedrijf gespecialiseerd in het monteren van keukens, meubels, en overige interieurprojecten.',
-    services: [
-      'Keuken montage',
-      'Meubelmontage (IKEA, Leolux, etc.)',
-      'Inbouwkasten op maat',
-      'Vloeren leggen (laminaat, PVC, parket)',
-      'Deur- en kozijnmontage',
-      'Zonwering & raamdecoratie montage',
-      'Algemene montagewerkzaamheden',
-    ],
-    pricingGuidelines: 'Uurtarief rond €40-€50. Keukenmontage vanaf €600. IKEA keuken montage vanaf €400. Vloeren leggen per m² €15-€20. Meubelmontage per stuk €50-€150.',
-    tone: 'Praktisch en to-the-point. Duidelijke opsomming van werkzaamheden met realistische prijzen.',
-  },
 }

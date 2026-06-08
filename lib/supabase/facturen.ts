@@ -23,6 +23,8 @@ interface DbFactuur {
   btw_amount: number
   total: number
   paid_at: string | null
+  exclude_from_revenue: boolean
+  revenue_date: string | null
   mollie_payment_id: string | null
   mollie_payment_url: string | null
   notes: string | null
@@ -76,6 +78,8 @@ export function mapDbToFactuur(row: DbFactuur, items: DbFactuurLineItem[] = []):
     btwPercentage: row.btw_percentage,
     btwAmount: row.btw_amount,
     total: row.total,
+    excludeFromRevenue: row.exclude_from_revenue ?? false,
+    revenueDate: row.revenue_date ?? undefined,
     paidAt: row.paid_at ?? undefined,
     molliePaymentId: row.mollie_payment_id ?? undefined,
     molliePaymentUrl: row.mollie_payment_url ?? undefined,
@@ -235,6 +239,8 @@ export async function updateFactuur(
     btwPercentage: number
     btwAmount: number
     total: number
+    excludeFromRevenue: boolean
+    revenueDate: string | null
     paidAt: string
     molliePaymentId: string
     molliePaymentUrl: string
@@ -255,6 +261,8 @@ export async function updateFactuur(
   if (data.btwPercentage !== undefined) update.btw_percentage = data.btwPercentage
   if (data.btwAmount !== undefined) update.btw_amount = data.btwAmount
   if (data.total !== undefined) update.total = data.total
+  if (data.excludeFromRevenue !== undefined) update.exclude_from_revenue = data.excludeFromRevenue
+  if (data.revenueDate !== undefined) update.revenue_date = data.revenueDate ?? null
   if (data.paidAt !== undefined) update.paid_at = data.paidAt
   if (data.molliePaymentId !== undefined) update.mollie_payment_id = data.molliePaymentId
   if (data.molliePaymentUrl !== undefined) update.mollie_payment_url = data.molliePaymentUrl
@@ -328,19 +336,39 @@ export async function getTodayFactuurCount(companyId?: CompanyId): Promise<numbe
   return count ?? 0
 }
 
+export interface MaandRegel {
+  maand: string
+  openstaand: number
+  offertes: number
+  uren: number
+  totaal: number
+}
+
 export async function getFactuurStats() {
   const supabase = createClient()
   const now = new Date()
-  const yearStart = new Date(now.getFullYear(), 0, 1).toISOString()
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  const yearStart = `${now.getFullYear()}-01-01`
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
   const todayStr = now.toISOString().split('T')[0]
 
-  const { data: all, error } = await supabase
-    .from('facturen')
-    .select('id, status, total, subtotal, date, due_date, paid_at, created_at')
+  const [
+    { data: all, error },
+    { data: urenRows },
+    { data: pipelineOffertes },
+    recent,
+  ] = await Promise.all([
+    supabase.from('facturen').select('id, status, total, subtotal, date, due_date, paid_at, created_at, offerte_id'),
+    supabase.from('uren').select('datum, uren, uurtarief'),
+    supabase.from('offertes').select('id, subtotal, total, status, date').in('status', ['akkoord', 'verstuurd']),
+    getFacturen(),
+  ])
   if (error) throw error
 
   const facturen = all ?? []
+
+  // Actieve facturen: verzonden + betaald + te-laat (niet concept/geannuleerd)
+  const activeStatuses = ['verzonden', 'betaald', 'te-laat']
+  const activeFacturen = facturen.filter((f: any) => activeStatuses.includes(f.status))
 
   // Openstaande facturen (verzonden)
   const openFacturen = facturen.filter((f: any) => f.status === 'verzonden').length
@@ -353,33 +381,71 @@ export async function getFactuurStats() {
     (f: any) => (f.status === 'verzonden' || f.status === 'te-laat') && f.due_date < todayStr
   ).length
 
-  // Betaald deze maand
+  // Betaald deze maand (op factuurdatum)
   const paidThisMonth = facturen
-    .filter((f: any) => f.status === 'betaald' && f.paid_at && f.paid_at >= monthStart)
+    .filter((f: any) => f.status === 'betaald' && f.date >= monthStart)
     .reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
 
-  // Openstaande facturen deze maand (verzonden)
-  const openMonthFacturen = facturen.filter(
-    (f: any) => f.status === 'verzonden' && f.date >= monthStart.split('T')[0]
-  )
-  const openMonthCount = openMonthFacturen.length
-  const openMonthAmount = openMonthFacturen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
-
-  // Omzet berekeningen: alleen betaalde facturen
-  const yearFacturen = facturen.filter(
-    (f: any) => f.status === 'betaald' && f.date >= yearStart.split('T')[0]
-  )
-  const monthFacturen = facturen.filter(
-    (f: any) => f.status === 'betaald' && f.date >= monthStart.split('T')[0]
-  )
+  // Omzet: alleen betaalde facturen vanaf 2026 (op factuurdatum)
+  const yearFacturen = facturen.filter((f: any) => f.status === 'betaald' && f.date >= yearStart)
+  const monthFacturen = facturen.filter((f: any) => f.status === 'betaald' && f.date >= monthStart)
 
   const revenueYear = yearFacturen.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0)
   const revenueYearIncl = yearFacturen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
   const revenueMonth = monthFacturen.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0)
   const revenueMonthIncl = monthFacturen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
 
-  // Recent facturen (full data for dashboard)
-  const recent = await getFacturen()
+  // Verwachte omzet: actieve facturen + akkoord/verstuurd offertes ZONDER bijbehorende factuur + uren
+  const invoicedOfferteIds = new Set(
+    facturen
+      .filter((f: any) => f.offerte_id && f.status !== 'geannuleerd')
+      .map((f: any) => f.offerte_id)
+  )
+
+  const uninvoicedOffertes = (pipelineOffertes ?? []).filter(
+    (o: any) => !invoicedOfferteIds.has(o.id)
+  )
+
+  const urenSubtotal = (urenRows ?? []).reduce(
+    (sum: number, u: any) => sum + (u.uren ?? 0) * (u.uurtarief ?? 0),
+    0
+  )
+
+  const verwachteOmzet =
+    activeFacturen.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0) +
+    uninvoicedOffertes.reduce((sum: number, o: any) => sum + (o.subtotal ?? 0), 0) +
+    urenSubtotal
+  const verwachteOmzetIncl =
+    activeFacturen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0) +
+    uninvoicedOffertes.reduce((sum: number, o: any) => sum + (o.total ?? 0), 0) +
+    urenSubtotal * 1.21
+
+  // Verwachte omzet per maand: alleen openstaande facturen (verzonden/te-laat) + uren
+  const maandMap = new Map<string, { openstaand: number; uren: number }>()
+  const addToMaand = (maand: string, type: 'openstaand' | 'uren', amount: number) => {
+    if (!maandMap.has(maand)) maandMap.set(maand, { openstaand: 0, uren: 0 })
+    maandMap.get(maand)![type] += amount
+  }
+
+  facturen
+    .filter((f: any) => f.status === 'verzonden' || f.status === 'te-laat')
+    .forEach((f: any) => {
+      if (f.due_date) addToMaand(f.due_date.substring(0, 7), 'openstaand', f.subtotal ?? 0)
+    })
+  ;(urenRows ?? []).forEach((u: any) => {
+    if (u.datum) addToMaand(u.datum.substring(0, 7), 'uren', (u.uren ?? 0) * (u.uurtarief ?? 0))
+  })
+
+  const perMaand: MaandRegel[] = Array.from(maandMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([maand, { openstaand, uren: u }]) => ({
+      maand,
+      openstaand,
+      offertes: 0,
+      uren: u,
+      totaal: openstaand + u,
+    }))
+
   const recentFacturen = recent.slice(0, 5)
 
   return {
@@ -388,12 +454,13 @@ export async function getFactuurStats() {
     totalOpenAmount,
     overdueFacturen,
     paidThisMonth,
-    openMonthCount,
-    openMonthAmount,
     revenueYear,
     revenueYearIncl,
     revenueMonth,
     revenueMonthIncl,
+    verwachteOmzet,
+    verwachteOmzetIncl,
     recentFacturen,
+    perMaand,
   }
 }

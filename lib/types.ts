@@ -1,4 +1,27 @@
-export type CompanyId = 'tde' | 'wgb' | 'daleyphotography' | 'bleijenberg' | 'montung'
+export type CompanyId = 'tde' | 'wgb' | 'daleyphotography'
+
+export type ActieType = 'factuur-herinnering' | 'offerte-follow-up' | 'offerte-verlopen'
+export type ActieStatus = 'gepland' | 'goedgekeurd' | 'afgewezen' | 'verzonden'
+
+export interface Actie {
+  id: string
+  type: ActieType
+  status: ActieStatus
+  factuurId?: string
+  offerteId?: string
+  actieDatum: string
+  metadata: {
+    clientName?: string
+    factuurNumber?: string
+    offerteNumber?: string
+    amount?: number
+    companyId?: string
+    dagsTeLaat?: number
+    dagenSindsVersturen?: number
+  }
+  createdAt: string
+  updatedAt: string
+}
 
 export interface Taak {
   id: string
@@ -7,6 +30,37 @@ export interface Taak {
   done: boolean
   scheduledDate?: string  // ISO date — als gezet én <= vandaag: verschijnt in Vandaag-kolom
   createdAt: string
+}
+
+export interface Uur {
+  id: string
+  companyId: CompanyId
+  datum: string              // ISO date (YYYY-MM-DD)
+  klant: string
+  project?: string
+  uren: number
+  omschrijving?: string
+  uurtarief: number
+  gefactureerd: boolean
+  factuurnummer?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UurKlant {
+  id: string
+  naam: string
+  standaardUurtarief: number
+  companyId?: CompanyId
+  crmBedrijfId?: string
+  contactpersoon?: string
+  adres?: string
+  postcode?: string
+  stad?: string
+  klantnummer?: string
+  email?: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Company {
@@ -28,7 +82,7 @@ export interface Company {
   logoBase64?: string
 }
 
-export type OfferteStatus = 'concept' | 'opgeslagen' | 'verstuurd' | 'akkoord' | 'afgewezen' | 'verlopen'
+export type OfferteStatus = 'concept' | 'opgeslagen' | 'verstuurd' | 'akkoord' | 'afgewezen' | 'verlopen' | 'on-hold'
 export type FactuurStatus = 'concept' | 'verzonden' | 'betaald' | 'te-laat' | 'geannuleerd'
 
 export interface LineItem {
@@ -106,6 +160,8 @@ export interface Factuur {
   btwPercentage: number
   btwAmount: number
   total: number
+  excludeFromRevenue: boolean
+  revenueDate?: string
   paidAt?: string
   molliePaymentId?: string
   molliePaymentUrl?: string
@@ -148,6 +204,21 @@ export interface Abonnement {
   nextInvoiceDate?: string
   lastInvoiceDate?: string
   notes?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UurProject {
+  id: string
+  companyId: CompanyId
+  klant: string
+  naam: string
+  aantal?: number            // standaard 1
+  prijs?: number             // prijs per stuk
+  bedrag: number             // totaal (aantal x prijs)
+  datum: string              // ISO date (YYYY-MM-DD)
+  omschrijving?: string
+  status: 'actief' | 'afgerond' | 'geannuleerd' | 'gefactureerd'
   createdAt: string
   updatedAt: string
 }

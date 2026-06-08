@@ -50,11 +50,10 @@ middleware.ts               # Auth redirect middleware
 
 ### Multi-domein aanpak
 - Één Vercel deployment, meerdere domeinen eraan gekoppeld:
-  - `wegrewbrands.nl` → WGB offertes
-  - `thedaleydash.nl` → TDE offertes
-  - etc.
+  - `wegrowbrands.online` → WGB offertes
+  - `thedaleyedit.nl` → TDE + Daley Photography offertes
 - De offertepagina leest `company_id` uit Supabase en toont automatisch de juiste huisstijl
-- Klanten zien: `wegrewbrands.nl/offerte/of-260315-01`
+- Klanten zien bijv.: `wegrowbrands.online/offerte/[uuid]` of `thedaleyedit.nl/offerte/[uuid]`
 
 ### Dashboard afschermen in productie
 - `middleware.ts` beschermt `/(dashboard)/*` via Supabase auth
@@ -122,12 +121,12 @@ details:
 - Geen AI-jargon
 
 ## Commands
-- `npm run dev` — start dev server op localhost:3000
+- `npm run dev` — start dev server op localhost:3003
 - `npm run build` — productie build (BELANGRIJK: draai na elke reeks wijzigingen)
 - `npm run lint` — ESLint check
 
 ## Verificatie (BELANGRIJK)
-- Controleer NA ELKE wijziging of de dev server nog draait (`lsof -ti :3000`). Zo niet: herstart met `npx next dev --turbo &`
+- Controleer NA ELKE wijziging of de dev server nog draait (`lsof -ti :3003`). Zo niet: herstart met `npx next dev -p 3003 --turbo &`
 - Gebruik `npx tsc --noEmit` voor TypeScript-checks in plaats van `npm run build` (build kan de dev server killen)
 - Draai `npm run lint` na het schrijven van nieuwe code
 - NOOIT `npm run build` draaien terwijl de dev server draait — gebruik `npx tsc --noEmit` als alternatief

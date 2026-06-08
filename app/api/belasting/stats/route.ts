@@ -29,23 +29,26 @@ interface GroepStats {
   maandelijkseIBReservering: number
 }
 
+// Factuurstatussen die meetellen voor omzet/BTW (niet concept of geannuleerd)
+const ACTIEVE_STATUSSEN = ['verzonden', 'betaald', 'te-laat']
+
 function berekenGroep(
   label: string,
   bedrijven: string[],
-  alleOffertes: any[],
+  alleFacturen: any[],
   yearStart: string,
   now: Date,
 ): GroepStats {
-  const rows = alleOffertes
-    .filter((o: any) =>
-      o.status === 'akkoord'
-      && o.date >= yearStart
-      && bedrijven.includes(o.company_id)
+  const rows = alleFacturen
+    .filter((f: any) =>
+      ACTIEVE_STATUSSEN.includes(f.status)
+      && f.date >= yearStart
+      && bedrijven.includes(f.company_id)
     )
-    .map((o: any) => ({
-      subtotal: o.subtotal ?? 0,
-      total: o.total ?? 0,
-      date: o.date,
+    .map((f: any) => ({
+      subtotal: f.subtotal ?? 0,
+      total: f.total ?? 0,
+      date: f.date,
     }))
 
   const kwartalen = aggregeerPerKwartaal(rows)
@@ -87,26 +90,23 @@ export async function GET() {
   const jaar = now.getFullYear()
   const yearStart = `${jaar}-01-01`
 
-  // Haal alle offertes op (inclusief company_id)
-  const { data: offertes, error } = await supabase
-    .from('offertes')
+  // Gebruik facturen als bron (verzonden/betaald/te-laat = gefactureerde omzet)
+  const { data: facturen, error } = await supabase
+    .from('facturen')
     .select('id, subtotal, total, date, status, company_id, created_at')
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const alleOffertes = offertes ?? []
+  const alleFacturen = facturen ?? []
 
   // Bereken per groep
-  const eigen = berekenGroep('Mijn bedrijven', EIGEN_BEDRIJVEN, alleOffertes, yearStart, now)
-  const bleijenberg = berekenGroep('Bleijenberg', ['bleijenberg'], alleOffertes, yearStart, now)
-  const montung = berekenGroep('Montung', ['montung'], alleOffertes, yearStart, now)
+  const eigen = berekenGroep('Mijn bedrijven', EIGEN_BEDRIJVEN, alleFacturen, yearStart, now)
 
   return NextResponse.json({
     jaar,
     huidigKwartaal: huidigKwartaal(),
     eigen,
-    apart: [bleijenberg, montung],
   })
 }

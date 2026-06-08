@@ -364,3 +364,140 @@ CREATE POLICY "Auth users can read clickup webhook events"
   ON clickup_webhook_events FOR SELECT
   TO authenticated
   USING (true);
+
+-- ============================================================
+-- IB-aangifte module
+-- ============================================================
+
+-- Hoofdrecord per jaar
+CREATE TABLE IF NOT EXISTS belasting_aangifte (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  jaar INTEGER NOT NULL UNIQUE,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+
+  -- Aftrekposten
+  urencriterium_voldaan BOOLEAN DEFAULT true,
+  claim_zelfstandigenaftrek BOOLEAN DEFAULT true,
+  claim_startersaftrek BOOLEAN DEFAULT false,
+  startersaftrek_keer_gebruikt INTEGER DEFAULT 0,
+
+  -- FOR
+  for_saldo_begin_jaar DECIMAL(10,2) DEFAULT 0,
+  for_vrijval DECIMAL(10,2) DEFAULT 0,
+
+  -- Balansposten (editable)
+  banksaldo_eindstand DECIMAL(10,2),
+  voorraad DECIMAL(10,2) DEFAULT 0,
+  eigen_vermogen DECIMAL(10,2),
+  crediteuren DECIMAL(10,2) DEFAULT 0,
+
+  -- Meta
+  notities TEXT,
+  laatst_bijgewerkt TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Kostenregels
+CREATE TABLE IF NOT EXISTS belasting_kosten_regel (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  aangifte_id UUID NOT NULL REFERENCES belasting_aangifte(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  categorie TEXT NOT NULL,
+  bedrag DECIMAL(10,2) NOT NULL,
+  datum DATE,
+  notitie TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Investeringen
+CREATE TABLE IF NOT EXISTS belasting_investering (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  aangifte_id UUID NOT NULL REFERENCES belasting_aangifte(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  bedrag DECIMAL(10,2) NOT NULL,
+  datum DATE NOT NULL,
+  afschrijvingstermijn_jaren INTEGER DEFAULT 5,
+  notitie TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Debiteur-status per factuur per aangifte-jaar
+CREATE TABLE IF NOT EXISTS belasting_debiteur_status (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  factuur_id UUID NOT NULL REFERENCES facturen(id) ON DELETE CASCADE,
+  aangifte_id UUID NOT NULL REFERENCES belasting_aangifte(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'open',
+  notitie TEXT,
+  oninbaar_per DATE,
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(factuur_id, aangifte_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_belasting_aangifte_jaar ON belasting_aangifte(jaar);
+CREATE INDEX IF NOT EXISTS idx_belasting_kosten_aangifte_id ON belasting_kosten_regel(aangifte_id);
+CREATE INDEX IF NOT EXISTS idx_belasting_investering_aangifte_id ON belasting_investering(aangifte_id);
+CREATE INDEX IF NOT EXISTS idx_belasting_debiteur_aangifte_id ON belasting_debiteur_status(aangifte_id);
+
+ALTER TABLE belasting_aangifte ENABLE ROW LEVEL SECURITY;
+ALTER TABLE belasting_kosten_regel ENABLE ROW LEVEL SECURITY;
+ALTER TABLE belasting_investering ENABLE ROW LEVEL SECURITY;
+ALTER TABLE belasting_debiteur_status ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Auth users full access on belasting_aangifte"
+  ON belasting_aangifte FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Auth users full access on belasting_kosten_regel"
+  ON belasting_kosten_regel FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Auth users full access on belasting_investering"
+  ON belasting_investering FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Auth users full access on belasting_debiteur_status"
+  ON belasting_debiteur_status FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- Write policies for bidirectional sync
+CREATE POLICY "Auth users can insert clickup crm records"
+  ON clickup_crm_records FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Auth users can update clickup crm records"
+  ON clickup_crm_records FOR UPDATE
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Auth users can delete clickup crm records"
+  ON clickup_crm_records FOR DELETE
+  TO authenticated
+  USING (true);
+
+CREATE POLICY "Auth users can insert clickup sync runs"
+  ON clickup_sync_runs FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Auth users can update clickup sync runs"
+  ON clickup_sync_runs FOR UPDATE
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Auth users can upsert clickup sync state"
+  ON clickup_sync_state FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Auth users can update clickup sync state"
+  ON clickup_sync_state FOR UPDATE
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Auth users can insert clickup webhook events"
+  ON clickup_webhook_events FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Auth users can update clickup webhook events"
+  ON clickup_webhook_events FOR UPDATE
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
