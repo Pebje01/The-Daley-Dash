@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, FileText, Receipt, Users, Settings,
-  CreditCard, Repeat2, RefreshCw, BadgeDollarSign, Building2, ContactRound, BriefcaseBusiness, ScrollText, List,
+  CreditCard, Repeat2, BadgeDollarSign, Building2, ContactRound, BriefcaseBusiness, ScrollText, List,
   ChevronRight, LogOut, Landmark, CheckSquare, Clock, FileBarChart, Menu, X,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -33,7 +33,6 @@ const crmNav = [
   { label: 'Contacten', href: '/crm/contacten', icon: ContactRound },
   { label: 'Opdrachten', href: '/crm/opdrachten', icon: BriefcaseBusiness },
   { label: 'Facturatie', href: '/crm/facturen', icon: ScrollText },
-  { label: 'CRM Sync', href: '/crm-sync', icon: RefreshCw },
 ]
 
 const companies = [

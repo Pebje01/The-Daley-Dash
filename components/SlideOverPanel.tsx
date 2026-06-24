@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { X } from 'lucide-react'
 
 interface SlideOverPanelProps {
@@ -13,14 +13,11 @@ interface SlideOverPanelProps {
 export default function SlideOverPanel({ open, onClose, title, children }: SlideOverPanelProps) {
   const [visible, setVisible] = useState(false)
   const [closing, setClosing] = useState(false)
-  const overlayRef = useRef<HTMLDivElement>(null)
 
-  // Open: toon panel
   useEffect(() => {
     if (open) {
       setVisible(true)
       setClosing(false)
-      // Body scroll lock
       document.body.style.overflow = 'hidden'
     }
     return () => {
@@ -28,7 +25,6 @@ export default function SlideOverPanel({ open, onClose, title, children }: Slide
     }
   }, [open])
 
-  // Sluit met animatie
   const handleClose = useCallback(() => {
     setClosing(true)
     setTimeout(() => {
@@ -36,10 +32,9 @@ export default function SlideOverPanel({ open, onClose, title, children }: Slide
       setClosing(false)
       document.body.style.overflow = ''
       onClose()
-    }, 200) // match exit animatie duur
+    }, 150)
   }, [onClose])
 
-  // Escape key
   useEffect(() => {
     if (!visible) return
     const handleEsc = (e: KeyboardEvent) => {
@@ -52,26 +47,25 @@ export default function SlideOverPanel({ open, onClose, title, children }: Slide
   if (!visible) return null
 
   return (
-    <div className="fixed inset-0 z-40" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4" role="dialog" aria-modal="true">
       {/* Overlay */}
       <div
-        ref={overlayRef}
-        className={`absolute inset-0 bg-black/30 backdrop-blur-sm ${closing ? 'overlay-exit' : 'overlay-enter'}`}
+        className={`absolute inset-0 bg-black/40 backdrop-blur-sm ${closing ? 'overlay-exit' : 'overlay-enter'}`}
         onClick={handleClose}
       />
 
-      {/* Panel */}
+      {/* Modal */}
       <div
-        className={`absolute top-0 right-0 h-full w-full md:w-full md:max-w-4xl bg-brand-card-bg border-l border-brand-card-border shadow-2xl flex flex-col ${closing ? 'drawer-exit' : 'drawer-enter'}`}
+        className={`relative w-full max-w-4xl max-h-[90vh] bg-brand-card-bg border border-brand-card-border rounded-2xl shadow-2xl flex flex-col ${closing ? 'modal-exit' : 'modal-enter'}`}
       >
         {/* Sticky header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-brand-card-border/20 bg-brand-card-bg sticky top-0 z-10">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-brand-card-border/20 shrink-0 rounded-t-2xl">
           <h2 className="font-uxum text-lg text-brand-text-primary truncate">
             {title || ''}
           </h2>
           <button
             onClick={handleClose}
-            className="text-brand-text-secondary hover:text-brand-text-primary transition-colors p-1 -mr-1"
+            className="text-brand-text-secondary hover:text-brand-text-primary transition-colors p-1 -mr-1 rounded"
             aria-label="Sluiten"
           >
             <X size={20} />
@@ -79,7 +73,7 @@ export default function SlideOverPanel({ open, onClose, title, children }: Slide
         </div>
 
         {/* Scrollbare content */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto min-h-0">
           {children}
         </div>
       </div>

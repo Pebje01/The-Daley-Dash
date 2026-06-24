@@ -134,6 +134,7 @@ export async function syncClickUpCrm(options: SyncOptions) {
   } catch (e: any) {
     counts.errors += 1
     const message = e?.message || 'ClickUp sync failed'
+    console.error('ClickUp sync fout:', message, '| cause:', e?.cause?.message || e?.cause?.code || 'geen', '| counts:', JSON.stringify(counts))
     await finishSyncRun(runId, 'error', counts, message)
     throw e
   }

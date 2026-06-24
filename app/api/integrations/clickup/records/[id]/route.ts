@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { updateClickUpRecord, deleteClickUpRecord } from '@/lib/clickup/sync'
+import { updateCrmRecord, deleteCrmRecord } from '@/lib/crm/store'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,65 +29,23 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const supabase = createClient()
 
   try {
     const body = await request.json()
-    const { name, status, description, due_date, custom_fields, notes } = body
+    const { name, status, description, due_date, custom_fields, notes, dash_tags } = body
 
-    let clickupSyncError: string | null = null
-    let record: any = null
+    // Supabase is de source of truth — alles gaat direct naar de database
+    const record = await updateCrmRecord(id, {
+      name,
+      status,
+      description,
+      notes,
+      due_date,
+      custom_fields,
+      dash_tags,
+    })
 
-    // Push changes to ClickUp first, then mirror back to Supabase.
-    // ClickUp is the source of truth for everything except notes.
-    const hasClickUpChanges =
-      name !== undefined ||
-      status !== undefined ||
-      description !== undefined ||
-      due_date !== undefined ||
-      (Array.isArray(custom_fields) && custom_fields.length > 0)
-
-    if (hasClickUpChanges) {
-      try {
-        record = await updateClickUpRecord(id, { name, status, description, due_date, custom_fields })
-      } catch (e: any) {
-        clickupSyncError = e?.message || 'ClickUp sync mislukt'
-      }
-    }
-
-    // Notes are dashboard-only and live in raw JSONB
-    if (notes !== undefined) {
-      const { data: current } = await supabase
-        .from('clickup_crm_records')
-        .select('raw')
-        .eq('id', id)
-        .single()
-
-      const { data: updated, error } = await supabase
-        .from('clickup_crm_records')
-        .update({
-          raw: { ...(current?.raw || {}), notes },
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id)
-        .select('id, entity_type, clickup_task_id, name, status, url, archived, active, assignees, tags, custom_fields, due_date, clickup_date_updated, synced_at, raw')
-        .single()
-
-      if (error) throw error
-      record = updated
-    }
-
-    // If neither ClickUp push nor notes ran (or push failed), still return the current Supabase row
-    if (!record) {
-      const { data: fallback } = await supabase
-        .from('clickup_crm_records')
-        .select('id, entity_type, clickup_task_id, name, status, url, archived, active, assignees, tags, custom_fields, due_date, clickup_date_updated, synced_at, raw')
-        .eq('id', id)
-        .single()
-      record = fallback
-    }
-
-    return NextResponse.json({ item: record, clickupSyncError })
+    return NextResponse.json({ item: record })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Update mislukt' }, { status: 500 })
   }
@@ -100,7 +58,7 @@ export async function DELETE(
   const { id } = await params
 
   try {
-    await deleteClickUpRecord(id)
+    await deleteCrmRecord(id)
     return NextResponse.json({ ok: true })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Verwijderen mislukt' }, { status: 500 })

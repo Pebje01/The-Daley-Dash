@@ -59,6 +59,17 @@ export default function Dashboard() {
   }>({ openFacturen: 0, totalOpenAmount: 0, overdueFacturen: 0, paidThisMonth: 0, revenueYear: 0, revenueYearIncl: 0, revenueMonth: 0, revenueMonthIncl: 0, verwachteOmzet: 0, verwachteOmzetIncl: 0, recentFacturen: [], perMaand: [] })
 
   const [abonnementen, setAbonnementen] = useState<Abonnement[]>([])
+  const [crmStats, setCrmStats] = useState<{
+    openLeads: number
+    openLeadsWaarde: number
+    inGesprek: number
+    gewonnen: number
+    verloren: number
+    conversie: number | null
+    openOpdrachten: number
+    openOpdrachtenWaarde: number
+    openClickUpFacturen: number
+  } | null>(null)
   const [loading, setLoading] = useState(true)
   const [greeting, setGreeting] = useState('')
   const [now, setNow] = useState<Date | null>(null)
@@ -75,10 +86,12 @@ export default function Dashboard() {
         fetch('/api/offertes/stats').then(r => r.ok ? r.json() : null),
         fetch('/api/facturen/stats').then(r => r.ok ? r.json() : null),
         fetch('/api/abonnementen?status=actief').then(r => r.ok ? r.json() : null),
-      ]).then(([off, fac, abo]) => {
+        fetch('/api/crm/stats').then(r => r.ok ? r.json() : null),
+      ]).then(([off, fac, abo, crm]) => {
         if (off) setOfferteStats(off)
         if (fac) setFactuurStats(fac)
         if (abo) setAbonnementen(abo)
+        if (crm) setCrmStats(crm)
       }).finally(() => {
         const wacht = minimumDuur - (Date.now() - start)
         if (wacht > 0) setTimeout(() => setLoading(false), wacht)
@@ -89,9 +102,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData()
+    const onFocus = () => fetchData()
     const onVisible = () => { if (document.visibilityState === 'visible') fetchData() }
     const cleanupDataChanged = onDataChanged(() => fetchData())
-    window.addEventListener('focus', fetchData)
+    window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onVisible)
 
     // Supabase Realtime: herlaad bij wijzigingen in offertes of facturen
@@ -105,7 +119,7 @@ export default function Dashboard() {
     return () => {
       if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current)
       cleanupDataChanged()
-      window.removeEventListener('focus', fetchData)
+      window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVisible)
       supabase.removeChannel(channel)
     }
@@ -222,6 +236,42 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
+
+      {/* CRM Pipeline */}
+      {crmStats && (
+        <div className="card mb-6 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-body">CRM</h2>
+            <Link href="/crm/leads" className="text-caption text-brand-text-secondary hover:text-brand-text-primary flex items-center gap-1">
+              Alle leads <ArrowRight size={12} />
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Link href="/crm/leads" className="rounded-brand-sm bg-brand-light-blue border border-brand-card-border p-3 hover:opacity-80 transition-opacity">
+              <p className="text-caption text-brand-text-secondary mb-1">Open leads</p>
+              <p className="font-semibold text-body text-brand-text-primary">
+                {crmStats.openLeads}{crmStats.openLeadsWaarde > 0 ? ` · ${euro(crmStats.openLeadsWaarde)}` : ''}
+              </p>
+            </Link>
+            <Link href="/crm/leads" className="rounded-brand-sm bg-brand-page-light border border-brand-card-border p-3 hover:bg-brand-page-medium transition-colors">
+              <p className="text-caption text-brand-text-secondary mb-1">In gesprek</p>
+              <p className="font-semibold text-body text-brand-text-primary">{crmStats.inGesprek}</p>
+            </Link>
+            <Link href="/crm/opdrachten" className="rounded-brand-sm bg-brand-lime border border-brand-card-border p-3 hover:opacity-80 transition-opacity">
+              <p className="text-caption text-brand-text-secondary mb-1">Open opdrachten</p>
+              <p className="font-semibold text-body text-brand-text-primary">
+                {crmStats.openOpdrachten}{crmStats.openOpdrachtenWaarde > 0 ? ` · ${euro(crmStats.openOpdrachtenWaarde)}` : ''}
+              </p>
+            </Link>
+            <Link href="/crm/leads" className="rounded-brand-sm bg-brand-lavender-accent border border-brand-card-border p-3 hover:opacity-80 transition-opacity">
+              <p className="text-caption text-brand-text-secondary mb-1">Conversie ({crmStats.gewonnen} won / {crmStats.verloren} verloren)</p>
+              <p className="font-semibold text-body text-brand-text-primary">
+                {crmStats.conversie !== null ? `${crmStats.conversie}%` : '–'}
+              </p>
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Recente tabellen */}
       <div className="grid grid-cols-2 gap-6 mb-6">

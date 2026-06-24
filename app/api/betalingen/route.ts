@@ -3,6 +3,13 @@ import { getBetalingen, createBetaling } from '@/lib/supabase/betalingen'
 
 export const dynamic = 'force-dynamic'
 
+function isMissingBetalingenTableError(error: any) {
+  return (
+    error?.code === 'PGRST205' ||
+    (error?.code === '42P01' && /betalingen/.test(error?.message || ''))
+  )
+}
+
 export async function GET(request: NextRequest) {
   // Auth tijdelijk uitgeschakeld
 
@@ -11,13 +18,23 @@ export async function GET(request: NextRequest) {
   const companyId = searchParams.get('company') ?? 'alle'
   const search = searchParams.get('search') ?? ''
 
-  const betalingen = await getBetalingen({
-    status: status as any,
-    companyId: companyId as any,
-    search,
-  })
+  try {
+    const betalingen = await getBetalingen({
+      status: status as any,
+      companyId: companyId as any,
+      search,
+    })
+    return NextResponse.json(betalingen)
+  } catch (e: any) {
+    if (isMissingBetalingenTableError(e)) {
+      return NextResponse.json([])
+    }
 
-  return NextResponse.json(betalingen)
+    return NextResponse.json(
+      { error: e?.message || 'Betalingen laden mislukt' },
+      { status: 500 }
+    )
+  }
 }
 
 export async function POST(request: NextRequest) {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Plus, Trash2, UserPlus, X, Check, RefreshCw, FileText, ChevronDown, RotateCcw, GripVertical, Search, ExternalLink } from 'lucide-react'
+import { Plus, Trash2, UserPlus, UserX, Eraser, X, Check, RefreshCw, FileText, ChevronDown, RotateCcw, GripVertical, Search, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 import { Uur, UurKlant, UurProject, CompanyId } from '@/lib/types'
 import { COMPANIES } from '@/lib/companies'
@@ -106,6 +106,8 @@ export default function UrenPage() {
   const [newKlantCompanyId, setNewKlantCompanyId] = useState<CompanyId>('tde')
   const [newKlantCrmId, setNewKlantCrmId] = useState<string | undefined>(undefined)
   const [savingKlant, setSavingKlant] = useState(false)
+  const [deletingKlant, setDeletingKlant] = useState(false)
+  const [clearingPage, setClearingPage] = useState(false)
 
   // Bedrijfskeuze voor factuur-van-uren
   const [factuurCompanyId, setFactuurCompanyId] = useState<CompanyId>('daleyphotography')
@@ -381,6 +383,70 @@ export default function UrenPage() {
       }
     } catch { /* */ }
     setSavingKlant(false)
+  }
+
+  // Verwijder alle uren- en projectregels van de actieve klant (huidige pagina legen).
+  const handleClearPage = async () => {
+    if (!activeKlant) return
+    const teVerwijderenUren = klantUren
+    const teVerwijderenProjecten = klantProjecten
+    const aantal = teVerwijderenUren.length + teVerwijderenProjecten.length
+    if (aantal === 0) return
+    if (!confirm(
+      `Weet je zeker dat je alle ${aantal} regel${aantal === 1 ? '' : 's'} van "${activeKlant.naam}" wilt verwijderen?\n\n` +
+      'Dit kan niet ongedaan worden gemaakt.'
+    )) return
+
+    setClearingPage(true)
+    const naam = activeKlant.naam
+    setUren(prev => prev.filter(u => u.klant !== naam))
+    setProjecten(prev => prev.filter(p => p.klant !== naam))
+    setSelectedIds(new Set())
+    setSelectedProjectIds(new Set())
+    try {
+      await Promise.all([
+        ...teVerwijderenUren.map(u => fetch(`/api/uren/${u.id}`, { method: 'DELETE' })),
+        ...teVerwijderenProjecten.map(p => fetch(`/api/uren-projecten/${p.id}`, { method: 'DELETE' })),
+      ])
+    } catch (e) {
+      console.error('clearPage fout, refetching:', e)
+      load()
+    }
+    setClearingPage(false)
+  }
+
+  // Verwijder de actieve klant volledig, inclusief eventuele resterende regels.
+  const handleDeleteKlant = async () => {
+    if (!activeKlant) return
+    const aantal = klantUren.length + klantProjecten.length
+    const bevestiging = aantal > 0
+      ? `Let op: er staan nog ${aantal} regel${aantal === 1 ? '' : 's'} bij "${activeKlant.naam}".\n\n` +
+        'Als je deze klant verwijdert, worden ook al deze regels verwijderd. Dit kan niet ongedaan worden gemaakt.\n\nDoorgaan?'
+      : `Weet je zeker dat je klant "${activeKlant.naam}" wilt verwijderen?`
+    if (!confirm(bevestiging)) return
+
+    setDeletingKlant(true)
+    const teVerwijderen = activeKlant
+    try {
+      await Promise.all([
+        ...klantUren.map(u => fetch(`/api/uren/${u.id}`, { method: 'DELETE' })),
+        ...klantProjecten.map(p => fetch(`/api/uren-projecten/${p.id}`, { method: 'DELETE' })),
+      ])
+      await fetch(`/api/uren-klanten/${teVerwijderen.id}`, { method: 'DELETE' })
+      setUren(prev => prev.filter(u => u.klant !== teVerwijderen.naam))
+      setProjecten(prev => prev.filter(p => p.klant !== teVerwijderen.naam))
+      setKlanten(prev => {
+        const rest = prev.filter(k => k.id !== teVerwijderen.id)
+        setActiveKlantId(rest[0]?.id ?? null)
+        return rest
+      })
+      setSelectedIds(new Set())
+      setSelectedProjectIds(new Set())
+    } catch (e) {
+      console.error('deleteKlant fout, refetching:', e)
+      load()
+    }
+    setDeletingKlant(false)
   }
 
   const handleNewRowKeyDown = (e: React.KeyboardEvent) => {
@@ -704,9 +770,24 @@ export default function UrenPage() {
             Kies een klant en vul direct je uren in.
           </p>
         </div>
-        <button onClick={load} className="btn-secondary" title="Vernieuwen">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {activeKlant && (klantUren.length > 0 || klantProjecten.length > 0) && (
+            <button
+              onClick={handleClearPage}
+              disabled={clearingPage}
+              className="btn-secondary text-brand-status-red hover:bg-red-50 hover:border-red-300 disabled:opacity-40"
+              title="Huidige pagina legen (alle regels verwijderen)"
+            >
+              {clearingPage
+                ? <RefreshCw size={14} className="animate-spin" />
+                : <Eraser size={14} />}
+              <span className="text-caption">Pagina legen</span>
+            </button>
+          )}
+          <button onClick={load} className="btn-secondary" title="Vernieuwen">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
 
       {/* Klant selector */}
@@ -786,6 +867,17 @@ export default function UrenPage() {
                   <ExternalLink size={11} /> CRM
                 </Link>
               )}
+              <button
+                onClick={handleDeleteKlant}
+                disabled={deletingKlant}
+                className="inline-flex items-center gap-1 text-xs text-brand-text-secondary hover:text-brand-status-red transition-colors disabled:opacity-40"
+                title="Klant verwijderen"
+              >
+                {deletingKlant
+                  ? <RefreshCw size={11} className="animate-spin" />
+                  : <UserX size={12} />}
+                Verwijder klant
+              </button>
             </div>
           </div>
 

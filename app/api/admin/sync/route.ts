@@ -4,6 +4,8 @@ import path from 'path'
 import { execSync } from 'child_process'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createClient } from '@/lib/supabase/server'
+import { getAdminFacturenPaths, getAdminOffertesPaths } from '@/lib/admin/documentPaths'
+import { forgetAdminSyncNumbers, mergeAdminSyncSeen, readAdminSyncState } from '@/lib/admin/syncState'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,6 +40,7 @@ interface ExtractedDoc {
   btwPercentage: number | null
   companyId: string | null
   status: string | null
+  paidAt: string | null
   lineItems: LineItem[]
 }
 
@@ -82,6 +85,21 @@ function parseAmount(s: string): number | null {
   return isNaN(n) ? null : n
 }
 
+function asPaidAt(date: string | null): string | null {
+  return date ? `${date}T12:00:00+01:00` : null
+}
+
+function detectPaidAt(text: string, filename: string, fallbackDate: string | null): string | null {
+  const source = `${filename}\n${text}`
+  if (!/(betaling\s+voldaan|voldaan\s+op|betaald\s+op|\bvoldaan\b|\bpaid\b)/i.test(source)) return null
+
+  const explicit =
+    source.match(/(?:betaling\s+voldaan|voldaan\s+op|betaald\s+op|paid\s+on)[^\d]*(\d{1,2}-\d{1,2}-\d{4})/i) ||
+    source.match(/(\d{1,2}-\d{1,2}-\d{4})[^\n]{0,40}(?:betaling\s+voldaan|voldaan|betaald|paid)/i)
+
+  return asPaidAt(explicit ? parseNlDate(explicit[1]) : fallbackDate)
+}
+
 function detectCompany(text: string): string | null {
   if (/We Grow Brands|WGB|wegrowbrands/i.test(text)) return 'wgb'
   if (/Daley Photography|daleyphotography/i.test(text)) return 'daleyphotography'
@@ -122,6 +140,7 @@ function parseText(text: string, filename: string): ExtractedDoc {
   while ((dm = dateRe.exec(text)) !== null) dateMatches.push(dm[1])
   const date = dateMatches[0] ? parseNlDate(dateMatches[0]) : null
   const secondDate = dateMatches[1] ? parseNlDate(dateMatches[1]) : null
+  const paidAt = !isOfferte ? detectPaidAt(text, filename, date) : null
 
   const subtotalMatch = text.match(/TOTAAL EXCL\. BTW\s*€?\s*([\d.,]+)/i)
   const btwMatch = text.match(/21%\s*BTW\s*€?\s*([\d.,]+)/i) || text.match(/BTW\s*€?\s*([\d.,]+)/i)
@@ -138,7 +157,7 @@ function parseText(text: string, filename: string): ExtractedDoc {
     type, number, clientName, clientContactPerson: null, clientAddress,
     date, dueDate: isOfferte ? null : secondDate, validUntil: isOfferte ? secondDate : null,
     subtotal, btwAmount, total, btwPercentage,
-    companyId: detectCompany(text), status: null, lineItems: [],
+    companyId: detectCompany(text), status: paidAt ? 'betaald' : null, paidAt, lineItems: [],
   }
 }
 
@@ -166,6 +185,7 @@ Geef de response UITSLUITEND als geldig JSON object met dit exacte formaat:
   "dueDate": "JJJJ-MM-DD (alleen facturen: vervaldatum, of null)",
   "validUntil": "JJJJ-MM-DD (alleen offertes: geldig-tot datum, of null)",
   "status": "betaald" als betaling voldaan is, anders "verzonden" of "verstuurd",
+  "paidAt": "ISO timestamp als betaling voldaan is, bijvoorbeeld 2026-02-12T12:00:00+01:00, anders null",
   "btwPercentage": 21,
   "subtotal": 100.00,
   "btwAmount": 21.00,
@@ -205,6 +225,7 @@ CompanyId: "We Grow Brands/WGB" -> "wgb", "Daley Photography" -> "daleyphotograp
     btwPercentage: typeof parsed.btwPercentage === 'number' ? parsed.btwPercentage : null,
     companyId: parsed.companyId ?? null,
     status: parsed.status ?? null,
+    paidAt: parsed.paidAt ?? null,
     lineItems,
   }
 }
@@ -228,6 +249,7 @@ async function extractDoc(absolutePath: string, filename: string): Promise<Extra
 // ── Import logic ───────────────────────────────────────────────────────────
 
 type ImportResult = 'imported' | 'skipped' | 'failed'
+interface ExistingDocRow { id: string; number: string | null }
 
 async function importDoc(
   doc: ExtractedDoc,
@@ -254,13 +276,18 @@ async function importDoc(
 
   if (doc.type === 'factuur') {
     const date = doc.date ?? now.split('T')[0]
+    const status = doc.status === 'betaald' || doc.paidAt ? 'betaald' : 'verzonden'
+    const paidAt = status === 'betaald'
+      ? (doc.paidAt ?? `${date}T12:00:00+01:00`)
+      : null
     const { data: row, error } = await supabase.from('facturen').insert({
       number: numberUpper, slug, company_id: companyId,
       client_name: doc.clientName ?? 'Onbekend',
       client_contact_person: doc.clientContactPerson ?? null,
       client_address: doc.clientAddress ?? null,
       date, due_date: doc.dueDate ?? date,
-      status: doc.status ?? 'verzonden',
+      status,
+      paid_at: paidAt,
       subtotal, btw_percentage: btwPercentage, btw_amount: btwAmount, total,
       created_at: now, updated_at: now,
     }).select('id').single()
@@ -277,13 +304,15 @@ async function importDoc(
     }
   } else {
     const date = doc.date ?? now.split('T')[0]
+    const validOfferteStatuses = new Set(['concept', 'opgeslagen', 'verstuurd', 'akkoord', 'afgewezen', 'verlopen', 'on-hold'])
+    const status = doc.status && validOfferteStatuses.has(doc.status) ? doc.status : 'verstuurd'
     const { data: row, error } = await supabase.from('offertes').insert({
       number: numberUpper, slug, company_id: companyId,
       client_name: doc.clientName ?? 'Onbekend',
       client_contact_person: doc.clientContactPerson ?? null,
       client_address: doc.clientAddress ?? null,
       date, valid_until: doc.validUntil ?? date,
-      status: doc.status ?? 'verstuurd',
+      status,
       subtotal, btw_percentage: btwPercentage, btw_amount: btwAmount, total,
       is_public: false, created_at: now, updated_at: now,
     }).select('id').single()
@@ -301,6 +330,46 @@ async function importDoc(
   }
 
   return 'imported'
+}
+
+async function pruneMissingDocs(
+  supabase: ReturnType<typeof createClient>,
+  existingFacturen: ExistingDocRow[],
+  existingOffertes: ExistingDocRow[],
+  currentFactuurNumbers: Set<string>,
+  currentOfferteNumbers: Set<string>,
+): Promise<{ facturen: number; offertes: number; failed: number }> {
+  const state = readAdminSyncState()
+  const missingFacturen = new Set(state.facturen.filter(n => !currentFactuurNumbers.has(n)))
+  const missingOffertes = new Set(state.offertes.filter(n => !currentOfferteNumbers.has(n)))
+  const removedFacturen: string[] = []
+  const removedOffertes: string[] = []
+  let failed = 0
+
+  const factuurRows = existingFacturen.filter(row => row.number && missingFacturen.has(row.number.toUpperCase()))
+  if (factuurRows.length > 0) {
+    const ids = factuurRows.map(row => row.id)
+    await supabase.from('factuur_line_items').delete().in('factuur_id', ids)
+    const { error } = await supabase.from('facturen').delete().in('id', ids)
+    if (error) failed += factuurRows.length
+    else removedFacturen.push(...factuurRows.map(row => row.number!.toUpperCase()))
+  }
+
+  const offerteRows = existingOffertes.filter(row => row.number && missingOffertes.has(row.number.toUpperCase()))
+  if (offerteRows.length > 0) {
+    const ids = offerteRows.map(row => row.id)
+    await supabase.from('line_items').delete().in('offerte_id', ids)
+    await supabase.from('facturen').update({ offerte_id: null }).in('offerte_id', ids)
+    const { error } = await supabase.from('offertes').delete().in('id', ids)
+    if (error) failed += offerteRows.length
+    else removedOffertes.push(...offerteRows.map(row => row.number!.toUpperCase()))
+  }
+
+  if (removedFacturen.length > 0 || removedOffertes.length > 0) {
+    forgetAdminSyncNumbers({ facturen: removedFacturen, offertes: removedOffertes })
+  }
+
+  return { facturen: removedFacturen.length, offertes: removedOffertes.length, failed }
 }
 
 // ── Concurrency helper ─────────────────────────────────────────────────────
@@ -330,12 +399,8 @@ async function withConcurrency<T, R>(
 // ── Route handler ──────────────────────────────────────────────────────────
 
 export async function POST() {
-  const facturenBase = process.env.ADMIN_FACTUREN_PATH
-  const offertesBase = process.env.ADMIN_OFFERTES_PATH
-
-  if (!facturenBase || !offertesBase) {
-    return NextResponse.json({ error: 'Mappaden niet geconfigureerd in .env.local' }, { status: 500 })
-  }
+  const facturenBases = getAdminFacturenPaths()
+  const offertesBases = getAdminOffertesPaths()
 
   const encoder = new TextEncoder()
 
@@ -349,30 +414,51 @@ export async function POST() {
         send({ type: 'status', message: 'Scannen...' })
 
         const rawFiles: RawFile[] = []
-        scanDir(facturenBase, rawFiles)
-        scanDir(offertesBase, rawFiles)
+        facturenBases.forEach(base => scanDir(base, rawFiles))
+        offertesBases.forEach(base => scanDir(base, rawFiles))
+        const scannedFiles: ScannedFile[] = rawFiles.map(f => ({ ...f, ...extractNumber(f.filename) }))
+        const currentFactuurNumbers = new Set(
+          scannedFiles.filter(f => f.type === 'factuur' && f.number).map(f => f.number!)
+        )
+        const currentOfferteNumbers = new Set(
+          scannedFiles.filter(f => f.type === 'offerte' && f.number).map(f => f.number!)
+        )
 
         const supabase = createClient()
         const [{ data: facturen }, { data: offertes }] = await Promise.all([
-          supabase.from('facturen').select('number'),
-          supabase.from('offertes').select('number'),
+          supabase.from('facturen').select('id, number'),
+          supabase.from('offertes').select('id, number'),
         ])
 
-        const factuurSet = new Set((facturen ?? []).map((f: any) => f.number.toUpperCase()))
-        const offerteSet = new Set((offertes ?? []).map((o: any) => o.number.toUpperCase()))
+        const existingFacturen = (facturen ?? []) as ExistingDocRow[]
+        const existingOffertes = (offertes ?? []) as ExistingDocRow[]
+        const removed = await pruneMissingDocs(
+          supabase,
+          existingFacturen,
+          existingOffertes,
+          currentFactuurNumbers,
+          currentOfferteNumbers,
+        )
 
-        const toProcess: ScannedFile[] = rawFiles
-          .map(f => ({ ...f, ...extractNumber(f.filename) }))
+        const factuurSet = new Set(existingFacturen.filter(f => f.number).map(f => f.number!.toUpperCase()))
+        const offerteSet = new Set(existingOffertes.filter(o => o.number).map(o => o.number!.toUpperCase()))
+
+        const toProcess: ScannedFile[] = scannedFiles
           .filter(f => {
             if (!f.number) return false
             const set = f.type === 'factuur' ? factuurSet : offerteSet
             return !set.has(f.number)
           })
 
-        send({ type: 'scan', total: toProcess.length, scanned: rawFiles.length })
+        mergeAdminSyncSeen({
+          facturen: currentFactuurNumbers,
+          offertes: currentOfferteNumbers,
+        })
+
+        send({ type: 'scan', total: toProcess.length, scanned: rawFiles.length, removed })
 
         if (toProcess.length === 0) {
-          send({ type: 'done', imported: 0, skipped: 0, failed: 0 })
+          send({ type: 'done', imported: 0, skipped: 0, failed: removed.failed, removed })
           controller.close()
           return
         }
@@ -391,7 +477,7 @@ export async function POST() {
           send({ type: 'progress', current: processed, total: toProcess.length, imported, skipped, failed })
         })
 
-        send({ type: 'done', imported, skipped, failed })
+        send({ type: 'done', imported, skipped, failed: failed + removed.failed, removed })
       } catch (err) {
         send({ type: 'error', message: String(err) })
       } finally {

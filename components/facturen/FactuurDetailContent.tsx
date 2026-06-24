@@ -10,6 +10,7 @@ import { getCompany, COMPANIES } from '@/lib/companies'
 import { Factuur, LineItem, CompanyId, FactuurStatus } from '@/lib/types'
 import { FactuurStatusBadge } from '@/components/StatusBadge'
 import { getFacturenFolder, pickFacturenFolder } from '@/lib/pdf/folderStorage'
+import { dataChanged } from '@/lib/events'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -71,6 +72,8 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
   const [companyId, setCompanyId] = useState<CompanyId>('tde')
   const [factuurDate, setFactuurDate] = useState('')
   const [factuurDueDate, setFactuurDueDate] = useState('')
+  const [revenueDate, setRevenueDate] = useState('')
+  const [paidAtDate, setPaidAtDate] = useState('')
 
   const fetchFactuur = useCallback(async () => {
     setLoading(true)
@@ -95,6 +98,8 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
       setCompanyId(data.companyId)
       setFactuurDate(data.date ? data.date.split('T')[0] : '')
       setFactuurDueDate(data.dueDate ? data.dueDate.split('T')[0] : '')
+      setRevenueDate(data.revenueDate ? data.revenueDate.split('T')[0] : '')
+      setPaidAtDate(data.paidAt ? data.paidAt.split('T')[0] : '')
     } catch {
       goBack()
     }
@@ -168,7 +173,7 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
   }
 
   const company = getCompany(factuur.companyId)
-  const isOverdue = factuur.status === 'te-laat' || (factuur.status === 'verzonden' && new Date(factuur.dueDate) < new Date())
+  const isOverdue = factuur.status === 'te-laat' || ((factuur.status === 'verzonden' || factuur.status === 'herinnering-verzonden') && new Date(factuur.dueDate) < new Date())
 
   const handleStatusChange = async (status: FactuurStatus) => {
     try {
@@ -182,6 +187,7 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
+      dataChanged('facturen')
       fetchFactuur()
     } catch {
       alert('Status wijzigen mislukt')
@@ -196,6 +202,7 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
     if (!confirm('Weet je zeker dat je deze factuur wilt verwijderen?')) return
     try {
       await fetch(`/api/facturen/${id}`, { method: 'DELETE' })
+      dataChanged('facturen')
       goBack()
     } catch {
       alert('Verwijderen mislukt')
@@ -241,9 +248,14 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
           molliePaymentUrl: molliePaymentUrl || undefined,
           date: factuurDate || undefined,
           dueDate: factuurDueDate || undefined,
+          revenueDate: revenueDate || null,
+          paidAt: factuur.status === 'betaald' || paidAtDate
+            ? (paidAtDate ? `${paidAtDate}T12:00:00+01:00` : null)
+            : null,
         }),
       })
       if (!patchRes.ok) throw new Error('Opslaan mislukt')
+      dataChanged('facturen')
 
       // Haal bijgewerkte factuur op
       const freshRes = await fetch(`/api/facturen/${id}`)
@@ -266,6 +278,8 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
         setCompanyId(freshData.companyId)
         setFactuurDate(freshData.date ? freshData.date.split('T')[0] : '')
         setFactuurDueDate(freshData.dueDate ? freshData.dueDate.split('T')[0] : '')
+        setRevenueDate(freshData.revenueDate ? freshData.revenueDate.split('T')[0] : '')
+        setPaidAtDate(freshData.paidAt ? freshData.paidAt.split('T')[0] : '')
       }
 
       setEditing(false)
@@ -340,7 +354,7 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
               </button>
               {statusMenuOpen && (
                 <div className="absolute top-full left-0 mt-1 bg-brand-card-bg border border-brand-card-border rounded-brand shadow-lg z-20 min-w-[160px] py-1">
-                  {(['concept', 'verzonden', 'betaald', 'te-laat', 'geannuleerd'] as FactuurStatus[])
+                  {(['concept', 'verzonden', 'herinnering-verzonden', 'betaald', 'te-laat', 'geannuleerd'] as FactuurStatus[])
                     .filter(s => s !== factuur.status)
                     .map(s => (
                       <button
@@ -391,9 +405,14 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
               <Send size={14} /> Markeer als verzonden
             </button>
           )}
-          {(factuur.status === 'verzonden' || factuur.status === 'te-laat') && (
+          {(factuur.status === 'verzonden' || factuur.status === 'herinnering-verzonden' || factuur.status === 'te-laat') && (
             <button onClick={handleMarkAsPaid} className="btn-primary">
               <CreditCard size={14} /> Markeer als betaald
+            </button>
+          )}
+          {(factuur.status === 'verzonden' || factuur.status === 'te-laat') && (
+            <button onClick={() => handleStatusChange('herinnering-verzonden')} className="btn-secondary text-brand-status-orange">
+              <Send size={14} /> Herinnering verzonden
             </button>
           )}
           <button onClick={handleDelete} className="btn-secondary text-brand-status-red hover:bg-brand-pink">
@@ -468,6 +487,40 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
                 <label className="label">Vervaldatum</label>
                 <input className="input" type="date" value={factuurDueDate}
                   onChange={e => setFactuurDueDate(e.target.value)} />
+              </div>
+              {(factuur.status === 'betaald' || paidAtDate) && (
+                <div className="col-span-2">
+                  <label className="label">
+                    Betaaldatum
+                    <span className="ml-1.5 text-brand-text-secondary font-normal">(datum waarop de betaling echt binnen was)</span>
+                  </label>
+                  <input className="input" type="date" value={paidAtDate}
+                    onChange={e => setPaidAtDate(e.target.value)} />
+                </div>
+              )}
+              <div className="col-span-2">
+                <label className="label">
+                  Omzet toerekenen aan
+                  <span className="ml-1.5 text-brand-text-secondary font-normal">(optioneel, overschrijft factuurdatum in rapportages)</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input className="input flex-1" type="date" value={revenueDate}
+                    onChange={e => setRevenueDate(e.target.value)} />
+                  {revenueDate && (
+                    <button
+                      type="button"
+                      onClick={() => setRevenueDate('')}
+                      className="btn-secondary py-1.5 px-3 text-caption shrink-0"
+                    >
+                      Wis
+                    </button>
+                  )}
+                </div>
+                {revenueDate && (
+                  <p className="mt-1 text-caption text-brand-text-secondary">
+                    Omzet telt mee in {new Date(revenueDate).toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' })}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -617,7 +670,7 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
                   <Send size={14} /> Markeer als verzonden
                 </button>
               )}
-              {(factuur.status === 'verzonden' || factuur.status === 'te-laat') && (
+              {(factuur.status === 'verzonden' || factuur.status === 'herinnering-verzonden' || factuur.status === 'te-laat') && (
                 <button onClick={handleMarkAsPaid} className="btn-primary">
                   <CreditCard size={14} /> Markeer als betaald
                 </button>
@@ -630,6 +683,11 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
               {factuur.status !== 'verzonden' && (
                 <button onClick={() => handleStatusChange('verzonden')} className="btn-secondary">
                   Verzonden
+                </button>
+              )}
+              {factuur.status !== 'herinnering-verzonden' && (
+                <button onClick={() => handleStatusChange('herinnering-verzonden')} className="btn-secondary text-brand-status-orange">
+                  <Send size={14} /> Herinnering verzonden
                 </button>
               )}
               {factuur.status !== 'betaald' && (

@@ -2,13 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import path from 'path'
 import { createClient } from '@/lib/supabase/server'
 import type { ExtractedDoc } from '../extract/route'
+import { isAllowedAdminDocumentPath } from '@/lib/admin/documentPaths'
 
 export const dynamic = 'force-dynamic'
-
-const ALLOWED_BASES = [
-  process.env.ADMIN_FACTUREN_PATH,
-  process.env.ADMIN_OFFERTES_PATH,
-].filter(Boolean) as string[]
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
@@ -23,8 +19,7 @@ export async function POST(req: NextRequest) {
   }
 
   const resolved = path.resolve(absolutePath)
-  const isAllowed = ALLOWED_BASES.some(base => resolved.startsWith(path.resolve(base)))
-  if (!isAllowed) {
+  if (!isAllowedAdminDocumentPath(resolved)) {
     return NextResponse.json({ error: 'Toegang geweigerd' }, { status: 403 })
   }
 
@@ -61,9 +56,12 @@ export async function POST(req: NextRequest) {
   const total = doc.total ?? Math.round((subtotal + btwAmount) * 100) / 100
 
   if (doc.type === 'factuur') {
-    const status = doc.status ?? 'verzonden'
+    const status = doc.status === 'betaald' || doc.paidAt ? 'betaald' : 'verzonden'
     const date = doc.date ?? now.split('T')[0]
     const dueDate = doc.dueDate ?? date
+    const paidAt = status === 'betaald'
+      ? (doc.paidAt ?? `${date}T12:00:00+01:00`)
+      : null
 
     const { data: row, error } = await supabase
       .from('facturen')
@@ -77,6 +75,7 @@ export async function POST(req: NextRequest) {
         date,
         due_date: dueDate,
         status,
+        paid_at: paidAt,
         subtotal,
         btw_percentage: btwPercentage,
         btw_amount: btwAmount,
@@ -106,7 +105,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, id: (row as { id: string }).id, number: numberUpper })
   } else {
-    const status = doc.status ?? 'verstuurd'
+    const validOfferteStatuses = new Set(['concept', 'opgeslagen', 'verstuurd', 'akkoord', 'afgewezen', 'verlopen', 'on-hold'])
+    const status = doc.status && validOfferteStatuses.has(doc.status) ? doc.status : 'verstuurd'
     const date = doc.date ?? now.split('T')[0]
     const validUntil = doc.validUntil ?? date
 

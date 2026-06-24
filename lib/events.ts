@@ -1,7 +1,7 @@
 // Lichtgewicht event-bus voor cross-page data synchronisatie
 // Dispatcht CustomEvents op window zodat alle gemounte pagina's mee-luisteren
 
-export type DataType = 'offertes' | 'facturen' | 'abonnementen'
+export type DataType = 'offertes' | 'facturen' | 'abonnementen' | 'betalingen'
 
 const EVENT_NAME = 'daley-data-changed'
 

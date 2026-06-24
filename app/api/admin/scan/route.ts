@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import { createClient } from '@/lib/supabase/server'
+import { getAdminFacturenPaths, getAdminOffertesPaths } from '@/lib/admin/documentPaths'
+import { mergeAdminSyncSeen } from '@/lib/admin/syncState'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,17 +52,13 @@ function scanDir(dir: string, results: { absolutePath: string; filename: string 
 }
 
 export async function GET() {
-  const facturenBase = process.env.ADMIN_FACTUREN_PATH
-  const offertesBase = process.env.ADMIN_OFFERTES_PATH
-
-  if (!facturenBase || !offertesBase) {
-    return NextResponse.json({ error: 'Mappaden niet geconfigureerd in .env.local' }, { status: 500 })
-  }
+  const facturenBases = getAdminFacturenPaths()
+  const offertesBases = getAdminOffertesPaths()
 
   // Verzamel alle PDFs
   const rawFiles: { absolutePath: string; filename: string }[] = []
-  scanDir(facturenBase, rawFiles)
-  scanDir(offertesBase, rawFiles)
+  facturenBases.forEach(base => scanDir(base, rawFiles))
+  offertesBases.forEach(base => scanDir(base, rawFiles))
 
   // Haal bestaande nummers op uit Supabase
   const supabase = createClient()
@@ -84,6 +82,11 @@ export async function GET() {
       matched: matchedId !== null,
       matchedId,
     }
+  })
+
+  mergeAdminSyncSeen({
+    facturen: scanned.filter(f => f.type === 'factuur' && f.matched && f.number).map(f => f.number!),
+    offertes: scanned.filter(f => f.type === 'offerte' && f.matched && f.number).map(f => f.number!),
   })
 
   return NextResponse.json(scanned)

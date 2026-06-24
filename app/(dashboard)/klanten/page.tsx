@@ -1,13 +1,27 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, type ReactNode } from 'react'
 import { Plus, Pencil, Trash2, Search, X, Check, RefreshCw, Building2 } from 'lucide-react'
 import { UurKlant, CompanyId, Offerte, Factuur } from '@/lib/types'
 import { COMPANIES, getCompany } from '@/lib/companies'
+import { useColumnOrder, useColumnDnD } from '@/lib/columnOrder'
+import { ColumnGrip } from '@/components/ColumnGrip'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
 }
+
+// Verschuifbare kolommen voor de klanten-tabel (de acties-kolom blijft vast achteraan).
+const KLANT_KOLOMMEN: { key: string; label: string; align?: 'right' | 'center' }[] = [
+  { key: 'naam', label: 'Naam' },
+  { key: 'contact', label: 'Contact' },
+  { key: 'adres', label: 'Adres' },
+  { key: 'bedrijf', label: 'Bedrijf' },
+  { key: 'uurtarief', label: 'Uurtarief', align: 'right' },
+  { key: 'offertes', label: 'Offertes', align: 'center' },
+  { key: 'facturen', label: 'Facturen', align: 'center' },
+  { key: 'gefactureerd', label: 'Gefactureerd', align: 'right' },
+]
 
 interface KlantForm {
   naam: string
@@ -50,6 +64,8 @@ function toForm(k: UurKlant): KlantForm {
 }
 
 export default function KlantenPage() {
+  const { order, move } = useColumnOrder('klanten', KLANT_KOLOMMEN.map(c => c.key))
+  const dnd = useColumnDnD(move)
   const [klanten, setKlanten] = useState<UurKlant[]>([])
   const [offertes, setOffertes] = useState<Offerte[]>([])
   const [facturen, setFacturen] = useState<Factuur[]>([])
@@ -234,14 +250,25 @@ export default function KlantenPage() {
           <table className="w-full text-body">
             <thead className="bg-brand-page-light border-b border-brand-page-medium">
               <tr>
-                <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide font-medium">Naam</th>
-                <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide font-medium">Contact</th>
-                <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide font-medium">Adres</th>
-                <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide font-medium">Bedrijf</th>
-                <th className="text-right px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide font-medium">Uurtarief</th>
-                <th className="text-center px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide font-medium">Offertes</th>
-                <th className="text-center px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide font-medium">Facturen</th>
-                <th className="text-right px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide font-medium">Gefactureerd</th>
+                {order.map(key => {
+                  const col = KLANT_KOLOMMEN.find(c => c.key === key)
+                  if (!col) return null
+                  const alignCls = col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'
+                  const innerJustify = col.align === 'right' ? 'justify-end' : col.align === 'center' ? 'justify-center' : ''
+                  return (
+                    <th
+                      key={key}
+                      {...dnd.headerProps(key)}
+                      className={`group/col px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide font-medium cursor-grab active:cursor-grabbing select-none hover:bg-black/[0.03] transition-colors ${alignCls} ${dnd.isOver(key) ? 'border-l-2 border-indigo-500 bg-indigo-50/40' : 'border-l-2 border-transparent'} ${dnd.isDragging(key) ? 'opacity-40' : ''}`}
+                      title="Sleep om te verplaatsen"
+                    >
+                      <span className={`inline-flex items-center gap-1 ${innerJustify}`}>
+                        <ColumnGrip />
+                        {col.label}
+                      </span>
+                    </th>
+                  )
+                })}
                 <th className="text-center px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide font-medium w-20"></th>
               </tr>
             </thead>
@@ -249,20 +276,24 @@ export default function KlantenPage() {
               {filteredKlanten.map(k => {
                 const s = stats[k.naam.toLowerCase()] ?? { offertes: 0, facturen: 0, gefactureerd: 0, openstaand: 0 }
                 const company = k.companyId ? getCompany(k.companyId) : null
-                return (
-                  <tr key={k.id} className="hover:bg-brand-page-light/50 transition-colors group">
-                    <td className="px-5 py-3.5 font-semibold text-brand-text-primary">
+                const cell: Record<string, ReactNode> = {
+                  naam: (
+                    <td key="naam" className="px-5 py-3.5 font-semibold text-brand-text-primary">
                       {k.naam}
                       {k.klantnummer && (
                         <span className="ml-2 text-caption text-brand-text-secondary/60">#{k.klantnummer}</span>
                       )}
                     </td>
-                    <td className="px-5 py-3.5 text-brand-text-secondary">
+                  ),
+                  contact: (
+                    <td key="contact" className="px-5 py-3.5 text-brand-text-secondary">
                       {k.contactpersoon && <div>{k.contactpersoon}</div>}
                       {k.email && <div className="text-caption">{k.email}</div>}
                       {!k.contactpersoon && !k.email && <span className="text-brand-text-secondary/40">–</span>}
                     </td>
-                    <td className="px-5 py-3.5 text-brand-text-secondary">
+                  ),
+                  adres: (
+                    <td key="adres" className="px-5 py-3.5 text-brand-text-secondary">
                       {k.adres || k.postcode || k.stad ? (
                         <>
                           {k.adres && <div>{k.adres}</div>}
@@ -270,24 +301,35 @@ export default function KlantenPage() {
                         </>
                       ) : <span className="text-brand-text-secondary/40">–</span>}
                     </td>
-                    <td className="px-5 py-3.5">
+                  ),
+                  bedrijf: (
+                    <td key="bedrijf" className="px-5 py-3.5">
                       {company ? (
                         <span className="pill" style={{ backgroundColor: company.bgColor, color: company.color }}>
                           {company.shortName}
                         </span>
                       ) : <span className="text-brand-text-secondary/40">–</span>}
                     </td>
-                    <td className="px-5 py-3.5 text-right text-brand-text-primary font-medium">
+                  ),
+                  uurtarief: (
+                    <td key="uurtarief" className="px-5 py-3.5 text-right text-brand-text-primary font-medium">
                       {k.standaardUurtarief > 0 ? `${euro(k.standaardUurtarief)}/u` : <span className="text-brand-text-secondary/40">–</span>}
                     </td>
-                    <td className="px-5 py-3.5 text-center text-brand-text-primary">{s.offertes || <span className="text-brand-text-secondary/40">–</span>}</td>
-                    <td className="px-5 py-3.5 text-center text-brand-text-primary">{s.facturen || <span className="text-brand-text-secondary/40">–</span>}</td>
-                    <td className="px-5 py-3.5 text-right font-semibold text-brand-text-primary">
+                  ),
+                  offertes: <td key="offertes" className="px-5 py-3.5 text-center text-brand-text-primary">{s.offertes || <span className="text-brand-text-secondary/40">–</span>}</td>,
+                  facturen: <td key="facturen" className="px-5 py-3.5 text-center text-brand-text-primary">{s.facturen || <span className="text-brand-text-secondary/40">–</span>}</td>,
+                  gefactureerd: (
+                    <td key="gefactureerd" className="px-5 py-3.5 text-right font-semibold text-brand-text-primary">
                       {s.gefactureerd > 0 ? euro(s.gefactureerd) : <span className="text-brand-text-secondary/40">–</span>}
                       {s.openstaand > 0 && (
                         <div className="text-caption text-amber-600 font-normal">{euro(s.openstaand)} open</div>
                       )}
                     </td>
+                  ),
+                }
+                return (
+                  <tr key={k.id} className="hover:bg-brand-page-light/50 transition-colors group">
+                    {order.map(key => cell[key])}
                     <td className="px-5 py-3.5 text-center">
                       <div className="flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button

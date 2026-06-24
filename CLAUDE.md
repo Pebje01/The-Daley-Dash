@@ -18,28 +18,63 @@
 app/
 ├── (auth)/login/           # Login pagina (Supabase auth)
 ├── (dashboard)/            # Beschermd achter auth middleware
-│   ├── page.tsx            # Dashboard homepage
+│   ├── page.tsx            # Dashboard homepage (KPI's, pipeline, CRM-strip)
 │   ├── layout.tsx          # Sidebar + page background
-│   ├── offertes/           # Offertes overzicht + nieuw formulier
-│   ├── facturen/           # Facturen overzicht + nieuw formulier
-│   └── klanten/            # Klanten overzicht
+│   ├── offertes/           # Offertes overzicht + detail
+│   ├── facturen/           # Facturen overzicht + detail
+│   ├── betalingen/         # Betalingen (vereist betalingen-tabel, zie migrations)
+│   ├── abonnementen/       # Abonnementen + MRR
+│   ├── klanten/            # Urenregistratie-klanten (uren_klanten)
+│   ├── taken/              # Taken kanban
+│   ├── uren/               # Urenregistratie
+│   ├── belasting/          # BTW-rapportage + aangifte voorbereiding
+│   ├── crm/                # CRM-module (zie hieronder)
+│   │   ├── daley-list/ leads/ bedrijven/ contacten/ opdrachten/ facturen/
+│   └── crm-sync/           # ClickUp sync status + handmatige sync
+├── api/
+│   ├── crm/                # relations (id-based), stats, bedrijven (lite, voor uren-FK)
+│   ├── integrations/clickup/  # sync, cron, webhook, records CRUD, promote
+│   └── ...                 # offertes, facturen, uren, taken, betalingen, etc.
+├── o/[slug]/ + offerte/[id]/  # Publieke offertepagina's
 ├── fonts/                  # Geist (sans) + Uxum (serif)
-├── globals.css             # Tailwind + component classes (card, btn, input, pill)
-└── layout.tsx              # Root layout met font registratie
-components/                 # Sidebar, StatusBadge, FileTypeIcon, OfferteFilesBrowser
-hooks/
-└── useDirectoryFiles.ts    # React hook voor File System Access API
+└── globals.css             # Tailwind + component classes (card, btn, input, pill)
+components/
+├── ClickUpCrmRecordsPage.tsx  # Generieke CRM-pagina (lijst/board/detail/bulk)
+├── Sidebar.tsx, StatusBadge.tsx, DrawerHost/DrawerContext, ...
 lib/
-├── companies.ts            # Bedrijfsconfiguratie (TDE, WGB, etc.)
-├── file-system.ts          # File System Access API utilities + IndexedDB
-├── store.ts                # LocalStorage data helpers
+├── clickup/                # ClickUp API client, sync, config (lijst-id's uit env)
+├── supabase/               # Per-tabel data-helpers + client/server/middleware
+├── companies.ts            # Bedrijfsconfiguratie (TDE, WGB, daleyphotography)
 ├── types.ts                # TypeScript types
-└── supabase/               # Supabase client, server, middleware
-types/
-└── file-system-access.d.ts # TS type declarations voor File System Access API
-public/                     # Statische bestanden
+└── pdf/                    # Offerte/factuur PDF-generatie
+scripts/
+├── run-dash.sh             # LaunchAgent start-script (com.daley.daleydash, poort 3003)
+└── fix-data-audit.mjs      # Datafixes uit audit 2026-06-09 (dry-run / --apply)
+supabase/migrations/        # SQL-migraties (handmatig uitvoeren in SQL Editor)
 middleware.ts               # Auth redirect middleware
 ```
+
+## CRM-module (BELANGRIJK)
+
+### Architectuur: één source of truth
+- **Supabase is de bron** voor CRM-data (leads, bedrijven, contacten, opdrachten, facturatie, Daley's List). ClickUp is losgekoppeld (juni 2026) en dient alleen nog als archief.
+- Alle data staat in de tabel **`clickup_crm_records`** (alle entiteiten in één tabel, met `entity_type`, `clickup_task_id`, `custom_fields` JSON). Records aangemaakt na de loskoppeling hebben `clickup_task_id` met prefix `local-`.
+- Schrijven gaat via **`lib/crm/store.ts`** (create/update/delete/promote), rechtstreeks naar Supabase. Veldformaten blijven ClickUp-compatibel: drop_down = orderindex, relaties = array van task-stubs, labels = array van option-ids.
+- **ClickUp-sync is uitgeschakeld:** de routes cron/sync/webhook onder `/api/integrations/clickup/` geven 410. NOOIT opnieuw activeren; een sync zou lokale wijzigingen overschrijven. De oude synccode in `lib/clickup/sync.ts` wordt niet meer aangeroepen.
+- **Relaties** (bedrijf <-> contact <-> lead <-> opdracht) zitten in custom fields van het type `tasks`/`list_relationship`. `/api/crm/relations?id=...` leidt ze in beide richtingen af uit `clickup_crm_records`. NIET de legacy-tabellen gebruiken.
+- **Legacy-tabellen** `crm_bedrijven`, `crm_contacten`, `crm_leads`, `crm_opdrachten`, `crm_facturatie` zijn een eenmalige import en worden NIET bijgewerkt. Enige actieve rol: `uren_klanten.crm_bedrijf_id` verwijst naar `crm_bedrijven` (uren-koppeling). Bouw er geen nieuwe features op.
+
+### ClickUpCrmRecordsPage features
+- Lijst (gegroepeerd op status) + Board view, zoeken, status-filter dropdown
+- Kolomsortering (klik op kolomkop), bulk-selectie met bulk status/verwijderen
+- Detail-modal: naam, status, notities (dashboard-only, in `raw.notes`), deadline, bewerkbare custom fields (dropdown/labels/datum/tekst/bedrag), relatiepaneel, uren-koppeling, promote (lead -> opdracht -> factuur)
+- Custom fields schrijven: PATCH `/api/integrations/clickup/records/[id]` met `custom_fields: [{id, value}]`; dropdowns willen option-id's, labels arrays van option-id's, datums ms-timestamps
+
+## Data-afspraken
+- `exclude_from_revenue` en `revenue_date` op facturen worden gerespecteerd door ZOWEL de facturenpagina als `getFactuurStats` (dashboardkaarten). Nieuwe omzetberekeningen moeten deze velden ook respecteren.
+- Verwachte omzet telt alleen NIET-gefactureerde uren mee (gefactureerde uren zitten al in facturen).
+- Migraties in `supabase/migrations/` draaien niet automatisch: uitvoeren via de Supabase SQL Editor of de Management API (`POST /v1/projects/fvywfygsjslojpvqrpxw/database/query`). Alle migraties t/m 20260610 zijn uitgevoerd.
+- Supabase legacy API keys zijn uitgeschakeld; gebruik `SUPABASE_SECRET_KEY` (nieuwe stijl), niet `SUPABASE_SERVICE_ROLE_KEY`.
 
 ## Deployment & Architectuur
 

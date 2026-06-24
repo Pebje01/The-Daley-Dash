@@ -83,7 +83,7 @@ export interface Company {
 }
 
 export type OfferteStatus = 'concept' | 'opgeslagen' | 'verstuurd' | 'akkoord' | 'afgewezen' | 'verlopen' | 'on-hold'
-export type FactuurStatus = 'concept' | 'verzonden' | 'betaald' | 'te-laat' | 'geannuleerd'
+export type FactuurStatus = 'concept' | 'verzonden' | 'herinnering-verzonden' | 'betaald' | 'te-laat' | 'geannuleerd'
 
 export interface LineItem {
   id: string
@@ -228,7 +228,7 @@ export const STATUS_CATEGORIES = {
   closedWon: ['akkoord'] as OfferteStatus[],
   closedLost: ['afgewezen', 'verlopen'] as OfferteStatus[],
   // Facturen
-  factuurOpen: ['verzonden', 'te-laat'] as FactuurStatus[],
+  factuurOpen: ['verzonden', 'herinnering-verzonden', 'te-laat'] as FactuurStatus[],
   factuurClosed: ['betaald', 'geannuleerd'] as FactuurStatus[],
 }
 

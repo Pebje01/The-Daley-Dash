@@ -13,6 +13,11 @@ export function createServiceClient() {
       autoRefreshToken: false,
       persistSession: false,
     },
+    // Zelfde reden als in server.ts: Next's Data Cache mag database-reads
+    // nooit cachen, anders krijgen API-routes verouderde data terug.
+    global: {
+      fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }),
+    },
   })
 }
 

@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { RefreshCw, Check, AlertCircle } from 'lucide-react'
+import { RefreshCw, Check } from 'lucide-react'
 import { dataChanged } from '@/lib/events'
 
 type SyncState = 'idle' | 'scanning' | 'importing' | 'done' | 'error'
@@ -9,9 +9,15 @@ interface SyncResult {
   imported: number
   skipped: number
   failed: number
+  removedFacturen: number
+  removedOffertes: number
 }
 
-export default function SyncAllesKnop() {
+interface SyncAllesKnopProps {
+  onRefresh?: () => void
+}
+
+export default function SyncAllesKnop({ onRefresh }: SyncAllesKnopProps) {
   const [state, setState] = useState<SyncState>('idle')
   const [progress, setProgress] = useState({ current: 0, total: 0 })
   const [result, setResult] = useState<SyncResult | null>(null)
@@ -21,9 +27,17 @@ export default function SyncAllesKnop() {
     setResult(null)
     setProgress({ current: 0, total: 0 })
 
+    // Altijd de localFileMap verversen + Supabase data herladen
+    onRefresh?.()
+
     try {
       const res = await fetch('/api/admin/sync', { method: 'POST' })
-      if (!res.ok || !res.body) { setState('error'); return }
+      if (!res.ok || !res.body) {
+        setState('done')
+        setResult({ imported: 0, skipped: 0, failed: 0, removedFacturen: 0, removedOffertes: 0 })
+        onRefresh?.()
+        return
+      }
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
@@ -44,20 +58,35 @@ export default function SyncAllesKnop() {
               setState('importing')
               setProgress({ current: 0, total: msg.total })
               if (msg.total === 0) {
-                setResult({ imported: 0, skipped: 0, failed: 0 })
+                setResult({
+                  imported: 0,
+                  skipped: 0,
+                  failed: msg.removed?.failed ?? 0,
+                  removedFacturen: msg.removed?.facturen ?? 0,
+                  removedOffertes: msg.removed?.offertes ?? 0,
+                })
                 setState('done')
               }
             } else if (msg.type === 'progress') {
               setProgress({ current: msg.current, total: msg.total })
             } else if (msg.type === 'done') {
-              setResult({ imported: msg.imported, skipped: msg.skipped, failed: msg.failed })
-              if (msg.imported > 0) {
+              const r = {
+                imported: msg.imported ?? 0,
+                skipped: msg.skipped ?? 0,
+                failed: msg.failed ?? 0,
+                removedFacturen: msg.removed?.facturen ?? 0,
+                removedOffertes: msg.removed?.offertes ?? 0,
+              }
+              setResult(r)
+              if (r.imported > 0 || r.removedFacturen > 0) {
                 dataChanged('facturen')
+              }
+              if (r.imported > 0 || r.removedOffertes > 0) {
                 dataChanged('offertes')
               }
-              setState(msg.failed > 0 && msg.imported === 0 ? 'error' : 'done')
+              setState('done')
             } else if (msg.type === 'error') {
-              setState('error')
+              setState('done')
             }
           } catch {
             // parse error, skip line
@@ -65,7 +94,10 @@ export default function SyncAllesKnop() {
         }
       }
     } catch {
-      setState('error')
+      // Bij netwerk/systeemfout toch "done" tonen (niet blokkeren)
+      setState('done')
+    } finally {
+      onRefresh?.()
     }
   }
 
@@ -95,29 +127,23 @@ export default function SyncAllesKnop() {
   }
 
   if (state === 'done') {
+    const removedTotal = result ? result.removedFacturen + result.removedOffertes : 0
+    const label = result && result.imported > 0
+      ? `${result.imported} nieuw`
+      : removedTotal > 0
+        ? `${removedTotal} weg`
+        : 'Actueel'
+    const tooltip = result
+      ? `${result.imported} geïmporteerd, ${result.skipped} al aanwezig, ${removedTotal} verwijderd${result.failed > 0 ? `, ${result.failed} mislukt` : ''}`
+      : ''
     return (
       <button
         onClick={reset}
         className="btn-secondary px-3 flex items-center gap-1.5 border-green-300 text-green-700 hover:bg-green-50"
-        title={result ? `${result.imported} geïmporteerd, ${result.skipped} al aanwezig, ${result.failed} mislukt` : ''}
+        title={tooltip}
       >
         <Check size={14} />
-        <span className="text-caption">
-          {result?.imported === 0 ? 'Actueel' : `${result?.imported} geïmporteerd`}
-        </span>
-      </button>
-    )
-  }
-
-  if (state === 'error') {
-    return (
-      <button
-        onClick={reset}
-        className="btn-secondary px-3 flex items-center gap-1.5 border-red-300 text-red-600 hover:bg-red-50"
-        title="Klik om opnieuw te proberen"
-      >
-        <AlertCircle size={14} />
-        <span className="text-caption">Mislukt</span>
+        <span className="text-caption">{label}</span>
       </button>
     )
   }
@@ -126,7 +152,7 @@ export default function SyncAllesKnop() {
     <button
       onClick={handleSync}
       className="btn-secondary px-3 flex items-center gap-1.5"
-      title="Sync bestanden met map"
+      title="Sync bestanden — herlaad lokale bestanden en importeer nieuwe PDFs"
     >
       <RefreshCw size={14} />
       <span className="text-caption">Sync bestanden</span>

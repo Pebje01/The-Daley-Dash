@@ -1,13 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/integrations/clickup/cron",
-      "schedule": "0 8 * * *"
-    },
-    {
       "path": "/api/cron/dagelijkse-acties",
       "schedule": "0 8 * * *"
     }
   ]
 }
-

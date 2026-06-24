@@ -3,6 +3,14 @@ import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
+function isMissingActiesTableError(error: any) {
+  return (
+    error?.code === 'PGRST205' ||
+    (error?.code === '42P01' && /acties/.test(error?.message || '')) ||
+    /Could not find the table 'public\.acties'/.test(error?.message || '')
+  )
+}
+
 export async function GET() {
   const supabase = createClient()
   const { data, error } = await supabase
@@ -11,7 +19,10 @@ export async function GET() {
     .eq('status', 'gepland')
     .order('created_at', { ascending: false })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    if (isMissingActiesTableError(error)) return NextResponse.json([])
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 
   const acties = (data ?? []).map((r: any) => ({
     id: r.id,

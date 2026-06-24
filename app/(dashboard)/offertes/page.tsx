@@ -1,5 +1,5 @@
 'use client'
-import { Suspense, useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { Suspense, useEffect, useState, useCallback, useRef, useMemo, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Plus, Search, RefreshCw, ChevronDown, Trash2, Upload, FolderOpen, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
@@ -13,6 +13,19 @@ import { dataChanged, onDataChanged } from '@/lib/events'
 import { pickOfferteFolder, getOfferteFolder } from '@/lib/pdf/folderStorage'
 import { useDrawer } from '@/components/DrawerContext'
 import { createClient } from '@/lib/supabase/client'
+import { useColumnOrder, useColumnDnD } from '@/lib/columnOrder'
+import { ColumnGrip } from '@/components/ColumnGrip'
+
+// Verschuifbare kolommen voor de offertes-tabel (acties blijft vast achteraan).
+const OFFERTE_KOLOMMEN: { key: string; label: string; align?: 'right' }[] = [
+  { key: 'number', label: 'Nummer' },
+  { key: 'client', label: 'Klant' },
+  { key: 'companyId', label: 'Bedrijf' },
+  { key: 'date', label: 'Datum' },
+  { key: 'validUntil', label: 'Geldig tot' },
+  { key: 'amount', label: 'Bedrag', align: 'right' },
+  { key: 'status', label: 'Status', align: 'right' },
+]
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -252,6 +265,8 @@ function OffertesContent() {
   const searchParams = useSearchParams()
   const { activeCompany } = useActiveCompany()
   const { openDrawer } = useDrawer()
+  const { order, move } = useColumnOrder('offertes', OFFERTE_KOLOMMEN.map(c => c.key))
+  const dnd = useColumnDnD(move)
   const [offertes, setOffertes] = useState<Offerte[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -264,19 +279,42 @@ function OffertesContent() {
   const [deleting, setDeleting] = useState(false)
   const [folderName, setFolderName] = useState<string | null>(null)
   const [localFileMap, setLocalFileMap] = useState<Map<string, string>>(new Map())
+  const localFileSignatureRef = useRef('')
+  const backgroundSyncRef = useRef(false)
   const [sortField, setSortField] = useState<OfferteSortField>('date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
-  useEffect(() => {
+  const fetchLocalFiles = useCallback(() => {
     fetch('/api/admin/scan')
       .then(r => r.json())
       .then((all: { number: string | null; absolutePath: string; type: string }[]) => {
         const map = new Map<string, string>()
         all.filter(f => f.type === 'offerte' && f.number).forEach(f => map.set(f.number!.toUpperCase(), f.absolutePath))
+        const signature = Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([n, p]) => `${n}:${p}`).join('|')
+        const previousSignature = localFileSignatureRef.current
+        localFileSignatureRef.current = signature
         setLocalFileMap(map)
+        if (previousSignature && previousSignature !== signature && !backgroundSyncRef.current) {
+          backgroundSyncRef.current = true
+          fetch('/api/admin/sync', { method: 'POST' })
+            .then(r => r.text())
+            .finally(() => {
+              backgroundSyncRef.current = false
+              dataChanged('facturen')
+              dataChanged('offertes')
+            })
+        }
       })
       .catch(() => {})
   }, [])
+
+  useEffect(() => { fetchLocalFiles() }, [fetchLocalFiles])
+
+  // Auto-refresh lokale bestanden elke 30 seconden
+  useEffect(() => {
+    const id = setInterval(fetchLocalFiles, 30_000)
+    return () => clearInterval(id)
+  }, [fetchLocalFiles])
 
   const callFileAction = async (absolutePath: string, action: 'open' | 'reveal') => {
     await fetch('/api/admin/reveal', {
@@ -325,6 +363,19 @@ function OffertesContent() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'offertes' }, () => fetchOffertes())
       .subscribe()
     return () => { supabase.removeChannel(channel) }
+  }, [fetchOffertes])
+
+  // Vangnet: herlaad zodra het venster weer focus/zichtbaar wordt.
+  // Werkt ook als Supabase Realtime niet aanstaat.
+  useEffect(() => {
+    const onFocus = () => fetchOffertes()
+    const onVisible = () => { if (document.visibilityState === 'visible') fetchOffertes() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [fetchOffertes])
 
   const filtered = offertes.filter(o => {
@@ -462,10 +513,7 @@ function OffertesContent() {
             <FolderOpen size={15} />
             {folderName && <span className="text-caption max-w-[120px] truncate">{folderName}</span>}
           </button>
-          <button onClick={fetchOffertes} className="btn-secondary px-2.5" title="Vernieuwen">
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
-          <SyncAllesKnop />
+          <SyncAllesKnop onRefresh={() => { fetchOffertes(); fetchLocalFiles() }} />
           <button onClick={() => openDrawer({ type: 'offerte-nieuw' })} className="btn-primary">
             <Plus size={15} /> Nieuwe offerte
           </button>
@@ -573,36 +621,45 @@ function OffertesContent() {
         <table className="w-full text-body">
           <thead className="bg-brand-page-light border-b border-brand-card-border/30">
             <tr>
-              <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide">
-                <button onClick={() => handleSort('number')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Nummer {si('number')}</button>
-              </th>
-              <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">
-                <button onClick={() => handleSort('client')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Klant {si('client')}</button>
-              </th>
-              <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">
-                <button onClick={() => handleSort('companyId')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Bedrijf {si('companyId')}</button>
-              </th>
-              <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">
-                <button onClick={() => handleSort('date')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Datum {si('date')}</button>
-              </th>
-              <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">
-                <button onClick={() => handleSort('validUntil')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Geldig tot {si('validUntil')}</button>
-              </th>
-              <th className="text-right px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">
-                <div className="flex items-center justify-end gap-2">
-                  <button
-                    onClick={() => setShowInclBtw(!showInclBtw)}
-                    className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-brand-page-medium text-brand-text-secondary hover:text-brand-text-primary transition-colors normal-case"
-                  >
-                    {showInclBtw ? 'incl' : 'excl'}
-                  </button>
-                  <button onClick={() => handleSort('amount')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Bedrag {si('amount')}</button>
-                </div>
-              </th>
-              <th className="text-right px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide border-l border-brand-card-border/15">
-                <button onClick={() => handleSort('status')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Status {si('status')}</button>
-              </th>
-              <th className="px-3 py-3 border-l border-brand-card-border/15" />
+              {(() => {
+                const headerInner: Record<string, ReactNode> = {
+                  number: <button onClick={() => handleSort('number')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Nummer {si('number')}</button>,
+                  client: <button onClick={() => handleSort('client')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Klant {si('client')}</button>,
+                  companyId: <button onClick={() => handleSort('companyId')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Bedrijf {si('companyId')}</button>,
+                  date: <button onClick={() => handleSort('date')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Datum {si('date')}</button>,
+                  validUntil: <button onClick={() => handleSort('validUntil')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Geldig tot {si('validUntil')}</button>,
+                  amount: (
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => setShowInclBtw(!showInclBtw)}
+                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-brand-page-medium text-brand-text-secondary hover:text-brand-text-primary transition-colors normal-case"
+                      >
+                        {showInclBtw ? 'incl' : 'excl'}
+                      </button>
+                      <button onClick={() => handleSort('amount')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Bedrag {si('amount')}</button>
+                    </div>
+                  ),
+                  status: <button onClick={() => handleSort('status')} className="inline-flex items-center gap-1 hover:text-brand-text-primary transition-colors">Status {si('status')}</button>,
+                }
+                return order.map(key => {
+                  const col = OFFERTE_KOLOMMEN.find(c => c.key === key)
+                  if (!col) return null
+                  return (
+                    <th
+                      key={key}
+                      {...dnd.headerProps(key)}
+                      className={`group/col px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide cursor-grab active:cursor-grabbing select-none hover:bg-black/[0.03] transition-colors ${col.align === 'right' ? 'text-right' : 'text-left'} ${dnd.isOver(key) ? 'border-l-2 border-indigo-500 bg-indigo-50/40' : 'border-l-2 border-transparent'} ${dnd.isDragging(key) ? 'opacity-40' : ''}`}
+                      title="Sleep om te verplaatsen · klik op de titel om te sorteren"
+                    >
+                      <span className={`inline-flex items-center gap-1 ${col.align === 'right' ? 'justify-end' : ''}`}>
+                        <ColumnGrip />
+                        {headerInner[key]}
+                      </span>
+                    </th>
+                  )
+                })
+              })()}
+              <th className="px-3 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-brand-card-border/15">
@@ -666,13 +723,9 @@ function OffertesContent() {
             ) : sorted.map(o => {
               const co = getCompany(o.companyId)
               const isExpired = o.status === 'verstuurd' && new Date(o.validUntil) < new Date()
-              return (
-                <tr
-                  key={o.id}
-                  className="hover:bg-brand-page-light transition-colors group"
-                >
-                  {/* Nummer, opent drawer + lokale bestandsknoppen */}
-                  <td className="px-5 py-3.5" onClick={e => e.stopPropagation()}>
+              const cell: Record<string, ReactNode> = {
+                number: (
+                  <td key="number" className="px-5 py-3.5" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => openDrawer({ type: 'offerte-detail', id: o.id })}
@@ -703,50 +756,57 @@ function OffertesContent() {
                       })()}
                     </div>
                   </td>
-
-                  {/* Klant, bewerkbaar */}
+                ),
+                client: (
                   <InlineEditableCell
+                    key="client"
                     value={o.client.name}
                     type="text"
                     onSave={(newName) => handleClientNameChange(o.id, newName)}
                     validate={(v) => v.trim() === '' ? 'Klantnaam is verplicht' : null}
-                    className="px-5 py-3.5 font-semibold text-brand-text-primary border-l border-brand-card-border/10"
+                    className="px-5 py-3.5 font-semibold text-brand-text-primary"
                   />
-
-                  {/* Bedrijf, read-only */}
-                  <td className="px-5 py-3.5 border-l border-brand-card-border/10">
+                ),
+                companyId: (
+                  <td key="companyId" className="px-5 py-3.5">
                     <span className="text-pill px-2 py-0.5 rounded font-semibold" style={{ backgroundColor: co.bgColor, color: co.color }}>
                       {co.shortName}
                     </span>
                   </td>
-
-                  {/* Datum, bewerkbaar */}
+                ),
+                date: (
                   <InlineEditableCell
+                    key="date"
                     value={o.date.split('T')[0]}
                     type="date"
                     onSave={(newDate) => handleDateChange(o.id, newDate)}
                     formatDisplay={(d) => new Date(d).toLocaleDateString('nl-NL')}
-                    className="px-5 py-3.5 text-brand-text-secondary border-l border-brand-card-border/10"
+                    className="px-5 py-3.5 text-brand-text-secondary"
                   />
-
-                  {/* Geldig tot, automatisch berekend, read-only */}
-                  <td className={`px-5 py-3.5 border-l border-brand-card-border/10 ${isExpired ? 'text-brand-status-red font-semibold' : 'text-brand-text-secondary'}`}>
+                ),
+                validUntil: (
+                  <td key="validUntil" className={`px-5 py-3.5 ${isExpired ? 'text-brand-status-red font-semibold' : 'text-brand-text-secondary'}`}>
                     {new Date(o.validUntil).toLocaleDateString('nl-NL')}
                   </td>
-
-                  {/* Bedrag, read-only */}
-                  <td className="px-5 py-3.5 text-right font-semibold text-brand-text-primary border-l border-brand-card-border/10">{euro(showInclBtw ? o.total : o.subtotal)}</td>
-
-                  {/* Status, bewerkbaar via bestaande dropdown */}
-                  <td className="px-5 py-3.5 text-right border-l border-brand-card-border/10">
+                ),
+                amount: <td key="amount" className="px-5 py-3.5 text-right font-semibold text-brand-text-primary">{euro(showInclBtw ? o.total : o.subtotal)}</td>,
+                status: (
+                  <td key="status" className="px-5 py-3.5 text-right">
                     <InlineStatusSelect
                       status={isExpired ? 'verlopen' : o.status}
                       onChangeStatus={(newStatus) => handleStatusChange(o.id, newStatus)}
                     />
                   </td>
-
+                ),
+              }
+              return (
+                <tr
+                  key={o.id}
+                  className="hover:bg-brand-page-light transition-colors group"
+                >
+                  {order.map(key => cell[key])}
                   {/* Acties */}
-                  <td className="px-3 py-3.5 text-right border-l border-brand-card-border/10" onClick={e => e.stopPropagation()}>
+                  <td className="px-3 py-3.5 text-right" onClick={e => e.stopPropagation()}>
                     <button
                       onClick={() => setDeleteTarget({ id: o.id, number: o.number, clientName: o.client.name })}
                       className="p-1.5 rounded-brand-sm text-brand-text-secondary hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"

@@ -13,6 +13,7 @@ const offerteColors: Record<OfferteStatus, string> = {
 const factuurColors: Record<FactuurStatus, string> = {
   concept:     'bg-brand-page-medium text-brand-text-secondary',
   verzonden:   'bg-brand-blue-accent text-white',
+  'herinnering-verzonden': 'bg-brand-status-orange/15 text-brand-status-orange',
   betaald:     'bg-brand-lime text-brand-lime-accent',
   'te-laat':   'bg-brand-pink text-brand-pink-accent',
   geannuleerd: 'bg-brand-page-medium text-brand-text-secondary',
@@ -27,6 +28,7 @@ const labels: Record<string, string> = {
   afgewezen:    'Afgewezen',
   verlopen:     'Verlopen',
   'on-hold':    'On hold',
+  'herinnering-verzonden': 'Herinnering verzonden',
   betaald:      'Betaald',
   'te-laat':    'Te laat',
   geannuleerd:  'Geannuleerd',

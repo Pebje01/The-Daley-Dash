@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { AlertCircle, Clock, XCircle, CheckCircle2, X, Send } from 'lucide-react'
 import { Actie } from '@/lib/types'
 import { getCompany } from '@/lib/companies'
+import { dataChanged, onDataChanged } from '@/lib/events'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -31,6 +32,8 @@ function ActieRij({ actie, onUpdate }: { actie: Actie; onUpdate: () => void }) {
       setBezig(false)
       return
     }
+    // Stuur-actie wijzigt ook de factuur (herinnering verstuurd), dus laat alles meeleven
+    dataChanged('facturen')
     onUpdate()
     setBezig(false)
   }
@@ -110,6 +113,9 @@ export default function ActiesWidget() {
   }, [])
 
   useEffect(() => { fetchActies() }, [fetchActies])
+
+  // Ververs mee wanneer facturen of offertes elders wijzigen (drawer, lijstpagina)
+  useEffect(() => onDataChanged(() => fetchActies()), [fetchActies])
 
   if (loading || acties.length === 0) return null
 

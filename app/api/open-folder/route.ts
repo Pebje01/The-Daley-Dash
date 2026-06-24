@@ -9,8 +9,8 @@ const HOME = process.env.DALEY_WERK_ROOT ?? `${homedir()}/Documents/DALEY WERK`
 
 const FACTUREN_PATHS: Record<string, string> = {
   wgb: `${HOME}/We Grow Brands/Bedrijf Administratie/Facturen`,
-  daleyphotography: `${HOME}/Bedrijf Administratie/Facturen`,
-  tde: `${HOME}/Bedrijf Administratie/Facturen`,
+  daleyphotography: `${HOME}/Bedrijf Administratie/Verkoopfacturen`,
+  tde: `${HOME}/Bedrijf Administratie/Verkoopfacturen`,
 }
 
 const DEFAULT_PATH = HOME

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { promoteRecord } from '@/lib/clickup/sync'
+import { promoteCrmRecord } from '@/lib/crm/store'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,7 +10,7 @@ export async function POST(
   const { id } = await params
 
   try {
-    const record = await promoteRecord(id)
+    const record = await promoteCrmRecord(id)
     return NextResponse.json({ item: record })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Promote mislukt' }, { status: 500 })

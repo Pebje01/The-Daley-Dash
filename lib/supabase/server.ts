@@ -18,6 +18,12 @@ export function createClient() {
     key,
     {
       auth: { autoRefreshToken: false, persistSession: false },
+      // Next.js cachet fetch-responses in route handlers (Data Cache), waardoor
+      // routes verouderde Supabase-data teruggeven. Database-reads mogen nooit
+      // gecachet worden — Supabase is de source of truth.
+      global: {
+        fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }),
+      },
     }
   )
 }

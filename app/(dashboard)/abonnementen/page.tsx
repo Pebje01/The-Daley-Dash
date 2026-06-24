@@ -1,13 +1,26 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Plus, Repeat2, Search, Pencil, Trash2 } from 'lucide-react'
 import { Abonnement, AbonnementStatus, AbonnementInterval, CompanyId } from '@/lib/types'
 import { getCompany, COMPANIES } from '@/lib/companies'
+import { useColumnOrder, useColumnDnD } from '@/lib/columnOrder'
+import { ColumnGrip } from '@/components/ColumnGrip'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
 }
+
+// Verschuifbare kolommen voor de abonnementen-tabel (acties blijft vast achteraan).
+const ABO_KOLOMMEN: { key: string; label: string; align?: 'right' }[] = [
+  { key: 'klant', label: 'Klant' },
+  { key: 'bedrijf', label: 'Bedrijf' },
+  { key: 'omschrijving', label: 'Omschrijving' },
+  { key: 'status', label: 'Status' },
+  { key: 'interval', label: 'Interval' },
+  { key: 'bedrag', label: 'Bedrag', align: 'right' },
+  { key: 'volgende', label: 'Volgende factuur' },
+]
 
 const statusTabs: { label: string; value: AbonnementStatus | 'alle' }[] = [
   { label: 'Alle', value: 'alle' },
@@ -42,6 +55,8 @@ const intervalLabels: Record<AbonnementInterval, string> = {
 }
 
 export default function AbonnementenPage() {
+  const { order, move } = useColumnOrder('abonnementen', ABO_KOLOMMEN.map(c => c.key))
+  const dnd = useColumnDnD(move)
   const [abonnementen, setAbonnementen] = useState<Abonnement[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<AbonnementStatus | 'alle'>('alle')
@@ -272,23 +287,33 @@ export default function AbonnementenPage() {
           <table className="w-full text-body">
             <thead className="bg-brand-page-light border-b border-brand-page-medium">
               <tr>
-                <th className="text-left px-4 py-2.5 text-caption text-brand-text-secondary uppercase tracking-wide">Klant</th>
-                <th className="text-left px-4 py-2.5 text-caption text-brand-text-secondary uppercase tracking-wide">Bedrijf</th>
-                <th className="text-left px-4 py-2.5 text-caption text-brand-text-secondary uppercase tracking-wide">Omschrijving</th>
-                <th className="text-left px-4 py-2.5 text-caption text-brand-text-secondary uppercase tracking-wide">Status</th>
-                <th className="text-left px-4 py-2.5 text-caption text-brand-text-secondary uppercase tracking-wide">Interval</th>
-                <th className="text-right px-4 py-2.5 text-caption text-brand-text-secondary uppercase tracking-wide">Bedrag</th>
-                <th className="text-left px-4 py-2.5 text-caption text-brand-text-secondary uppercase tracking-wide">Volgende factuur</th>
+                {order.map(key => {
+                  const col = ABO_KOLOMMEN.find(c => c.key === key)
+                  if (!col) return null
+                  return (
+                    <th
+                      key={key}
+                      {...dnd.headerProps(key)}
+                      className={`group/col px-4 py-2.5 text-caption text-brand-text-secondary uppercase tracking-wide cursor-grab active:cursor-grabbing select-none hover:bg-black/[0.03] transition-colors ${col.align === 'right' ? 'text-right' : 'text-left'} ${dnd.isOver(key) ? 'border-l-2 border-indigo-500 bg-indigo-50/40' : 'border-l-2 border-transparent'} ${dnd.isDragging(key) ? 'opacity-40' : ''}`}
+                      title="Sleep om te verplaatsen"
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        <ColumnGrip />
+                        {col.label}
+                      </span>
+                    </th>
+                  )
+                })}
                 <th className="text-center px-4 py-2.5 text-caption text-brand-text-secondary uppercase tracking-wide">Acties</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-brand-page-medium">
               {abonnementen.map(a => {
                 const company = getCompany(a.companyId)
-                return (
-                  <tr key={a.id} className="hover:bg-brand-page-light/50 transition-colors">
-                    <td className="px-4 py-3 font-semibold">{a.client.name}</td>
-                    <td className="px-4 py-3">
+                const cell: Record<string, ReactNode> = {
+                  klant: <td key="klant" className="px-4 py-3 font-semibold">{a.client.name}</td>,
+                  bedrijf: (
+                    <td key="bedrijf" className="px-4 py-3">
                       {company && (
                         <span className="inline-flex items-center gap-1.5">
                           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: company.color }} />
@@ -296,8 +321,10 @@ export default function AbonnementenPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3">{a.description}</td>
-                    <td className="px-4 py-3">
+                  ),
+                  omschrijving: <td key="omschrijving" className="px-4 py-3">{a.description}</td>,
+                  status: (
+                    <td key="status" className="px-4 py-3">
                       <select
                         value={a.status}
                         onChange={e => handleStatusChange(a.id, e.target.value as AbonnementStatus)}
@@ -309,11 +336,18 @@ export default function AbonnementenPage() {
                         <option value="verlopen">Verlopen</option>
                       </select>
                     </td>
-                    <td className="px-4 py-3 text-brand-text-secondary">{intervalLabels[a.interval]}</td>
-                    <td className="px-4 py-3 text-right font-semibold">{euro(a.amount)}</td>
-                    <td className="px-4 py-3 text-brand-text-secondary">
+                  ),
+                  interval: <td key="interval" className="px-4 py-3 text-brand-text-secondary">{intervalLabels[a.interval]}</td>,
+                  bedrag: <td key="bedrag" className="px-4 py-3 text-right font-semibold">{euro(a.amount)}</td>,
+                  volgende: (
+                    <td key="volgende" className="px-4 py-3 text-brand-text-secondary">
                       {a.nextInvoiceDate ? new Date(a.nextInvoiceDate).toLocaleDateString('nl-NL') : '–'}
                     </td>
+                  ),
+                }
+                return (
+                  <tr key={a.id} className="hover:bg-brand-page-light/50 transition-colors">
+                    {order.map(key => cell[key])}
                     <td className="px-4 py-3 text-center">
                       <button onClick={() => handleDelete(a.id)} className="text-brand-text-secondary/50 hover:text-red-500 transition-colors">
                         <Trash2 size={14} />

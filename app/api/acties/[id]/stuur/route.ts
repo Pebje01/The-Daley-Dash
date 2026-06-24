@@ -36,7 +36,7 @@ export async function POST(
   // Haal factuurgegevens op
   const { data: factuur, error: factuurError } = await supabase
     .from('facturen')
-    .select('number, total, due_date, client, company_id')
+    .select('number, total, due_date, client, company_id, status')
     .eq('id', actie.factuur_id)
     .single()
 
@@ -69,6 +69,14 @@ export async function POST(
     .from('acties')
     .update({ status: 'verzonden', updated_at: new Date().toISOString() })
     .eq('id', params.id)
+
+  // Factuur is opgevolgd: zet de status op herinnering-verzonden (alleen vanuit open statussen)
+  if (factuur.status === 'verzonden' || factuur.status === 'te-laat') {
+    await supabase
+      .from('facturen')
+      .update({ status: 'herinnering-verzonden', updated_at: new Date().toISOString() })
+      .eq('id', actie.factuur_id)
+  }
 
   return NextResponse.json({ ok: true })
 }

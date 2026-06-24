@@ -3,13 +3,9 @@ import { execSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { isAllowedAdminDocumentPath } from '@/lib/admin/documentPaths'
 
 export const dynamic = 'force-dynamic'
-
-const ALLOWED_BASES = [
-  process.env.ADMIN_FACTUREN_PATH,
-  process.env.ADMIN_OFFERTES_PATH,
-].filter(Boolean) as string[]
 
 export interface ExtractedLineItem {
   description: string
@@ -33,6 +29,7 @@ export interface ExtractedDoc {
   btwPercentage: number | null
   companyId: string | null
   status: string | null
+  paidAt: string | null
   lineItems: ExtractedLineItem[]
 }
 
@@ -46,6 +43,21 @@ function parseAmount(s: string): number | null {
   const clean = s.replace(/[€\s.]/g, '').replace(',', '.')
   const n = parseFloat(clean)
   return isNaN(n) ? null : n
+}
+
+function asPaidAt(date: string | null): string | null {
+  return date ? `${date}T12:00:00+01:00` : null
+}
+
+function detectPaidAt(text: string, filename: string, fallbackDate: string | null): string | null {
+  const source = `${filename}\n${text}`
+  if (!/(betaling\s+voldaan|voldaan\s+op|betaald\s+op|\bvoldaan\b|\bpaid\b)/i.test(source)) return null
+
+  const explicit =
+    source.match(/(?:betaling\s+voldaan|voldaan\s+op|betaald\s+op|paid\s+on)[^\d]*(\d{1,2}-\d{1,2}-\d{4})/i) ||
+    source.match(/(\d{1,2}-\d{1,2}-\d{4})[^\n]{0,40}(?:betaling\s+voldaan|voldaan|betaald|paid)/i)
+
+  return asPaidAt(explicit ? parseNlDate(explicit[1]) : fallbackDate)
 }
 
 function detectCompany(text: string): string | null {
@@ -88,6 +100,7 @@ function parseText(text: string, filename: string): ExtractedDoc {
   while ((dm = dateRe.exec(text)) !== null) dateMatches.push(dm[1])
   const date = dateMatches[0] ? parseNlDate(dateMatches[0]) : null
   const secondDate = dateMatches[1] ? parseNlDate(dateMatches[1]) : null
+  const paidAt = !isOfferte ? detectPaidAt(text, filename, date) : null
 
   const subtotalMatch = text.match(/TOTAAL EXCL\. BTW\s*€?\s*([\d.,]+)/i)
   const btwMatch = text.match(/21%\s*BTW\s*€?\s*([\d.,]+)/i) || text.match(/BTW\s*€?\s*([\d.,]+)/i)
@@ -114,7 +127,8 @@ function parseText(text: string, filename: string): ExtractedDoc {
     total,
     btwPercentage,
     companyId: detectCompany(text),
-    status: null,
+    status: paidAt ? 'betaald' : null,
+    paidAt,
     lineItems: [],
   }
 }
@@ -143,6 +157,7 @@ Geef de response UITSLUITEND als geldig JSON object met dit exacte formaat:
   "dueDate": "JJJJ-MM-DD (alleen facturen: vervaldatum, of null)",
   "validUntil": "JJJJ-MM-DD (alleen offertes: geldig-tot datum, of null)",
   "status": "betaald" als op het document staat dat betaling voldaan is, anders "verzonden" voor openstaande facturen of "verstuurd" voor offertes,
+  "paidAt": "ISO timestamp als betaling voldaan is, bijvoorbeeld 2026-02-12T12:00:00+01:00, anders null",
   "btwPercentage": 21,
   "subtotal": 100.00,
   "btwAmount": 21.00,
@@ -190,6 +205,7 @@ Gebruik null voor ontbrekende waarden. Datums altijd als JJJJ-MM-DD. Bedragen al
     btwPercentage: typeof parsed.btwPercentage === 'number' ? parsed.btwPercentage : null,
     companyId: parsed.companyId ?? null,
     status: parsed.status ?? null,
+    paidAt: parsed.paidAt ?? null,
     lineItems,
   }
 }
@@ -199,8 +215,7 @@ export async function POST(req: NextRequest) {
   if (!absolutePath) return NextResponse.json({ error: 'Geen pad' }, { status: 400 })
 
   const resolved = path.resolve(absolutePath)
-  const isAllowed = ALLOWED_BASES.some(base => resolved.startsWith(path.resolve(base)))
-  if (!isAllowed) return NextResponse.json({ error: 'Toegang geweigerd' }, { status: 403 })
+  if (!isAllowedAdminDocumentPath(resolved)) return NextResponse.json({ error: 'Toegang geweigerd' }, { status: 403 })
 
   if (process.env.GEMINI_API_KEY) {
     try {

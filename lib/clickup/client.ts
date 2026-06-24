@@ -31,15 +31,33 @@ function buildUrl(path: string, params?: Record<string, string | number | boolea
 export async function clickUpFetch<T>(path: string, init?: RequestInit, params?: Record<string, any>): Promise<T> {
   const { apiKey } = getClickUpConfig()
 
-  const res = await fetch(buildUrl(path, params), {
-    ...init,
-    headers: {
-      Authorization: apiKey,
-      'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-    },
-    cache: 'no-store',
-  })
+  // Retry bij transiente netwerkfouten en rate limiting (ClickUp: 100 req/min)
+  const maxPogingen = 3
+  let res: Response | undefined
+  for (let poging = 1; poging <= maxPogingen; poging++) {
+    try {
+      res = await fetch(buildUrl(path, params), {
+        ...init,
+        headers: {
+          Authorization: apiKey,
+          'Content-Type': 'application/json',
+          ...(init?.headers || {}),
+        },
+        cache: 'no-store',
+      })
+    } catch (e) {
+      if (poging === maxPogingen) throw e
+      await new Promise(r => setTimeout(r, poging * 2000))
+      continue
+    }
+    if (res.status === 429 && poging < maxPogingen) {
+      const retryAfter = parseInt(res.headers.get('Retry-After') || '0')
+      await new Promise(r => setTimeout(r, (retryAfter || poging * 15) * 1000))
+      continue
+    }
+    break
+  }
+  if (!res) throw new Error('ClickUp API onbereikbaar')
 
   if (!res.ok) {
     const body = await res.text().catch(() => '')

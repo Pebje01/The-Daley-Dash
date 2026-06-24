@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createClickUpRecord } from '@/lib/clickup/sync'
+import { createCrmRecord } from '@/lib/crm/store'
 import type { ClickUpCrmEntityType } from '@/lib/clickup/config'
 
 const ALLOWED_ENTITY_TYPES = new Set(['daley_list', 'lead', 'company', 'contact', 'assignment', 'clickup_invoice'])
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
   let query = supabase
     .from('clickup_crm_records')
-    .select('id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, due_date, clickup_date_updated, synced_at')
+    .select('id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, dash_tags, due_date, clickup_date_updated, synced_at')
     .eq('entity_type', entity)
     .order('clickup_date_updated', { ascending: false, nullsFirst: false })
     .order('synced_at', { ascending: false })
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     }
 
-    const record = await createClickUpRecord(entity_type as ClickUpCrmEntityType, {
+    const record = await createCrmRecord(entity_type as ClickUpCrmEntityType, {
       name: name.trim(),
       status,
       description,

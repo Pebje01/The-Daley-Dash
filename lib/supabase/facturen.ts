@@ -241,7 +241,7 @@ export async function updateFactuur(
     total: number
     excludeFromRevenue: boolean
     revenueDate: string | null
-    paidAt: string
+    paidAt: string | null
     molliePaymentId: string
     molliePaymentUrl: string
     notes: string
@@ -256,7 +256,16 @@ export async function updateFactuur(
   if (data.offerteId !== undefined) update.offerte_id = data.offerteId
   if (data.date !== undefined) update.date = data.date
   if (data.dueDate !== undefined) update.due_date = data.dueDate
-  if (data.status !== undefined) update.status = data.status
+  if (data.status !== undefined) {
+    update.status = data.status
+    // Houd paid_at consistent met de status: betaald krijgt altijd een
+    // betaaldatum, elke andere status wist hem (tenzij expliciet meegegeven)
+    if (data.status === 'betaald' && data.paidAt === undefined) {
+      update.paid_at = new Date().toISOString()
+    } else if (data.status !== 'betaald' && data.paidAt === undefined) {
+      update.paid_at = null
+    }
+  }
   if (data.subtotal !== undefined) update.subtotal = data.subtotal
   if (data.btwPercentage !== undefined) update.btw_percentage = data.btwPercentage
   if (data.btwAmount !== undefined) update.btw_amount = data.btwAmount
@@ -357,45 +366,51 @@ export async function getFactuurStats() {
     { data: pipelineOffertes },
     recent,
   ] = await Promise.all([
-    supabase.from('facturen').select('id, status, total, subtotal, date, due_date, paid_at, created_at, offerte_id'),
-    supabase.from('uren').select('datum, uren, uurtarief'),
+    supabase.from('facturen').select('id, status, total, subtotal, date, due_date, paid_at, created_at, offerte_id, exclude_from_revenue, revenue_date'),
+    supabase.from('uren').select('datum, uren, uurtarief, gefactureerd'),
     supabase.from('offertes').select('id, subtotal, total, status, date').in('status', ['akkoord', 'verstuurd']),
     getFacturen(),
   ])
   if (error) throw error
 
-  const facturen = all ?? []
+  const facturen = (all ?? []).filter((f: any) => !f.exclude_from_revenue)
 
-  // Actieve facturen: verzonden + betaald + te-laat (niet concept/geannuleerd)
-  const activeStatuses = ['verzonden', 'betaald', 'te-laat']
-  const activeFacturen = facturen.filter((f: any) => activeStatuses.includes(f.status))
+  // Zelfde semantiek als de facturenpagina: omzet telt op revenue_date als die gezet is
+  const effectiveDate = (f: any): string => ((f.revenue_date || f.date || '') as string).split('T')[0]
 
-  // Openstaande facturen (verzonden)
-  const openFacturen = facturen.filter((f: any) => f.status === 'verzonden').length
+  // Actieve facturen: verzonden + herinnering + betaald + te-laat (niet concept/geannuleerd), dit jaar
+  const activeStatuses = ['verzonden', 'herinnering-verzonden', 'betaald', 'te-laat']
+  const activeFacturen = facturen.filter(
+    (f: any) => activeStatuses.includes(f.status) && effectiveDate(f) >= yearStart
+  )
+
+  // Openstaande facturen (verzonden of herinnering verzonden)
+  const openStatuses = ['verzonden', 'herinnering-verzonden']
+  const openFacturen = facturen.filter((f: any) => openStatuses.includes(f.status)).length
   const totalOpenAmount = facturen
-    .filter((f: any) => f.status === 'verzonden')
+    .filter((f: any) => openStatuses.includes(f.status))
     .reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
 
-  // Te laat (verzonden + due_date verstreken)
+  // Te laat (openstaand + due_date verstreken)
   const overdueFacturen = facturen.filter(
-    (f: any) => (f.status === 'verzonden' || f.status === 'te-laat') && f.due_date < todayStr
+    (f: any) => (openStatuses.includes(f.status) || f.status === 'te-laat') && f.due_date < todayStr
   ).length
 
-  // Betaald deze maand (op factuurdatum)
+  // Betaald deze maand (op omzetdatum)
   const paidThisMonth = facturen
-    .filter((f: any) => f.status === 'betaald' && f.date >= monthStart)
+    .filter((f: any) => f.status === 'betaald' && effectiveDate(f) >= monthStart)
     .reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
 
-  // Omzet: alleen betaalde facturen vanaf 2026 (op factuurdatum)
-  const yearFacturen = facturen.filter((f: any) => f.status === 'betaald' && f.date >= yearStart)
-  const monthFacturen = facturen.filter((f: any) => f.status === 'betaald' && f.date >= monthStart)
+  // Omzet: alleen betaalde facturen dit jaar (op omzetdatum)
+  const yearFacturen = facturen.filter((f: any) => f.status === 'betaald' && effectiveDate(f) >= yearStart)
+  const monthFacturen = facturen.filter((f: any) => f.status === 'betaald' && effectiveDate(f) >= monthStart)
 
   const revenueYear = yearFacturen.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0)
   const revenueYearIncl = yearFacturen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
   const revenueMonth = monthFacturen.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0)
   const revenueMonthIncl = monthFacturen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
 
-  // Verwachte omzet: actieve facturen + akkoord/verstuurd offertes ZONDER bijbehorende factuur + uren
+  // Verwachte omzet: actieve facturen + akkoord/verstuurd offertes ZONDER bijbehorende factuur + open uren
   const invoicedOfferteIds = new Set(
     facturen
       .filter((f: any) => f.offerte_id && f.status !== 'geannuleerd')
@@ -406,7 +421,9 @@ export async function getFactuurStats() {
     (o: any) => !invoicedOfferteIds.has(o.id)
   )
 
-  const urenSubtotal = (urenRows ?? []).reduce(
+  // Alleen niet-gefactureerde uren; gefactureerde uren zitten al in de facturen
+  const openUren = (urenRows ?? []).filter((u: any) => !u.gefactureerd)
+  const urenSubtotal = openUren.reduce(
     (sum: number, u: any) => sum + (u.uren ?? 0) * (u.uurtarief ?? 0),
     0
   )
@@ -428,11 +445,11 @@ export async function getFactuurStats() {
   }
 
   facturen
-    .filter((f: any) => f.status === 'verzonden' || f.status === 'te-laat')
+    .filter((f: any) => openStatuses.includes(f.status) || f.status === 'te-laat')
     .forEach((f: any) => {
       if (f.due_date) addToMaand(f.due_date.substring(0, 7), 'openstaand', f.subtotal ?? 0)
     })
-  ;(urenRows ?? []).forEach((u: any) => {
+  openUren.forEach((u: any) => {
     if (u.datum) addToMaand(u.datum.substring(0, 7), 'uren', (u.uren ?? 0) * (u.uurtarief ?? 0))
   })
 
