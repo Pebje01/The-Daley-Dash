@@ -1136,7 +1136,10 @@ export default function UrenPage() {
                 >
                   <FileText size={15} />
                   Genereer factuur
-                  {someSelected && <span className="opacity-80 text-caption">({geselecteerdeUren.length} {geselecteerdeUren.length === 1 ? 'uur' : 'uren'}{someProjectSelected ? ` + ${selectedProjectIds.size} project${selectedProjectIds.size > 1 ? 'en' : ''}` : ''})</span>}
+                  {someSelected && (() => {
+                    const geselecteerdTotaalUren = geselecteerdeUren.reduce((s, u) => s + u.uren, 0)
+                    return <span className="opacity-80 text-caption">({geselecteerdTotaalUren.toLocaleString('nl-NL')} {geselecteerdTotaalUren === 1 ? 'uur' : 'uren'}{someProjectSelected ? ` + ${selectedProjectIds.size} project${selectedProjectIds.size > 1 ? 'en' : ''}` : ''})</span>
+                  })()}
                   {!someSelected && someProjectSelected && <span className="opacity-80 text-caption">({selectedProjectIds.size} project{selectedProjectIds.size > 1 ? 'en' : ''})</span>}
                 </button>
               )}
