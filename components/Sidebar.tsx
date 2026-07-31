@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, FileText, Receipt, Users, Settings,
-  CreditCard, Repeat2, BadgeDollarSign, Building2, ContactRound, BriefcaseBusiness, ScrollText, List,
-  ChevronRight, LogOut, Landmark, CheckSquare, Clock, FileBarChart, Menu, X,
+  CreditCard, Repeat2, BadgeDollarSign, Building2, ContactRound, BriefcaseBusiness, ScrollText,
+  ChevronRight, LogOut, Landmark, CheckSquare, Clock, FileBarChart, Percent, Menu, X, Ban,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
@@ -23,16 +23,17 @@ const financialNav = [
   { label: 'Abonnementen', href: '/abonnementen', icon: Repeat2 },
   { label: 'Klanten', href: '/klanten', icon: Users },
   { label: 'Belasting', href: '/belasting', icon: Landmark },
-  { label: 'Aangifte voorbereiding', href: '/belasting/aangifte', icon: FileBarChart, sub: true },
+  { label: 'BTW-aangifte', href: '/belasting/btw', icon: Percent, sub: true },
+  { label: 'Aangifte inkomstenbelasting', href: '/belasting/aangifte', icon: FileBarChart, sub: true },
 ]
 
 const crmNav = [
-  { label: "Daley Jansen's List", href: '/crm/daley-list', icon: List },
   { label: 'Leads', href: '/crm/leads', icon: BadgeDollarSign },
   { label: 'Bedrijven', href: '/crm/bedrijven', icon: Building2 },
   { label: 'Contacten', href: '/crm/contacten', icon: ContactRound },
   { label: 'Opdrachten', href: '/crm/opdrachten', icon: BriefcaseBusiness },
   { label: 'Facturatie', href: '/crm/facturen', icon: ScrollText },
+  { label: 'Blocklist', href: '/crm/blocklist', icon: Ban },
 ]
 
 const companies = [
@@ -121,7 +122,7 @@ export default function Sidebar() {
         <div className="pt-4">
           <p className="px-3 text-[10px] font-semibold text-sidebar-muted/50 uppercase tracking-widest mb-2">Financieel</p>
           {financialNav.map(({ label, href, icon: Icon, sub }) => {
-            const active = href === '/belasting' ? path === '/belasting' || (path.startsWith('/belasting/') && !path.startsWith('/belasting/aangifte')) : path.startsWith(href)
+            const active = href === '/belasting' ? path === '/belasting' : path.startsWith(href)
             return (
               <Link
                 key={href}

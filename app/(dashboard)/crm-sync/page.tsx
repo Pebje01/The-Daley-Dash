@@ -83,10 +83,6 @@ export default function CrmSyncPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card">
-          <p className="text-caption text-brand-text-secondary mb-2">Daley Jansen&apos;s List</p>
-          <p className="font-uxum text-stat text-brand-text-primary">{data?.recordCounts?.daley_list ?? 0}</p>
-        </div>
-        <div className="card">
           <p className="text-caption text-brand-text-secondary mb-2">Leads (gesynct)</p>
           <p className="font-uxum text-stat text-brand-text-primary">{data?.recordCounts?.lead ?? 0}</p>
         </div>

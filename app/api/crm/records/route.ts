@@ -5,6 +5,9 @@ import type { ClickUpCrmEntityType } from '@/lib/clickup/config'
 
 const ALLOWED_ENTITY_TYPES = new Set(['daley_list', 'lead', 'company', 'contact', 'assignment', 'clickup_invoice'])
 
+const RECORD_COLUMNS =
+  'id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, dash_tags, due_date, clickup_date_updated, synced_at, volgende_actie, volgende_actie_notitie, laatste_contact, contact_pogingen, contact_status, contact_status_tot, contact_status_reden'
+
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
@@ -21,7 +24,7 @@ export async function GET(request: NextRequest) {
 
   let query = supabase
     .from('clickup_crm_records')
-    .select('id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, dash_tags, due_date, clickup_date_updated, synced_at')
+    .select(RECORD_COLUMNS)
     .eq('entity_type', entity)
     .order('clickup_date_updated', { ascending: false, nullsFirst: false })
     .order('synced_at', { ascending: false })
@@ -40,7 +43,6 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-
   try {
     const body = await request.json()
     const { entity_type, name, status, description, due_date, custom_fields } = body

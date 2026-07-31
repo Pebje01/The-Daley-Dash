@@ -16,10 +16,18 @@ export interface CrmRecordData {
   custom_fields?: Array<{ id: string; value: any }>
   /** Notion-stijl labels (array van crm_dash_tags id's); eigen tagging in de Dash. */
   dash_tags?: string[]
+  /** Opvolging: datum waarop je deze lead weer oppakt (yyyy-mm-dd), null wist hem. */
+  volgende_actie?: string | null
+  volgende_actie_notitie?: string | null
+  /** open (benaderbaar), pauze (voorlopig niet) of blokkade (nooit meer). */
+  contact_status?: 'open' | 'pauze' | 'blokkade'
+  /** Einddatum van een pauze (yyyy-mm-dd), null = zonder einddatum. */
+  contact_status_tot?: string | null
+  contact_status_reden?: string | null
 }
 
 const RECORD_COLUMNS =
-  'id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, dash_tags, due_date, clickup_date_updated, synced_at, raw'
+  'id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, dash_tags, due_date, clickup_date_updated, synced_at, raw, volgende_actie, volgende_actie_notitie, laatste_contact, contact_pogingen, contact_status, contact_status_tot, contact_status_reden'
 
 function toIso(value: string | number | undefined): string | null {
   if (value === undefined || value === null || value === '') return null
@@ -31,7 +39,7 @@ function toIso(value: string | number | undefined): string | null {
 // ── Activiteitenlog ────────────────────────────────────────────────
 
 interface ActiviteitInput {
-  soort: 'aangemaakt' | 'status' | 'naam' | 'deadline' | 'notitie' | 'veld' | 'promotie'
+  soort: 'aangemaakt' | 'status' | 'naam' | 'deadline' | 'notitie' | 'veld' | 'promotie' | 'contact' | 'opvolging' | 'blokkade'
   omschrijving: string
   oude_waarde?: string | null
   nieuwe_waarde?: string | null
@@ -254,6 +262,35 @@ export async function updateCrmRecord(recordId: string, data: CrmRecordData) {
   if (Array.isArray(data.dash_tags)) {
     update.dash_tags = data.dash_tags
   }
+  if (data.volgende_actie !== undefined) {
+    update.volgende_actie = data.volgende_actie ? String(data.volgende_actie).slice(0, 10) : null
+  }
+  if (data.volgende_actie_notitie !== undefined) {
+    update.volgende_actie_notitie = data.volgende_actie_notitie || null
+  }
+  if (data.contact_status !== undefined) {
+    update.contact_status = data.contact_status
+    if (data.contact_status !== 'pauze') update.contact_status_tot = null
+  }
+  if (data.contact_status_tot !== undefined) {
+    update.contact_status_tot = data.contact_status_tot ? String(data.contact_status_tot).slice(0, 10) : null
+  }
+  if (data.contact_status_reden !== undefined) {
+    update.contact_status_reden = data.contact_status_reden || null
+  }
+
+  const nieuweStand = (update.contact_status ?? existing.contact_status ?? 'open') as string
+  if (nieuweStand === 'blokkade') {
+    // Geblokkeerd betekent: langs geen enkele weg een openstaande actie, ook
+    // niet bij het verslepen naar een andere fase.
+    update.volgende_actie = null
+    update.volgende_actie_notitie = null
+  } else if (nieuweStand === 'pauze') {
+    // De einddatum van de pauze is meteen het moment waarop je hem weer oppakt.
+    const tot = (update.contact_status_tot ?? existing.contact_status_tot ?? null) as string | null
+    update.volgende_actie = tot ? String(tot).slice(0, 10) : null
+    if (!tot) update.volgende_actie_notitie = null
+  }
 
   const { data: record, error } = await supabase
     .from('clickup_crm_records')
@@ -284,6 +321,124 @@ export async function updateCrmRecord(recordId: string, data: CrmRecordData) {
   }
   if (update.custom_fields) {
     activiteiten.push(...diffFields(existing.custom_fields || [], update.custom_fields as any[]))
+  }
+  if (data.volgende_actie !== undefined && (update.volgende_actie ?? null) !== (existing.volgende_actie ?? null)) {
+    activiteiten.push({
+      soort: 'opvolging',
+      omschrijving: update.volgende_actie ? 'Volgende actie gezet' : 'Volgende actie gewist',
+      oude_waarde: existing.volgende_actie ?? null,
+      nieuwe_waarde: (update.volgende_actie as string | null) ?? null,
+    })
+  }
+  if (data.contact_status !== undefined && data.contact_status !== (existing.contact_status || 'open')) {
+    const omschrijving = data.contact_status === 'blokkade'
+      ? 'Op blokkeerlijst gezet'
+      : data.contact_status === 'pauze'
+        ? 'Contact gepauzeerd'
+        : 'Weer benaderbaar'
+    const tot = (update.contact_status_tot ?? null) as string | null
+    activiteiten.push({
+      soort: 'blokkade',
+      omschrijving,
+      oude_waarde: existing.contact_status || 'open',
+      nieuwe_waarde: [data.contact_status, tot ? `tot ${tot}` : null, data.contact_status_reden || null]
+        .filter(Boolean).join(', '),
+    })
+  }
+  await logActiviteiten(recordId, activiteiten)
+
+  return record
+}
+
+// ── Contactmoment loggen ──────────────────────────────────────────
+// Eén handeling: contact vastleggen, de teller ophogen, de volgende actie
+// zetten en de lead eventueel een fase opschuiven.
+
+export interface ContactMomentData {
+  soort: 'mail' | 'telefoon' | 'whatsapp' | 'meeting' | 'notitie'
+  notitie?: string | null
+  /** Datum volgende actie (yyyy-mm-dd). null wist hem, undefined laat hem staan. */
+  volgende_actie?: string | null
+  volgende_actie_notitie?: string | null
+  /** Nieuwe fase, alleen meesturen als de lead echt verschuift. */
+  status?: string | null
+}
+
+const CONTACT_LABEL: Record<string, string> = {
+  mail: 'Gemaild',
+  telefoon: 'Gebeld',
+  whatsapp: 'Geappt',
+  meeting: 'Gesproken',
+  notitie: 'Notitie',
+}
+
+export async function logContactMoment(recordId: string, data: ContactMomentData) {
+  const supabase = createServiceClient()
+
+  const { data: existing, error: fetchError } = await supabase
+    .from('clickup_crm_records')
+    .select('id, status, contact_pogingen, contact_status, contact_status_tot, volgende_actie')
+    .eq('id', recordId)
+    .single()
+
+  if (fetchError || !existing) throw new Error('Record niet gevonden')
+  if (existing.contact_status === 'blokkade') throw new Error('Deze relatie staat op de blokkeerlijst')
+
+  const now = new Date().toISOString()
+  const teltAlsPoging = data.soort !== 'notitie'
+
+  const update: Record<string, unknown> = {
+    clickup_date_updated: now,
+    updated_at: now,
+  }
+  // Wie je toch benadert, staat niet meer in de pauze.
+  if (existing.contact_status === 'pauze' && teltAlsPoging) {
+    update.contact_status = 'open'
+    update.contact_status_tot = null
+  }
+  if (teltAlsPoging) {
+    update.laatste_contact = now
+    update.contact_pogingen = (Number(existing.contact_pogingen) || 0) + 1
+  }
+  if (data.volgende_actie !== undefined) {
+    update.volgende_actie = data.volgende_actie ? String(data.volgende_actie).slice(0, 10) : null
+  }
+  if (data.volgende_actie_notitie !== undefined) {
+    update.volgende_actie_notitie = data.volgende_actie_notitie || null
+  }
+  if (data.status && data.status !== existing.status) {
+    update.status = data.status
+  }
+
+  const { data: record, error } = await supabase
+    .from('clickup_crm_records')
+    .update(update)
+    .eq('id', recordId)
+    .select(RECORD_COLUMNS)
+    .single()
+
+  if (error) throw error
+
+  const activiteiten: ActiviteitInput[] = [{
+    soort: 'contact',
+    omschrijving: CONTACT_LABEL[data.soort] || 'Contact',
+    nieuwe_waarde: data.notitie || null,
+  }]
+  if (update.status) {
+    activiteiten.push({
+      soort: 'status',
+      omschrijving: 'Status gewijzigd',
+      oude_waarde: existing.status,
+      nieuwe_waarde: String(update.status),
+    })
+  }
+  if (data.volgende_actie !== undefined && (update.volgende_actie ?? null) !== (existing.volgende_actie ?? null)) {
+    activiteiten.push({
+      soort: 'opvolging',
+      omschrijving: update.volgende_actie ? 'Volgende actie gezet' : 'Volgende actie gewist',
+      oude_waarde: existing.volgende_actie ?? null,
+      nieuwe_waarde: (update.volgende_actie as string | null) ?? null,
+    })
   }
   await logActiviteiten(recordId, activiteiten)
 

@@ -29,33 +29,48 @@ interface GroepStats {
   maandelijkseIBReservering: number
 }
 
-// Factuurstatussen die meetellen voor omzet/BTW (niet concept of geannuleerd)
-const ACTIEVE_STATUSSEN = ['verzonden', 'betaald', 'te-laat']
+// Factuurstatussen die meetellen (niet concept of geannuleerd)
+const ACTIEVE_STATUSSEN = ['verzonden', 'herinnering-verzonden', 'betaald', 'te-laat']
 
 function berekenGroep(
   label: string,
   bedrijven: string[],
   alleFacturen: any[],
-  yearStart: string,
+  jaar: number,
   now: Date,
 ): GroepStats {
-  const rows = alleFacturen
-    .filter((f: any) =>
-      ACTIEVE_STATUSSEN.includes(f.status)
-      && f.date >= yearStart
-      && bedrijven.includes(f.company_id)
-    )
+  const yearStart = `${jaar}-01-01`
+  const yearEnd = `${jaar}-12-31`
+  const inGroep = (f: any) =>
+    ACTIEVE_STATUSSEN.includes(f.status)
+    && bedrijven.includes(f.company_id)
+    && !f.exclude_from_revenue
+
+  // OMZET / INKOMSTENBELASTING: factuurstelsel, op factuurdatum (`date`).
+  const omzetRows = alleFacturen
+    .filter((f: any) => inGroep(f) && f.date >= yearStart && f.date <= yearEnd)
+    .map((f: any) => ({ subtotal: f.subtotal ?? 0, total: f.total ?? 0, date: f.date }))
+
+  // BTW: kasstelsel, op betaaldatum (`paid_at`). Zelfde grondslag als de
+  // kwartaal-aangifte, zodat overzicht en aangifte altijd gelijklopen.
+  const btwRows = alleFacturen
+    .filter((f: any) => {
+      if (!inGroep(f) || !f.paid_at) return false
+      const pd = String(f.paid_at).slice(0, 10)
+      return pd >= yearStart && pd <= yearEnd
+    })
     .map((f: any) => ({
       subtotal: f.subtotal ?? 0,
       total: f.total ?? 0,
-      date: f.date,
+      date: String(f.paid_at).slice(0, 10), // bucketen op betaaldatum
     }))
 
-  const kwartalen = aggregeerPerKwartaal(rows)
-  const maanden = aggregeerPerMaand(rows)
+  // BTW per kwartaal/jaar op betaaldatum; omzet per maand op factuurdatum (IB-planning).
+  const kwartalen = aggregeerPerKwartaal(btwRows)
+  const maanden = aggregeerPerMaand(omzetRows)
 
-  const totaalOmzetExcl = rows.reduce((s: number, f: any) => s + (f.subtotal ?? 0), 0)
-  const totaalBtw = rows.reduce((s: number, f: any) => s + ((f.total ?? 0) - (f.subtotal ?? 0)), 0)
+  const totaalOmzetExcl = omzetRows.reduce((s: number, f: any) => s + (f.subtotal ?? 0), 0)
+  const totaalBtw = btwRows.reduce((s: number, f: any) => s + ((f.total ?? 0) - (f.subtotal ?? 0)), 0)
 
   const huidigKw = huidigKwartaal()
   const btwDitKwartaal = kwartalen[huidigKw - 1]?.btwBedrag ?? 0
@@ -88,12 +103,11 @@ export async function GET() {
   const supabase = createClient()
   const now = new Date()
   const jaar = now.getFullYear()
-  const yearStart = `${jaar}-01-01`
 
-  // Gebruik facturen als bron (verzonden/betaald/te-laat = gefactureerde omzet)
+  // Facturen als bron: omzet op factuurdatum (IB), BTW op betaaldatum (paid_at).
   const { data: facturen, error } = await supabase
     .from('facturen')
-    .select('id, subtotal, total, date, status, company_id, created_at')
+    .select('id, subtotal, total, date, paid_at, status, company_id, exclude_from_revenue, created_at')
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -102,7 +116,7 @@ export async function GET() {
   const alleFacturen = facturen ?? []
 
   // Bereken per groep
-  const eigen = berekenGroep('Mijn bedrijven', EIGEN_BEDRIJVEN, alleFacturen, yearStart, now)
+  const eigen = berekenGroep('Mijn bedrijven', EIGEN_BEDRIJVEN, alleFacturen, jaar, now)
 
   return NextResponse.json({
     jaar,

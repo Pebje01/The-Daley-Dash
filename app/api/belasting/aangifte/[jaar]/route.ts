@@ -33,17 +33,23 @@ export async function GET(
     aangifte = nieuw
   }
 
-  // Haal facturen op voor dit jaar (alle, ook betaalde — voor overzicht)
+  // Haal facturen op voor dit jaar op factuurdatum (factuurstelsel). Concept en
+  // geannuleerde facturen en van omzet uitgesloten facturen tellen niet mee.
   const jaarStart = `${jaar}-01-01`
   const jaarEind = `${jaar}-12-31`
-  const { data: facturen, error: facErr } = await supabase
+  const UITGESLOTEN_STATUS = ['concept', 'geannuleerd']
+  const { data: facturenRaw, error: facErr } = await supabase
     .from('facturen')
-    .select('id, number, client_name, date, due_date, subtotal, total, status, paid_at')
+    .select('id, number, client_name, date, due_date, subtotal, total, status, paid_at, exclude_from_revenue')
     .gte('date', jaarStart)
     .lte('date', jaarEind)
     .order('date', { ascending: true })
 
   if (facErr) return NextResponse.json({ error: facErr.message }, { status: 500 })
+
+  const facturen = (facturenRaw ?? []).filter(
+    f => !UITGESLOTEN_STATUS.includes(f.status) && !f.exclude_from_revenue,
+  )
 
   // Haal debiteur-statussen op
   const { data: debiteurStatussen } = await supabase

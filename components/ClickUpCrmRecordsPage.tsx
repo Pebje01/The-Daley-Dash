@@ -8,7 +8,15 @@ import {
   RefreshCw, Search, Plus, X, Save, Trash2, LayoutList, Columns3, ArrowRight,
   Building2, User, BadgeDollarSign, BriefcaseBusiness,
   ArrowUp, ArrowDown, Filter as FilterIcon, FileText, CalendarDays, PencilLine,
+  Bell, Ban, Mail, GripVertical,
 } from 'lucide-react'
+import {
+  LEAD_STATUS_VOLGORDE, faseDef, leadBordFases, contactStand,
+  standaardOpvolgdatum, opvolgStand, moetVandaagOpgepakt,
+} from '@/lib/crm/pipeline'
+import {
+  OpvolgBadge, OpvolgPicker, ContactKnop, ContactSamenvatting, ContactStatusBlok,
+} from '@/components/crm/OpvolgControls'
 import { DashTagsProvider, InlineTags, type DashTag, DASH_TAG_KLEURNAMEN } from '@/components/CrmTagPicker'
 import { useColumnOrder, useColumnDnD, useColumnWidths } from '@/lib/columnOrder'
 import { ColumnGrip } from '@/components/ColumnGrip'
@@ -72,6 +80,14 @@ interface CrmRecord {
   clickup_date_created?: string | null
   synced_at?: string | null
   raw?: any
+  // Opvolging (zie lib/crm/pipeline.ts)
+  volgende_actie?: string | null
+  volgende_actie_notitie?: string | null
+  laatste_contact?: string | null
+  contact_pogingen?: number | null
+  contact_status?: string | null
+  contact_status_tot?: string | null
+  contact_status_reden?: string | null
 }
 
 // ── Status visual config ────────────────────────────────────────────
@@ -82,7 +98,10 @@ const STATUS_BADGE: Record<string, string> = {
   'nieuwe opdracht':         'bg-cyan-500 text-white',
   'on hold':                 'bg-amber-500 text-white',
   'klant on hold':           'bg-amber-500 text-white',
+  'benaderd':                'bg-purple-500 text-white',
   'in gesprek':              'bg-indigo-500 text-white',
+  'offerte uit':             'bg-sky-500 text-white',
+  'later opvolgen':          'bg-amber-500 text-white',
   'eigen bedrijf':           'bg-purple-500 text-white',
   'factuur open':            'bg-amber-500 text-white',
   'gewonnen':                'bg-green-500 text-white',
@@ -132,7 +151,10 @@ const STATUS_GROUP_MAP: Record<string, string> = {
   'nieuwe opdracht':         'Not started',
   'on hold':                 'Active',
   'klant on hold':           'Active',
+  'benaderd':                'Active',
   'in gesprek':              'Active',
+  'offerte uit':             'Active',
+  'later opvolgen':          'Active',
   'eigen bedrijf':           'Active',
   'factuur open':            'Active',
   'gewonnen':                'Done',
@@ -150,19 +172,12 @@ const STATUS_GROUP_MAP: Record<string, string> = {
   'lopende samenwerking':    'Active',
 }
 
-// ── Entity-specific status order (matches ClickUp list config) ──────
+// ── Entity-specific status order ────────────────────────────────────
+// Leads komen uit lib/crm/pipeline.ts, dat is de bron van waarheid voor de
+// fases. De overige entiteiten houden hun vaste volgorde hier.
 
 const ENTITY_STATUS_ORDER: Partial<Record<EntityType, string[]>> = {
-  lead: [
-    'nieuwe kans',
-    'on hold',
-    'in gesprek',
-    'klant on hold',
-    'verloren',
-    'niets uitgekomen',
-    'gewonnen',
-    'archief',
-  ],
+  lead: LEAD_STATUS_VOLGORDE,
   assignment: [
     'nieuwe opdracht',
     'on hold',
@@ -184,48 +199,14 @@ const ENTITY_STATUS_ORDER: Partial<Record<EntityType, string[]>> = {
   clickup_invoice: ['factuur open', 'factuur betaald', 'geannuleerd'],
 }
 
-// ── Live ClickUp-statusconfig (bron van waarheid voor volgorde + kleur) ──
-// Gevuld door ClickUpCrmRecordsPage via /api/crm/statuses. De statische maps
-// hierboven blijven als fallback wanneer ClickUp even niet bereikbaar is.
-type StatusCfg = { status: string; color: string; type: string; orderindex: number }
-let CU_STATUS_BY_ENTITY: Record<string, StatusCfg[]> = {}
-let CU_COLOR: Record<string, string> = {}   // genormaliseerde naam -> hex
-let CU_GROUP: Record<string, string> = {}    // genormaliseerde naam -> groepslabel
-
-const CU_TYPE_TO_GROUP: Record<string, string> = {
-  open: 'Not started',
-  unstarted: 'Not started',
-  custom: 'Active',
-  done: 'Done',
-  closed: 'Closed',
-}
-
-function applyClickUpStatusConfig(byEntity: Record<string, StatusCfg[]>) {
-  CU_STATUS_BY_ENTITY = byEntity || {}
-  const color: Record<string, string> = {}
-  const group: Record<string, string> = {}
-  for (const list of Object.values(byEntity || {})) {
-    for (const s of list) {
-      const key = (s.status || '').toLowerCase().trim()
-      if (!key) continue
-      if (s.color) color[key] = s.color
-      const g = CU_TYPE_TO_GROUP[s.type]
-      if (g) group[key] = g
-    }
-  }
-  CU_COLOR = color
-  CU_GROUP = group
-}
-
 function normalizeStatus(s?: string | null) { return (s || '').toLowerCase().trim() }
-function statusHex(s?: string | null) { const k = normalizeStatus(s); return CU_COLOR[k] ?? STATUS_HEX[k] ?? '#9ca3af' }
-function statusGroup(s?: string | null) { const k = normalizeStatus(s); return CU_GROUP[k] ?? STATUS_GROUP_MAP[k] ?? 'Active' }
+function statusHex(s?: string | null) { const k = normalizeStatus(s); return faseDef(k)?.kleur ?? STATUS_HEX[k] ?? '#9ca3af' }
+function statusGroup(s?: string | null) { const k = normalizeStatus(s); return faseDef(k)?.groep ?? STATUS_GROUP_MAP[k] ?? 'Active' }
 function statusBadge(s?: string | null) { return STATUS_BADGE[normalizeStatus(s)] ?? 'bg-gray-400 text-white' }
 
 /**
- * Statusvolgorde voor een entity: eerst de echte ClickUp-volgorde (incl. lege
- * statussen), dan statische extra's die niet in ClickUp staan, dan wat in de
- * data voorkomt. Namen behouden hun ClickUp-casing.
+ * Statusvolgorde voor een entity: eerst de vaste volgorde, daarna wat verder
+ * nog in de data voorkomt (oude statussen blijven zo zichtbaar).
  */
 function statusOrderFor(entity: EntityType, present: string[] = []): string[] {
   const out: string[] = []
@@ -237,10 +218,7 @@ function statusOrderFor(entity: EntityType, present: string[] = []): string[] {
     seen.add(k)
     out.push(name)
   }
-  const cu = CU_STATUS_BY_ENTITY[entity]
-  if (cu && cu.length) for (const s of cu) push(s.status)
-  else for (const s of (ENTITY_STATUS_ORDER[entity] ?? [])) push(s)
-  for (const s of (ENTITY_STATUS_ORDER[entity] ?? [])) push(s) // extra's zoals 'blacklist'
+  for (const s of (ENTITY_STATUS_ORDER[entity] ?? [])) push(s)
   for (const s of present) push(s)
   return out
 }
@@ -709,7 +687,7 @@ function StatusPicker({
     setSaving(true)
     onStatusChange(recordId, status)
     try {
-      await fetch(`/api/integrations/clickup/records/${recordId}`, {
+      await fetch(`/api/crm/records/${recordId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
@@ -1130,11 +1108,17 @@ function BoardCard({
   allStatuses,
   onStatusChange,
   onClick,
+  toonOpvolging = false,
+  onOpvolgPatch,
+  onDragStart,
 }: {
   item: CrmRecord
   allStatuses: string[]
   onStatusChange: (id: string, status: string) => void
   onClick: () => void
+  toonOpvolging?: boolean
+  onOpvolgPatch?: (id: string, patch: Partial<CrmRecord>) => void
+  onDragStart?: (id: string) => void
 }) {
   const assignee = item.assignees?.[0]
   const fields = (item.custom_fields || [])
@@ -1142,10 +1126,26 @@ function BoardCard({
     .filter((f) => f.label && f.value)
     .slice(0, 2)
 
+  const patch = (p: Partial<CrmRecord>) => onOpvolgPatch?.(item.id, p)
+  const stand = opvolgStand(item.volgende_actie)
+  const contact = contactStand(item)
+  const randKleur = contact !== 'open'
+    ? 'border-gray-300'
+    : stand === 'te laat' ? 'border-red-200'
+    : stand === 'vandaag' ? 'border-amber-200'
+    : 'border-brand-card-border'
+
   return (
-    <button
+    <div
       onClick={onClick}
-      className="w-full text-left bg-white rounded-brand border border-brand-card-border hover:border-brand-lavender hover:shadow-md transition-all p-3 space-y-2"
+      draggable={!!onDragStart}
+      onDragStart={(e) => {
+        if (!onDragStart) return
+        e.dataTransfer.setData('text/plain', item.id)
+        e.dataTransfer.effectAllowed = 'move'
+        onDragStart(item.id)
+      }}
+      className={`w-full text-left bg-white rounded-brand border ${randKleur} hover:border-brand-lavender hover:shadow-md transition-all p-3 space-y-2 cursor-pointer ${contact !== 'open' ? 'opacity-70' : ''}`}
     >
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-medium text-brand-text-primary leading-snug flex-1">{item.name}</p>
@@ -1156,6 +1156,13 @@ function BoardCard({
           onStatusChange={onStatusChange}
         />
       </div>
+      {/* Pauze en blokkade blijven ook zichtbaar op borden zonder opvolging */}
+      {(toonOpvolging || contact !== 'open') && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <OpvolgBadge record={item} />
+          {toonOpvolging && <ContactSamenvatting record={item} />}
+        </div>
+      )}
       {fields.length > 0 && (
         <div className="space-y-0.5">
           {fields.map((f, i) => (
@@ -1178,6 +1185,12 @@ function BoardCard({
           ))}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          {toonOpvolging && (
+            <>
+              <ContactKnop record={item} onSaved={patch} variant="icoon" />
+              <OpvolgPicker record={item} onSaved={patch} variant="icoon" />
+            </>
+          )}
           {item.due_date && (
             <span className="text-xs text-brand-text-secondary">{fmtDate(item.due_date)}</span>
           )}
@@ -1191,7 +1204,7 @@ function BoardCard({
           )}
         </div>
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -1203,56 +1216,215 @@ function BoardView({
   allStatuses,
   onStatusChange,
   onCardClick,
+  onOpvolgPatch,
+  onFaseChange,
 }: {
   items: CrmRecord[]
   entity: EntityType
   allStatuses: string[]
   onStatusChange: (id: string, status: string) => void
   onCardClick: (r: CrmRecord) => void
+  onOpvolgPatch?: (id: string, patch: Partial<CrmRecord>) => void
+  onFaseChange?: (id: string, status: string) => void
 }) {
-  const columns = useMemo(() => {
+  const isLead = entity === 'lead'
+  const [toonAfgesloten, setToonAfgesloten] = useState(false)
+  const [sleepDoel, setSleepDoel] = useState<string | null>(null)
+
+  // Geblokkeerde relaties leven in de Blocklist en horen niet op het bord.
+  // Een pauze is tijdelijk, die blijft gewoon in zijn fase staan (met badge).
+  const geblokkeerd = useMemo(
+    () => items.filter((i) => contactStand(i) === 'blokkade').length,
+    [items]
+  )
+
+  const { columns, verborgen } = useMemo(() => {
     const groups: Record<string, CrmRecord[]> = {}
     for (const item of items) {
+      if (contactStand(item) === 'blokkade') continue
       const s = item.status || '(geen status)'
       if (!groups[s]) groups[s] = []
       groups[s].push(item)
     }
     const present = Object.keys(groups)
-    // Kolommen in exacte ClickUp-volgorde, inclusief lege statussen.
-    return statusOrderFor(entity, present).map((name): [string, CrmRecord[]] => {
+
+    // Leads: alleen de actieve fases als kolom, de rest achter de schakelaar.
+    const namen = isLead
+      ? leadBordFases(toonAfgesloten).map((f) => f.status)
+      : statusOrderFor(entity, present)
+    const zichtbaar = new Set(namen.map((n) => n.toLowerCase()))
+
+    const kolommen = namen.map((name): [string, CrmRecord[]] => {
       const actual = present.find((p) => p.toLowerCase() === name.toLowerCase())
-      return actual ? [actual, groups[actual]] : [name, []]
+      const cards = actual ? [...groups[actual]] : []
+      // Binnen een kolom: wie het langst wacht staat bovenaan.
+      cards.sort((a, b) => {
+        const va = a.volgende_actie || '9999-12-31'
+        const vb = b.volgende_actie || '9999-12-31'
+        return va === vb ? a.name.localeCompare(b.name) : va < vb ? -1 : 1
+      })
+      return [actual || name, cards]
     })
-    // allStatuses verandert wanneer de ClickUp-statusconfig laadt -> herbereken kolommen
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, entity, allStatuses])
+
+    const verborgenAantal = present
+      .filter((p) => !zichtbaar.has(p.toLowerCase()))
+      .reduce((som, p) => som + groups[p].length, 0)
+
+    return { columns: kolommen, verborgen: verborgenAantal }
+  }, [items, entity, isLead, toonAfgesloten])
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-2 min-h-[300px]">
-      {columns.map(([status, cards]) => (
-        <div key={status} className="flex-shrink-0 w-64">
-          <div className="flex items-center gap-2 mb-3 px-0.5">
-            <StatusIcon status={status} size={14} />
-            <span className="text-sm font-semibold text-brand-text-primary flex-1 truncate">{status}</span>
-            <span className="text-xs text-brand-text-secondary bg-brand-page-medium rounded-full px-2 py-0.5 shrink-0">
-              {cards.length}
+    <div className="space-y-3">
+      {isLead && (
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setToonAfgesloten((v) => !v)}
+            className="text-xs text-brand-text-secondary hover:text-brand-text-primary inline-flex items-center gap-1.5"
+          >
+            {toonAfgesloten ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            {toonAfgesloten ? 'Verberg afgesloten fases' : 'Toon afgesloten fases'}
+            {!toonAfgesloten && verborgen > 0 && (
+              <span className="text-brand-text-secondary opacity-70">({verborgen})</span>
+            )}
+          </button>
+          {geblokkeerd > 0 && (
+            <Link
+              href="/crm/blocklist"
+              className="text-xs text-brand-text-secondary hover:text-brand-text-primary inline-flex items-center gap-1.5"
+              title="Geblokkeerde relaties staan op de blocklist"
+            >
+              <Ban size={13} /> {geblokkeerd} op de blocklist
+            </Link>
+          )}
+          {onFaseChange && (
+            <span className="text-xs text-brand-text-secondary opacity-70 inline-flex items-center gap-1">
+              <GripVertical size={12} /> Sleep een kaart naar een andere fase
             </span>
-          </div>
-          <div className="space-y-2">
-            {cards.map((card) => (
-              <BoardCard
-                key={card.id}
-                item={card}
-                allStatuses={allStatuses}
-                onStatusChange={onStatusChange}
-                onClick={() => onCardClick(card)}
-              />
-            ))}
-          </div>
+          )}
         </div>
-      ))}
-      {columns.length === 0 && (
-        <p className="text-brand-text-secondary text-sm py-10 px-4">Geen records gevonden.</p>
+      )}
+
+      <div className="flex gap-4 overflow-x-auto pb-2 min-h-[300px]">
+        {columns.map(([status, cards]) => {
+          const fase = faseDef(status)
+          const isDoel = sleepDoel === status
+          return (
+            <div
+              key={status}
+              className="flex-shrink-0 w-64"
+              onDragOver={(e) => { if (onFaseChange) { e.preventDefault(); setSleepDoel(status) } }}
+              onDragLeave={() => setSleepDoel((d) => (d === status ? null : d))}
+              onDrop={(e) => {
+                if (!onFaseChange) return
+                e.preventDefault()
+                const id = e.dataTransfer.getData('text/plain')
+                setSleepDoel(null)
+                if (id) onFaseChange(id, status)
+              }}
+            >
+              <div className="flex items-center gap-2 mb-3 px-0.5" title={fase?.uitleg}>
+                <StatusIcon status={status} size={14} />
+                <span className="text-sm font-semibold text-brand-text-primary flex-1 truncate">
+                  {fase?.label || status}
+                </span>
+                <span className="text-xs text-brand-text-secondary bg-brand-page-medium rounded-full px-2 py-0.5 shrink-0">
+                  {cards.length}
+                </span>
+              </div>
+              <div className={`space-y-2 rounded-brand transition-colors min-h-[60px] ${isDoel ? 'bg-brand-lavender/10 ring-2 ring-brand-lavender/40 p-1' : ''}`}>
+                {cards.map((card) => (
+                  <BoardCard
+                    key={card.id}
+                    item={card}
+                    allStatuses={allStatuses}
+                    onStatusChange={onStatusChange}
+                    onClick={() => onCardClick(card)}
+                    toonOpvolging={isLead}
+                    onOpvolgPatch={onOpvolgPatch}
+                    onDragStart={onFaseChange ? () => {} : undefined}
+                  />
+                ))}
+              </div>
+            </div>
+          )
+        })}
+        {columns.length === 0 && (
+          <p className="text-brand-text-secondary text-sm py-10 px-4">Geen records gevonden.</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Vandaag oppakken ────────────────────────────────────────────────
+// De follow-up leeft hier, niet in een kolom: alles wat vandaag of eerder
+// aan de beurt is, dwars door alle fases heen.
+
+function VandaagBlok({
+  items,
+  onOpvolgPatch,
+  onCardClick,
+}: {
+  items: CrmRecord[]
+  onOpvolgPatch: (id: string, patch: Partial<CrmRecord>) => void
+  onCardClick: (r: CrmRecord) => void
+}) {
+  const [ingeklapt, setIngeklapt] = useState(false)
+
+  const openstaand = useMemo(() => {
+    return items
+      .filter((i) => moetVandaagOpgepakt(i))
+      .sort((a, b) => (a.volgende_actie || '').localeCompare(b.volgende_actie || ''))
+  }, [items])
+
+  const teLaat = openstaand.filter((i) => opvolgStand(i.volgende_actie) === 'te laat').length
+
+  if (openstaand.length === 0) return null
+
+  return (
+    <div className="card p-4">
+      <button
+        onClick={() => setIngeklapt((v) => !v)}
+        className="w-full flex items-center gap-2 text-left"
+      >
+        <Bell size={15} className={teLaat > 0 ? 'text-red-500' : 'text-amber-500'} />
+        <span className="text-sm font-semibold text-brand-text-primary">Vandaag oppakken</span>
+        <span className="text-xs text-brand-text-secondary bg-brand-page-medium rounded-full px-2 py-0.5">
+          {openstaand.length}
+        </span>
+        {teLaat > 0 && (
+          <span className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
+            {teLaat} te laat
+          </span>
+        )}
+        {ingeklapt ? <ChevronRight size={14} className="ml-auto text-gray-400" /> : <ChevronDown size={14} className="ml-auto text-gray-400" />}
+      </button>
+
+      {!ingeklapt && (
+        <div className="mt-3 space-y-1.5">
+          {openstaand.map((item) => (
+            <div
+              key={item.id}
+              className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-brand-page-light transition-colors"
+            >
+              <button onClick={() => onCardClick(item)} className="flex items-center gap-2 min-w-0 flex-1 text-left">
+                <StatusIcon status={item.status ?? null} size={12} />
+                <span className="text-sm text-brand-text-primary truncate">{item.name}</span>
+                <span className="text-xs text-brand-text-secondary truncate hidden sm:inline">
+                  {faseDef(item.status)?.label || item.status}
+                </span>
+                {item.volgende_actie_notitie && (
+                  <span className="text-xs text-brand-text-secondary opacity-70 truncate hidden md:inline">
+                    {item.volgende_actie_notitie}
+                  </span>
+                )}
+              </button>
+              <OpvolgBadge record={item} />
+              <ContactKnop record={item} onSaved={(p) => onOpvolgPatch(item.id, p)} variant="icoon" />
+              <OpvolgPicker record={item} onSaved={(p) => onOpvolgPatch(item.id, p)} variant="icoon" />
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -1654,7 +1826,7 @@ function RecordLinker({ record, onLinked }: { record: CrmRecord; onLinked: () =>
     setLoading(true)
     const t = setTimeout(() => {
       const q = query.trim()
-      fetch(`/api/integrations/clickup/records?entity=${kind}&limit=20${q ? `&search=${encodeURIComponent(q)}` : ''}`)
+      fetch(`/api/crm/records?entity=${kind}&limit=20${q ? `&search=${encodeURIComponent(q)}` : ''}`)
         .then((r) => r.json())
         .then((d) => { if (active) { setResults(Array.isArray(d.items) ? d.items : []); setLoading(false) } })
         .catch(() => { if (active) { setResults([]); setLoading(false) } })
@@ -1676,7 +1848,7 @@ function RecordLinker({ record, onLinked }: { record: CrmRecord; onLinked: () =>
         addTaskId = record.clickup_task_id
       }
       if (!field) throw new Error('Geen koppelveld beschikbaar voor dit type')
-      const res = await fetch(`/api/integrations/clickup/records/${patchId}`, {
+      const res = await fetch(`/api/crm/records/${patchId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ custom_fields: [{ id: field.id, value: { add: [addTaskId], rem: [] } }] }),
@@ -1768,7 +1940,7 @@ function RelationsPanel({ record }: { record: CrmRecord }) {
     // Een koppeling kan op dit record of op het andere record staan; verwijder elke edge.
     await Promise.all(
       edges.map((ed) =>
-        fetch(`/api/integrations/clickup/records/${ed.recordId}`, {
+        fetch(`/api/crm/records/${ed.recordId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ custom_fields: [{ id: ed.fieldId, value: { add: [], rem: [ed.taskId] } }] }),
@@ -1845,6 +2017,9 @@ function activiteitIcoon(soort: string) {
   if (soort === 'promotie') return <ArrowRight size={11} className="text-emerald-500" />
   if (soort === 'notitie') return <FileText size={11} className="text-amber-500" />
   if (soort === 'deadline') return <CalendarDays size={11} className="text-rose-400" />
+  if (soort === 'contact') return <Mail size={11} className="text-purple-500" />
+  if (soort === 'opvolging') return <Bell size={11} className="text-amber-500" />
+  if (soort === 'blokkade') return <Ban size={11} className="text-gray-700" />
   return <PencilLine size={11} className="text-gray-400" />
 }
 
@@ -1941,6 +2116,7 @@ function RecordDetailModal({
   onClose,
   onSaved,
   onDeleted,
+  onOpvolgPatch,
 }: {
   record: CrmRecord
   allStatuses: string[]
@@ -1948,8 +2124,10 @@ function RecordDetailModal({
   onClose: () => void
   onSaved: () => void
   onDeleted: () => void
+  onOpvolgPatch?: (id: string, patch: Partial<CrmRecord>) => void
 }) {
   const [full, setFull] = useState<CrmRecord | null>(null)
+  const [opvolgRec, setOpvolgRec] = useState<CrmRecord>(record)
   const [loadingFull, setLoadingFull] = useState(true)
   const [name, setName] = useState(record.name)
   const [currentStatus, setCurrentStatus] = useState(record.status || '')
@@ -1976,12 +2154,25 @@ function RecordDetailModal({
 
   useEffect(() => {
     setLoadingFull(true)
-    fetch(`/api/integrations/clickup/records/${record.id}`)
+    fetch(`/api/crm/records/${record.id}`)
       .then((r) => r.json())
       .then((d) => {
         const item = d.item || null
         setFull(item)
         if (item?.raw?.notes) setNotes(item.raw.notes)
+        // Verse opvolgwaarden uit de database overnemen
+        if (item) {
+          setOpvolgRec((prev) => ({
+            ...prev,
+            volgende_actie: item.volgende_actie ?? null,
+            volgende_actie_notitie: item.volgende_actie_notitie ?? null,
+            laatste_contact: item.laatste_contact ?? null,
+            contact_pogingen: item.contact_pogingen ?? 0,
+            contact_status: item.contact_status ?? 'open',
+            contact_status_tot: item.contact_status_tot ?? null,
+            contact_status_reden: item.contact_status_reden ?? null,
+          }))
+        }
         setLoadingFull(false)
       })
       .catch(() => setLoadingFull(false))
@@ -2046,6 +2237,16 @@ function RecordDetailModal({
     onStatusChange(id, status)
   }
 
+  /** Opvolging is al opgeslagen door het onderdeel zelf: hier alleen bijwerken. */
+  const bewaarOpvolg = (patch: Partial<CrmRecord>) => {
+    setOpvolgRec((prev) => ({ ...prev, ...patch }))
+    if (patch.status) {
+      setCurrentStatus(patch.status)
+      onStatusChange(record.id, patch.status)
+    }
+    onOpvolgPatch?.(record.id, patch)
+  }
+
   const raw = full?.raw || {}
   const description: string | null = raw.description || null
   const assignees = full?.assignees || record.assignees || []
@@ -2058,7 +2259,7 @@ function RecordDetailModal({
     try {
       const customFields = Object.entries(fieldEdits).map(([id, v]) => ({ id, value: v.value }))
       const [res] = await Promise.all([
-        fetch(`/api/integrations/clickup/records/${record.id}`, {
+        fetch(`/api/crm/records/${record.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2094,7 +2295,7 @@ function RecordDetailModal({
     if (!confirm('Weet je zeker dat je dit record wilt verwijderen?')) return
     setDeleting(true)
     try {
-      const res = await fetch(`/api/integrations/clickup/records/${record.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/crm/records/${record.id}`, { method: 'DELETE' })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Verwijderen mislukt')
       onDeleted()
@@ -2135,7 +2336,7 @@ function RecordDetailModal({
     setError('')
     setInfo('')
     try {
-      const res = await fetch(`/api/integrations/clickup/records/${record.id}/promote`, { method: 'POST' })
+      const res = await fetch(`/api/crm/records/${record.id}/promote`, { method: 'POST' })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Promote mislukt')
       setInfo(`Nieuwe ${promote.targetLabel} aangemaakt en gekoppeld.`)
@@ -2183,6 +2384,22 @@ function RecordDetailModal({
             style={{ fieldSizing: 'content' as any, minHeight: 36 }}
           />
         </div>
+
+        {/* Opvolging: wanneer moet ik hier weer wat mee */}
+        {['lead', 'contact', 'company'].includes(record.entity_type) && (
+          <div className="px-6 py-3 border-b border-gray-100 shrink-0 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mr-1">Opvolging</p>
+              <ContactKnop record={opvolgRec} onSaved={bewaarOpvolg} />
+              <OpvolgPicker record={opvolgRec} onSaved={bewaarOpvolg} />
+              <ContactSamenvatting record={opvolgRec} />
+              {opvolgRec.volgende_actie_notitie && (
+                <span className="text-[11px] text-gray-500 truncate">{opvolgRec.volgende_actie_notitie}</span>
+              )}
+            </div>
+            <ContactStatusBlok record={opvolgRec} onSaved={bewaarOpvolg} />
+          </div>
+        )}
 
         {/* Relaties: prominent bovenaan, direct onder de header */}
         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/40 shrink-0">
@@ -2410,7 +2627,7 @@ function NewRecordForm({
     setSaving(true)
     setError('')
     try {
-      const res = await fetch('/api/integrations/clickup/records', {
+      const res = await fetch('/api/crm/records', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entity_type: entity, name: name.trim(), status: status || undefined, description: description || undefined }),
@@ -2582,20 +2799,6 @@ export default function ClickUpCrmRecordsPage({ entity }: { entity: EntityType }
       .catch(() => {})
   }, [])
 
-  // Echte ClickUp-statusconfig laden (volgorde + kleuren) zodat de boards exact
-  // het ClickUp-bord nabouwen. Statische maps blijven fallback.
-  const [statusCfgVersion, setStatusCfgVersion] = useState(0)
-  useEffect(() => {
-    let active = true
-    fetch('/api/crm/statuses')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (active && d?.byEntity) { applyClickUpStatusConfig(d.byEntity); setStatusCfgVersion((v) => v + 1) }
-      })
-      .catch(() => {})
-    return () => { active = false }
-  }, [])
-
   const createTag = useCallback(async (naam: string, kleur?: string): Promise<DashTag | null> => {
     // Geen kleur opgegeven? Kies er automatisch een uit het palet (rouleert).
     const autoKleur = kleur ?? DASH_TAG_KLEURNAMEN[tagCatalog.length % DASH_TAG_KLEURNAMEN.length]
@@ -2614,7 +2817,7 @@ export default function ClickUpCrmRecordsPage({ entity }: { entity: EntityType }
 
   const setRecordTags = useCallback((recordId: string, tagIds: string[]) => {
     setItems((prev) => prev.map((it) => (it.id === recordId ? { ...it, dash_tags: tagIds } : it)))
-    fetch(`/api/integrations/clickup/records/${recordId}`, {
+    fetch(`/api/crm/records/${recordId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dash_tags: tagIds }),
@@ -2638,15 +2841,41 @@ export default function ClickUpCrmRecordsPage({ entity }: { entity: EntityType }
   }, [])
 
   const allStatuses = useMemo(() => {
-    // Echte ClickUp-volgorde (incl. lege statussen) plus wat in de data voorkomt
+    // Vaste volgorde plus wat verder nog in de data voorkomt
     const present = items.map((i) => i.status).filter(Boolean) as string[]
     return statusOrderFor(entity, present)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, entity, statusCfgVersion])
+  }, [items, entity])
 
   const handleStatusChange = (id: string, status: string) => {
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, status } : item)))
   }
+
+  /** Opvolgvelden bijwerken in de lijst zonder opnieuw te laden. */
+  const applyOpvolgPatch = useCallback((id: string, patch: Partial<CrmRecord>) => {
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)))
+  }, [])
+
+  /** Fase wijzigen vanaf het bord (slepen of snelknop): direct opslaan. */
+  const verplaatsNaarFase = useCallback(async (id: string, status: string) => {
+    const huidige = items.find((i) => i.id === id)
+    if (!huidige || (huidige.status || '') === status) return
+    // Nieuwe fase betekent een nieuwe standaard opvolgdatum, tenzij je er zelf
+    // al een had. Geblokkeerd of in pauze krijgt nooit een actie.
+    const nieuweActie = contactStand(huidige) !== 'open'
+      ? huidige.volgende_actie ?? null
+      : huidige.volgende_actie || standaardOpvolgdatum(status)
+    setItems((prev) => prev.map((item) =>
+      item.id === id ? { ...item, status, volgende_actie: nieuweActie } : item))
+    try {
+      await fetch(`/api/crm/records/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, volgende_actie: nieuweActie }),
+      })
+    } catch {
+      setMessage('Fase wijzigen mislukt')
+    }
+  }, [items])
 
   const visibleItems = useMemo(() => {
     let result = items
@@ -2697,7 +2926,7 @@ export default function ClickUpCrmRecordsPage({ entity }: { entity: EntityType }
     for (const id of ids) handleStatusChange(id, status)
     try {
       const results = await Promise.allSettled(ids.map((id) =>
-        fetch(`/api/integrations/clickup/records/${id}`, {
+        fetch(`/api/crm/records/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status }),
@@ -2722,7 +2951,7 @@ export default function ClickUpCrmRecordsPage({ entity }: { entity: EntityType }
     const ids = Array.from(selected)
     try {
       const results = await Promise.allSettled(ids.map((id) =>
-        fetch(`/api/integrations/clickup/records/${id}`, { method: 'DELETE' })
+        fetch(`/api/crm/records/${id}`, { method: 'DELETE' })
           .then((r) => { if (!r.ok) throw new Error() })
       ))
       const failed = results.filter((r) => r.status === 'rejected').length
@@ -2741,7 +2970,7 @@ export default function ClickUpCrmRecordsPage({ entity }: { entity: EntityType }
     setMessage('')
     setLoadError(false)
     try {
-      const res = await fetch(`/api/integrations/clickup/records?entity=${entity}&limit=500`, { cache: 'no-store' })
+      const res = await fetch(`/api/crm/records?entity=${entity}&limit=500`, { cache: 'no-store' })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Kon records niet laden')
       setItems(Array.isArray(json.items) ? json.items : [])
@@ -2874,6 +3103,15 @@ export default function ClickUpCrmRecordsPage({ entity }: { entity: EntityType }
         </div>
       )}
 
+      {/* Opvolging: alles wat vandaag of eerder aan de beurt is */}
+      {entity === 'lead' && !loading && !loadError && (
+        <VandaagBlok
+          items={items}
+          onOpvolgPatch={applyOpvolgPatch}
+          onCardClick={setDetailRecord}
+        />
+      )}
+
       {/* Content */}
       <div className="card p-0 overflow-hidden">
         {loading ? (
@@ -2917,6 +3155,8 @@ export default function ClickUpCrmRecordsPage({ entity }: { entity: EntityType }
               allStatuses={allStatuses}
               onStatusChange={handleStatusChange}
               onCardClick={setDetailRecord}
+              onOpvolgPatch={applyOpvolgPatch}
+              onFaseChange={entity === 'lead' ? verplaatsNaarFase : undefined}
             />
           </div>
         )}
@@ -2930,6 +3170,7 @@ export default function ClickUpCrmRecordsPage({ entity }: { entity: EntityType }
           onClose={() => setDetailRecord(null)}
           onSaved={load}
           onDeleted={() => { load(); setDetailRecord(null) }}
+          onOpvolgPatch={applyOpvolgPatch}
         />
       )}
 

@@ -70,6 +70,9 @@ function getPeriodeRange(
   return null
 }
 
+// Statussen die als omzet meetellen (factuurstelsel): concept en geannuleerd niet.
+const OMZET_STATUSSEN: FactuurStatus[] = ['verzonden', 'herinnering-verzonden', 'te-laat', 'betaald']
+
 const STATUS_LIST: { key: FactuurStatus; label: string; dotClass: string }[] = [
   { key: 'concept', label: 'CONCEPT', dotClass: 'bg-brand-text-secondary' },
   { key: 'verzonden', label: 'VERZONDEN', dotClass: 'bg-brand-blue-accent' },
@@ -265,10 +268,11 @@ function FacturenContent() {
 
   const now = new Date()
   const filtered = facturen.filter(f => {
-    // Omzetperiode: alleen betaalde facturen met factuurdatum binnen de periode, excl. uitgesloten
+    // Omzetperiode (factuurstelsel): elke verstuurde/betaalde factuur telt in zijn
+    // factuurjaar, ongeacht betaling. Concept/geannuleerd en uitgesloten tellen niet.
     if (periodeRange) {
       const datum = (f.revenueDate || f.date || '').split('T')[0]
-      if (f.status !== 'betaald') return false
+      if (!OMZET_STATUSSEN.includes(f.status)) return false
       if (f.excludeFromRevenue) return false
       if (datum < periodeRange.start || datum > periodeRange.end) return false
     }
@@ -551,7 +555,7 @@ function FacturenContent() {
               <span className="text-body text-brand-text-secondary font-sans ml-2">excl. btw</span>
             </p>
             <p className="text-caption text-brand-text-secondary mt-0.5">
-              incl. btw: {euro(periodeOmzetIncl)} | {filtered.length} betaalde factuur{filtered.length === 1 ? '' : 'en'}
+              incl. btw: {euro(periodeOmzetIncl)} | {filtered.length} factu{filtered.length === 1 ? 'ur' : 'ren'} (op factuurdatum)
             </p>
           </div>
           <Link href="/facturen" className="btn-secondary">

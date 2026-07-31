@@ -32,9 +32,17 @@ export async function PATCH(
 
   try {
     const body = await request.json()
-    const { name, status, description, due_date, custom_fields, notes, dash_tags } = body
+    const {
+      name, status, description, due_date, custom_fields, notes, dash_tags,
+      volgende_actie, volgende_actie_notitie,
+      contact_status, contact_status_tot, contact_status_reden,
+    } = body
 
-    // Supabase is de source of truth — alles gaat direct naar de database
+    if (contact_status !== undefined && !['open', 'pauze', 'blokkade'].includes(contact_status)) {
+      return NextResponse.json({ error: 'Onbekende contactstatus' }, { status: 400 })
+    }
+
+    // Supabase is de source of truth, alles gaat direct naar de database
     const record = await updateCrmRecord(id, {
       name,
       status,
@@ -43,6 +51,11 @@ export async function PATCH(
       due_date,
       custom_fields,
       dash_tags,
+      volgende_actie,
+      volgende_actie_notitie,
+      contact_status,
+      contact_status_tot,
+      contact_status_reden,
     })
 
     return NextResponse.json({ item: record })
