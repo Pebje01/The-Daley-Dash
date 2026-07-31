@@ -52,7 +52,7 @@ export default function Dashboard() {
     revenueYearIncl: number
     revenueMonth: number
     revenueMonthIncl: number
-    omzetPerMaand: { maand: string; label: string; excl: number; incl: number; aantal: number }[]
+    omzetPerMaand: { maand: string; label: string; excl: number; incl: number; aantal: number; ontvangen: number }[]
     verwachteOmzet: number
     verwachteOmzetIncl: number
     recentFacturen: Factuur[]

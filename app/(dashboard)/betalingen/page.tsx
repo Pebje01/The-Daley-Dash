@@ -14,6 +14,17 @@ function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
 }
 
+interface Kasstroom {
+  ontvangenDezeMaand: number
+  ontvangenDitJaar: number
+  openstaandBedrag: number
+  openstaandAantal: number
+  gemiddeldeBetaaltermijn: number | null
+  maanden: { maand: string; label: string; gefactureerdExcl: number; gefactureerdIncl: number; ontvangen: number; aantalOntvangen: number }[]
+  laatsteBetalingen: { id: string; nummer: string; klant: string; bedrijf: string; betaaldOp: string; factuurdatum: string; bedrag: number; dagen: number }[]
+  openstaandeFacturen: { id: string; nummer: string; klant: string; bedrijf: string; vervaldatum: string; bedrag: number; dagenOpen: number; teLaat: boolean }[]
+}
+
 // Kolommen voor de betalingen-tabel (verschuifbaar).
 const BETALING_KOLOMMEN: { key: string; label: string; align?: 'right' }[] = [
   { key: 'referentie', label: 'Referentie' },
@@ -58,6 +69,16 @@ export default function BetalingenPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<BetalingStatus | 'alle'>('alle')
+
+  // Kasstroom uit de facturen. De tabel `betalingen` hieronder wordt nergens
+  // gevuld; de echte betaalinformatie staat op de facturen zelf (paid_at).
+  const [kas, setKas] = useState<Kasstroom | null>(null)
+  useEffect(() => {
+    fetch('/api/betalingen/kasstroom')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d && !d.error) setKas(d) })
+      .catch(() => {})
+  }, [])
   const [search, setSearch] = useState('')
 
   const loadBetalingen = async () => {
@@ -104,9 +125,6 @@ export default function BetalingenPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, search])
 
-  const totalBetaald = betalingen.filter(b => b.status === 'betaald').reduce((s, b) => s + b.amount, 0)
-  const totalOpen = betalingen.filter(b => b.status === 'openstaand').reduce((s, b) => s + b.amount, 0)
-  const aantalBetaald = betalingen.filter(b => b.status === 'betaald').length
 
   return (
     <div className="p-8 space-y-6">
@@ -122,20 +140,130 @@ export default function BetalingenPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="card">
-          <p className="text-caption text-brand-text-secondary mb-2">Ontvangen</p>
-          <p className="font-uxum text-stat text-brand-text-primary">{euro(totalBetaald)}</p>
-        </div>
-        <div className="card">
-          <p className="text-caption text-brand-text-secondary mb-2">Openstaand</p>
-          <p className="font-uxum text-stat text-brand-text-primary">{euro(totalOpen)}</p>
-        </div>
-        <div className="card">
-          <p className="text-caption text-brand-text-secondary mb-2">Ontvangen betalingen</p>
-          <p className="font-uxum text-stat text-brand-text-primary">{aantalBetaald}</p>
-        </div>
-      </div>
+      {/* Kasstroom uit de facturen zelf: wat er echt is binnengekomen, op betaaldatum. */}
+      {kas && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="card">
+              <p className="text-caption text-brand-text-secondary mb-2">Ontvangen deze maand</p>
+              <p className="font-uxum text-stat text-brand-text-primary">{euro(kas.ontvangenDezeMaand)}</p>
+              <p className="text-caption text-brand-text-secondary mt-1">dit jaar: {euro(kas.ontvangenDitJaar)}</p>
+            </div>
+            <div className="card">
+              <p className="text-caption text-brand-text-secondary mb-2">Nog te ontvangen</p>
+              <p className="font-uxum text-stat text-brand-text-primary">{euro(kas.openstaandBedrag)}</p>
+              <p className="text-caption text-brand-text-secondary mt-1">
+                {kas.openstaandAantal} {kas.openstaandAantal === 1 ? 'factuur' : 'facturen'}
+              </p>
+            </div>
+            <div className="card">
+              <p className="text-caption text-brand-text-secondary mb-2">Gemiddelde betaaltermijn</p>
+              <p className="font-uxum text-stat text-brand-text-primary">
+                {kas.gemiddeldeBetaaltermijn ?? '–'}<span className="text-body"> dagen</span>
+              </p>
+              <p className="text-caption text-brand-text-secondary mt-1">over alle betaalde facturen</p>
+            </div>
+            <div className="card">
+              <p className="text-caption text-brand-text-secondary mb-2">Te laat</p>
+              <p className="font-uxum text-stat text-brand-text-primary">
+                {kas.openstaandeFacturen.filter(f => f.teLaat).length}
+              </p>
+              <p className="text-caption text-brand-text-secondary mt-1">
+                {euro(kas.openstaandeFacturen.filter(f => f.teLaat).reduce((s, f) => s + f.bedrag, 0))}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="card">
+              <h2 className="font-semibold text-body mb-1">Gefactureerd tegenover ontvangen</h2>
+              <p className="text-caption text-brand-text-secondary mb-3">
+                Deze twee lopen bewust niet gelijk: een factuur van juli kan in augustus betaald worden.
+              </p>
+              <table className="w-full text-body">
+                <thead>
+                  <tr className="text-caption text-brand-text-secondary uppercase tracking-wide">
+                    <th className="text-left font-medium py-1.5">Maand</th>
+                    <th className="text-right font-medium py-1.5">Gefactureerd</th>
+                    <th className="text-right font-medium py-1.5">Ontvangen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {kas.maanden.map(m => (
+                    <tr key={m.maand} className="border-t border-brand-page-medium">
+                      <td className="py-1.5 capitalize">{m.label}</td>
+                      <td className="py-1.5 text-right text-brand-text-secondary">{euro(m.gefactureerdIncl)}</td>
+                      <td className="py-1.5 text-right font-semibold">{m.ontvangen ? euro(m.ontvangen) : '–'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="card">
+              <h2 className="font-semibold text-body mb-1">Nog te ontvangen</h2>
+              <p className="text-caption text-brand-text-secondary mb-3">Openstaande facturen op vervaldatum.</p>
+              {kas.openstaandeFacturen.length === 0 ? (
+                <p className="text-body text-brand-text-secondary">Alles is betaald.</p>
+              ) : (
+                <table className="w-full text-body">
+                  <tbody>
+                    {kas.openstaandeFacturen.map(f => (
+                      <tr key={f.id} className="border-t border-brand-page-medium first:border-0">
+                        <td className="py-1.5">
+                          <Link href={`/facturen/${f.id}`} className="font-mono text-caption underline decoration-brand-card-border underline-offset-2">
+                            {f.nummer}
+                          </Link>
+                          <span className="ml-2">{f.klant}</span>
+                        </td>
+                        <td className="py-1.5 text-right text-caption text-brand-text-secondary whitespace-nowrap">
+                          {f.teLaat
+                            ? <span className="text-brand-status-red font-semibold">te laat</span>
+                            : `vervalt ${new Date(f.vervaldatum + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}`}
+                        </td>
+                        <td className="py-1.5 text-right font-semibold whitespace-nowrap pl-3">{euro(f.bedrag)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          <div className="card">
+            <h2 className="font-semibold text-body mb-1">Laatste betalingen</h2>
+            <p className="text-caption text-brand-text-secondary mb-3">Op betaaldatum, met hoe lang de klant erover deed.</p>
+            <table className="w-full text-body">
+              <thead>
+                <tr className="text-caption text-brand-text-secondary uppercase tracking-wide">
+                  <th className="text-left font-medium py-1.5">Betaald op</th>
+                  <th className="text-left font-medium py-1.5">Factuur</th>
+                  <th className="text-left font-medium py-1.5">Klant</th>
+                  <th className="text-right font-medium py-1.5">Termijn</th>
+                  <th className="text-right font-medium py-1.5">Bedrag</th>
+                </tr>
+              </thead>
+              <tbody>
+                {kas.laatsteBetalingen.map(b => (
+                  <tr key={b.id} className="border-t border-brand-page-medium">
+                    <td className="py-1.5 text-brand-text-secondary">
+                      {new Date(b.betaaldOp + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </td>
+                    <td className="py-1.5">
+                      <Link href={`/facturen/${b.id}`} className="font-mono text-caption underline decoration-brand-card-border underline-offset-2">
+                        {b.nummer}
+                      </Link>
+                    </td>
+                    <td className="py-1.5">{b.klant}</td>
+                    <td className="py-1.5 text-right text-caption text-brand-text-secondary">{b.dagen} dagen</td>
+                    <td className="py-1.5 text-right font-semibold">{euro(b.bedrag)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
       {loadError && (
         <div className="card border-red-200 bg-red-50">

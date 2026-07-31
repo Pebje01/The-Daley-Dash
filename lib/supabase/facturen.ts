@@ -424,12 +424,21 @@ export async function getFactuurStats() {
   const omzetPerMaand = Array.from({ length: now.getMonth() + 1 }, (_, i) => {
     const maand = `${now.getFullYear()}-${String(i + 1).padStart(2, '0')}`
     const regels = yearFacturen.filter((f: any) => effectiveDate(f).startsWith(maand))
+
+    // Wat er in die maand echt binnenkwam, op betaaldatum. Dat kan een factuur uit
+    // een eerdere maand of zelfs een eerder jaar zijn, dus hier kijken we naar alle
+    // facturen en niet alleen naar die van dit jaar.
+    const ontvangen = facturen
+      .filter((f: any) => f.status === 'betaald' && String(f.paid_at ?? '').startsWith(maand))
+      .reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
+
     return {
       maand,
       label: new Date(`${maand}-01T12:00:00`).toLocaleDateString('nl-NL', { month: 'long' }),
       excl: regels.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0),
       incl: regels.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0),
       aantal: regels.length,
+      ontvangen,
     }
   })
 
