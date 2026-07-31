@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
-import { Plus, TrendingUp, AlertCircle, CheckCircle2, ArrowRight, FileText, Clock, RefreshCw } from 'lucide-react'
+import { Plus, TrendingUp, AlertCircle, CheckCircle2, ArrowRight, FileText, Clock, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react'
 import ActiesWidget from '@/components/ActiesWidget'
 import { getCompany } from '@/lib/companies'
 import { FactuurStatusBadge, OfferteStatusBadge } from '@/components/StatusBadge'
@@ -52,14 +52,23 @@ export default function Dashboard() {
     revenueYearIncl: number
     revenueMonth: number
     revenueMonthIncl: number
-    revenuePrevMonth: number
-    revenuePrevMonthIncl: number
-    prevMonthLabel: string
+    omzetPerMaand: { maand: string; label: string; excl: number; incl: number; aantal: number }[]
     verwachteOmzet: number
     verwachteOmzetIncl: number
     recentFacturen: Factuur[]
     perMaand: { maand: string; openstaand: number; uren: number; totaal: number }[]
-  }>({ openFacturen: 0, totalOpenAmount: 0, overdueFacturen: 0, paidThisMonth: 0, revenueYear: 0, revenueYearIncl: 0, revenueMonth: 0, revenueMonthIncl: 0, revenuePrevMonth: 0, revenuePrevMonthIncl: 0, prevMonthLabel: '', verwachteOmzet: 0, verwachteOmzetIncl: 0, recentFacturen: [], perMaand: [] })
+  }>({ openFacturen: 0, totalOpenAmount: 0, overdueFacturen: 0, paidThisMonth: 0, revenueYear: 0, revenueYearIncl: 0, revenueMonth: 0, revenueMonthIncl: 0, omzetPerMaand: [], verwachteOmzet: 0, verwachteOmzetIncl: 0, recentFacturen: [], perMaand: [] })
+
+  // Welke maand de omzetkaart toont. -1 betekent "nog niet gezet", dan springt hij
+  // naar de huidige maand zodra de cijfers binnen zijn.
+  const [maandIndex, setMaandIndex] = useState(-1)
+  const gekozenMaand = factuurStats.omzetPerMaand[maandIndex] ?? factuurStats.omzetPerMaand[factuurStats.omzetPerMaand.length - 1]
+
+  useEffect(() => {
+    if (maandIndex === -1 && factuurStats.omzetPerMaand.length > 0) {
+      setMaandIndex(factuurStats.omzetPerMaand.length - 1)
+    }
+  }, [factuurStats.omzetPerMaand.length, maandIndex])
 
   const [abonnementen, setAbonnementen] = useState<Abonnement[]>([])
   const [crmStats, setCrmStats] = useState<{
@@ -174,21 +183,41 @@ export default function Dashboard() {
           <p className="text-caption text-brand-text-secondary mt-1">incl. btw: {euro(factuurStats.revenueYearIncl)}</p>
         </Link>
 
-        <Link href="/facturen?periode=maand" className="card hover:shadow-md transition-shadow cursor-pointer">
+        {/* Omzet per maand, met pijltjes zodat je op de 1e van de maand nog gewoon
+            de vorige maand kunt bekijken in plaats van een lege kaart. */}
+        <div className="card">
           <div className="flex items-start justify-between mb-3">
-            <p className="text-caption text-brand-text-secondary">Omzet deze maand</p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setMaandIndex(i => Math.max(0, i - 1))}
+                disabled={maandIndex <= 0}
+                aria-label="Vorige maand"
+                className="p-0.5 rounded text-brand-text-secondary hover:text-brand-text-primary disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <p className="text-caption text-brand-text-secondary capitalize min-w-[74px] text-center">
+                Omzet {gekozenMaand?.label ?? 'deze maand'}
+              </p>
+              <button
+                onClick={() => setMaandIndex(i => Math.min(factuurStats.omzetPerMaand.length - 1, i + 1))}
+                disabled={maandIndex >= factuurStats.omzetPerMaand.length - 1}
+                aria-label="Volgende maand"
+                className="p-0.5 rounded text-brand-text-secondary hover:text-brand-text-primary disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
             <div className="w-8 h-8 rounded-brand-sm bg-brand-lime flex items-center justify-center">
               <TrendingUp size={17} className="text-brand-lime-accent" />
             </div>
           </div>
-          <p className="font-uxum text-stat text-brand-text-primary">{euro(factuurStats.revenueMonth)}</p>
-          <p className="text-caption text-brand-text-secondary mt-1">incl. btw: {euro(factuurStats.revenueMonthIncl)}</p>
-          {factuurStats.revenuePrevMonth > 0 && (
-            <p className="text-caption text-brand-text-secondary/70 mt-0.5">
-              {factuurStats.prevMonthLabel}: {euro(factuurStats.revenuePrevMonth)}
-            </p>
-          )}
-        </Link>
+          <p className="font-uxum text-stat text-brand-text-primary">{euro(gekozenMaand?.excl ?? 0)}</p>
+          <p className="text-caption text-brand-text-secondary mt-1">incl. btw: {euro(gekozenMaand?.incl ?? 0)}</p>
+          <p className="text-caption text-brand-text-secondary/70 mt-0.5">
+            {gekozenMaand?.aantal ?? 0} {gekozenMaand?.aantal === 1 ? 'factuur' : 'facturen'}
+          </p>
+        </div>
 
         <Link href="/offertes?status=akkoord" className="card hover:shadow-md transition-shadow cursor-pointer">
           <div className="flex items-start justify-between mb-3">

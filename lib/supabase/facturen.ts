@@ -418,16 +418,20 @@ export async function getFactuurStats() {
   const revenueMonth = monthFacturen.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0)
   const revenueMonthIncl = monthFacturen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
 
-  // Vorige maand erbij: op de eerste van de maand staat "deze maand" op nul en lijkt
-  // het alsof er niets gebeurt, terwijl de maand ervoor juist goed kan zijn geweest.
-  const vorige = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-  const prevMonthStart = `${vorige.getFullYear()}-${String(vorige.getMonth() + 1).padStart(2, '0')}-01`
-  const prevMonthFacturen = facturen.filter(
-    (f: any) => activeStatuses.includes(f.status) && effectiveDate(f) >= prevMonthStart && effectiveDate(f) < monthStart
-  )
-  const revenuePrevMonth = prevMonthFacturen.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0)
-  const revenuePrevMonthIncl = prevMonthFacturen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
-  const prevMonthLabel = vorige.toLocaleDateString('nl-NL', { month: 'long' })
+  // Omzet per maand voor het hele jaar, zodat je op het dashboard door de maanden
+  // kunt bladeren. Op de eerste van de maand staat "deze maand" namelijk op nul en
+  // lijkt het alsof er niets gebeurt, terwijl de maand ervoor juist goed was.
+  const omzetPerMaand = Array.from({ length: now.getMonth() + 1 }, (_, i) => {
+    const maand = `${now.getFullYear()}-${String(i + 1).padStart(2, '0')}`
+    const regels = yearFacturen.filter((f: any) => effectiveDate(f).startsWith(maand))
+    return {
+      maand,
+      label: new Date(`${maand}-01T12:00:00`).toLocaleDateString('nl-NL', { month: 'long' }),
+      excl: regels.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0),
+      incl: regels.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0),
+      aantal: regels.length,
+    }
+  })
 
   // Verwachte omzet: actieve facturen + akkoord/verstuurd offertes ZONDER bijbehorende factuur + open uren
   const invoicedOfferteIds = new Set(
@@ -447,12 +451,18 @@ export async function getFactuurStats() {
     0
   )
 
+  // Verwacht is wat er nog MOET komen. Een betaalde factuur is geen verwachting
+  // meer maar gerealiseerde omzet, die telde hier eerst ten onrechte in mee.
+  const nogTeOntvangen = facturen.filter(
+    (f: any) => openStatuses.includes(f.status) || f.status === 'te-laat'
+  )
+
   const verwachteOmzet =
-    activeFacturen.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0) +
+    nogTeOntvangen.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0) +
     uninvoicedOffertes.reduce((sum: number, o: any) => sum + (o.subtotal ?? 0), 0) +
     urenSubtotal
   const verwachteOmzetIncl =
-    activeFacturen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0) +
+    nogTeOntvangen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0) +
     uninvoicedOffertes.reduce((sum: number, o: any) => sum + (o.total ?? 0), 0) +
     urenSubtotal * 1.21
 
@@ -494,9 +504,7 @@ export async function getFactuurStats() {
     revenueYearIncl,
     revenueMonth,
     revenueMonthIncl,
-    revenuePrevMonth,
-    revenuePrevMonthIncl,
-    prevMonthLabel,
+    omzetPerMaand,
     verwachteOmzet,
     verwachteOmzetIncl,
     recentFacturen,
