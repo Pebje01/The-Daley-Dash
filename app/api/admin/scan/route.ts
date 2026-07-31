@@ -14,6 +14,8 @@ export interface ScannedFile {
   number: string | null
   matched: boolean
   matchedId: string | null
+  /** Waar wanneer meerdere bestanden hetzelfde nummer dragen. */
+  duplicaat?: boolean
 }
 
 function extractNumber(filename: string): { number: string | null; type: 'factuur' | 'offerte' } {
@@ -44,6 +46,9 @@ function scanDir(dir: string, results: { absolutePath: string; filename: string 
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name)
     if (entry.isDirectory()) {
+      // Mappen met een _ ervoor zijn werkmappen, geen archief. Zo blijft
+      // _Concepten buiten de sync: een concept is nog geen echte factuur.
+      if (entry.name.startsWith('_')) continue
       scanDir(full, results)
     } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.pdf')) {
       results.push({ absolutePath: full, filename: entry.name })
@@ -70,6 +75,17 @@ export async function GET() {
   const factuurMap = new Map((facturen ?? []).map((f: any) => [f.number.toUpperCase(), f.id]))
   const offerteMap = new Map((offertes ?? []).map((o: any) => [o.number.toUpperCase(), o.id]))
 
+  // Tel eerst hoe vaak elk nummer in de mappen voorkomt. Twee bestanden met
+  // hetzelfde nummer zijn altijd fout: dan koppelt de sync er stilletjes één aan
+  // de verkeerde factuur en verdwijnt de ander uit beeld.
+  const nummerTeller = new Map<string, number>()
+  for (const { filename } of rawFiles) {
+    const { number, type } = extractNumber(filename)
+    if (!number) continue
+    const sleutel = `${type}:${number}`
+    nummerTeller.set(sleutel, (nummerTeller.get(sleutel) ?? 0) + 1)
+  }
+
   const scanned: ScannedFile[] = rawFiles.map(({ absolutePath, filename }) => {
     const { number, type } = extractNumber(filename)
     const map = type === 'factuur' ? factuurMap : offerteMap
@@ -81,6 +97,7 @@ export async function GET() {
       number,
       matched: matchedId !== null,
       matchedId,
+      duplicaat: number ? (nummerTeller.get(`${type}:${number}`) ?? 0) > 1 : false,
     }
   })
 

@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Plus, Trash2, UserPlus, UserX, Eraser, X, Check, RefreshCw, FileText, ChevronDown, RotateCcw, GripVertical, Search, ExternalLink } from 'lucide-react'
+import { Plus, Trash2, UserPlus, UserX, Eraser, X, Check, RefreshCw, FileText, FileEdit, ChevronDown, RotateCcw, GripVertical, Search, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 import { Uur, UurKlant, UurProject, CompanyId } from '@/lib/types'
+import type { ArchiefFactuur } from '@/app/api/uren-archief/route'
 import { COMPANIES } from '@/lib/companies'
 import { deriveKlantnummerLetters } from '@/lib/klantnummer'
 
@@ -85,10 +86,13 @@ export default function UrenPage() {
   const [factuurRegels, setFactuurRegels] = useState<FactuurRegel[]>([])
   const [dragId, setDragId] = useState<string | null>(null)
   const [factuurNummerPreview, setFactuurNummerPreview] = useState<string | null>(null)
+  const [conceptNummerPreview, setConceptNummerPreview] = useState<string | null>(null)
+  /** Onthoudt of de laatste klik Concept was, zodat de klantgegevens-stap dat aanhoudt. */
+  const [conceptModus, setConceptModus] = useState(false)
   const [newHandmatigeRegel, setNewHandmatigeRegel] = useState({ werkzaamheden: '', omschrijving: '', aantal: '', prijs: '' })
 
   // Archief
-  const [archiefUren, setArchiefUren] = useState<Uur[]>([])
+  const [archiefFacturen, setArchiefFacturen] = useState<ArchiefFactuur[]>([])
   const [archiefOpen, setArchiefOpen] = useState(false)
   const [restoringFactuur, setRestoringFactuur] = useState<string | null>(null)
 
@@ -117,12 +121,15 @@ export default function UrenPage() {
   const newProjectRowRef = useRef<HTMLTableRowElement>(null)
   const newProjectNaamRef = useRef<HTMLInputElement>(null)
 
-  const loadArchief = useCallback(async () => {
+  // Het archief leest de factuur zelf, niet alleen de uren. Zo zie je ook de
+  // regels die je tijdens het genereren hebt toegevoegd, zoals een termijn.
+  const loadArchiefFacturen = useCallback(async (klantNaam: string | null) => {
+    if (!klantNaam) { setArchiefFacturen([]); return }
     try {
-      const res = await fetch('/api/uren?gefactureerd=true')
-      if (res.ok) setArchiefUren(await res.json())
+      const res = await fetch(`/api/uren-archief?klant=${encodeURIComponent(klantNaam)}`)
+      if (res.ok) setArchiefFacturen(await res.json())
     } catch (e) {
-      console.error('loadArchief fout:', e)
+      console.error('loadArchiefFacturen fout:', e)
     }
   }, [])
 
@@ -147,8 +154,7 @@ export default function UrenPage() {
       console.error('uren/load fout:', e)
     }
     setLoading(false)
-    loadArchief()
-  }, [loadArchief])
+  }, [])
 
   useEffect(() => { load() }, [load])
 
@@ -161,6 +167,7 @@ export default function UrenPage() {
       setSelectedIds(new Set())
       setSelectedProjectIds(new Set())
     }
+    loadArchiefFacturen(activeKlant?.naam ?? null)
   }, [activeKlantId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const klantUren = activeKlant
@@ -238,9 +245,14 @@ export default function UrenPage() {
     if (!showFactuurModal) return
     let geannuleerd = false
     setFactuurNummerPreview(null)
+    setConceptNummerPreview(null)
     fetch(`/api/factuur-van-uren?date=${gekozenFactuurdatum}&company=${factuurCompanyId}`)
       .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (!geannuleerd && d?.factuurnummer) setFactuurNummerPreview(d.factuurnummer) })
+      .then(d => {
+        if (geannuleerd || !d) return
+        if (d.factuurnummer) setFactuurNummerPreview(d.factuurnummer)
+        if (d.conceptnummer) setConceptNummerPreview(d.conceptnummer)
+      })
       .catch(() => {})
     return () => { geannuleerd = true }
   }, [showFactuurModal, gekozenFactuurdatum, factuurCompanyId])
@@ -553,8 +565,9 @@ export default function UrenPage() {
     }
   }
 
-  const roepFactuurAan = async () => {
+  const roepFactuurAan = async (alsConcept = false) => {
     if (!activeKlant || !factuurRegels.length) return
+    setConceptModus(alsConcept)
     setGeneratingFactuur(true)
     const gebruikteProjectIds = factuurRegels.flatMap(r => r.type === 'handmatig' && r.projectId ? [r.projectId] : [])
     const urenUitRegels = factuurRegels
@@ -575,6 +588,7 @@ export default function UrenPage() {
           btwPercentage: factuurBtwPercentage,
           betaallink: factuurBetaallink.trim() || null,
           handmatigeRegels: handmatigeUitRegels,
+          concept: alsConcept,
         }),
       })
 
@@ -599,6 +613,14 @@ export default function UrenPage() {
         return
       }
 
+      // Bij een concept blijven de uren en projecten gewoon staan: er is nog niets
+      // verstuurd, dus er valt ook nog niets af te boeken.
+      if (alsConcept) {
+        setFactuurNummer(data.factuurnummer)
+        loadArchiefFacturen(activeKlant.naam)
+        return
+      }
+
       // Factuur gegenereerd: verwijder uren uit lokale state en herlaad archief
       setUren(prev => prev.filter(u => !selectedIds.has(u.id)))
       setSelectedIds(new Set())
@@ -615,7 +637,7 @@ export default function UrenPage() {
         ))
       }
       setFactuurNummer(data.factuurnummer)
-      loadArchief()
+      loadArchiefFacturen(activeKlant.naam)
     } catch (err: any) {
       alert(`Fout: ${err.message}`)
     } finally {
@@ -639,8 +661,9 @@ export default function UrenPage() {
         setKlanten(prev => prev.map(k => k.id === activeKlant.id ? updated : k))
       }
       setNeedsKlantDetails(false)
-      // Genereer factuur nu klantgegevens compleet zijn
-      await roepFactuurAan()
+      // Genereer factuur nu klantgegevens compleet zijn, in dezelfde modus als
+      // waarop geklikt was (factuur of concept)
+      await roepFactuurAan(conceptModus)
     } catch (err: any) {
       alert(`Fout bij opslaan: ${err.message}`)
     }
@@ -650,6 +673,7 @@ export default function UrenPage() {
   const openFactuurModal = () => {
     setFactuurNummer(null)
     setNeedsKlantDetails(false)
+    setConceptModus(false)
     setFactuurDatumKeuze('vandaag')
     setFactuurCustomDatum(today())
     setFactuurBtwPercentage(21)
@@ -709,26 +733,36 @@ export default function UrenPage() {
     })
   }
 
-  // Archief helpers
-  const klantArchiefUren = activeKlant
-    ? archiefUren.filter(u => u.klant === activeKlant.naam)
-    : []
-
-  const archiefGroepen = Object.entries(
-    klantArchiefUren.reduce((acc, u) => {
-      const key = u.factuurnummer ?? 'onbekend'
-      if (!acc[key]) acc[key] = []
-      acc[key].push(u)
-      return acc
-    }, {} as Record<string, Uur[]>)
-  ).sort((a, b) => b[0].localeCompare(a[0]))
-
   const handleRestoreFactuur = async (factuurnummer: string) => {
     const isOnbekend = factuurnummer === 'onbekend'
-    const groepUren = archiefUren.filter(u => (u.factuurnummer ?? 'onbekend') === factuurnummer)
+    const groep = archiefFacturen.find(f => f.factuurnummer === factuurnummer)
+    const losseRegels = (groep?.regels ?? []).filter(r => !r.uitUren)
+
+    // Een betaalde factuur weggooien mag boekhoudkundig niet: die corrigeer je
+    // met een creditnota, zodat de nummering aaneengesloten en controleerbaar blijft.
+    if (groep?.status === 'betaald') {
+      alert(
+        `${factuurnummer} is al betaald, die kun je niet terugzetten.\n\n` +
+        `Klopt er iets niet, maak dan een creditnota met een eigen nummer die deze factuur tegenboekt. ` +
+        `Zo blijft je nummering kloppen en corrigeer je de btw in het juiste tijdvak.`
+      )
+      return
+    }
+
+    const isVerstuurd = ['verzonden', 'herinnering-verzonden', 'te-laat'].includes(groep?.status ?? '')
+    const regelsTekst = losseRegels.length
+      ? `\n\n${losseRegels.length} losse ${losseRegels.length === 1 ? 'regel komt' : 'regels komen'} terug bij Losse projecten.`
+      : ''
+
     const promptText = isOnbekend
-      ? `Zet ${groepUren.length} losse gearchiveerde uren terug naar actief?`
-      : `Weet je zeker dat je factuur ${factuurnummer} wilt verwijderen en de uren wilt terugzetten?`
+      ? `Zet ${groep?.urenIds.length ?? 0} losse gearchiveerde uren terug naar actief?`
+      : isVerstuurd
+        ? `Let op: ${factuurnummer} is al verstuurd.\n\n`
+          + `Heeft de klant hem nog niet betaald of ingeboekt, dan mag je hem gewoon vervangen. `
+          + `Is dat wel zo, dan hoort hier een creditnota.\n\n`
+          + `De factuur wordt verwijderd en de PDF verhuist naar _Teruggezet.${regelsTekst}\n\nDoorgaan?`
+        : `Weet je zeker dat je factuur ${factuurnummer} wilt verwijderen en alles wilt terugzetten?${regelsTekst}`
+
     if (!confirm(promptText)) return
 
     setRestoringFactuur(factuurnummer)
@@ -738,7 +772,16 @@ export default function UrenPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           factuurnummer: isOnbekend ? null : factuurnummer,
-          urenIds: groepUren.map(u => u.id),
+          urenIds: groep?.urenIds ?? [],
+          klant: activeKlant?.naam ?? null,
+          losseRegels: losseRegels.map(r => ({
+            omschrijving: r.omschrijving,
+            detail: r.detail,
+            bedrag: r.bedrag,
+            datum: r.datum,
+            aantal: r.aantal,
+            prijsPerStuk: r.prijsPerStuk,
+          })),
         }),
       })
       const data = await res.json()
@@ -746,10 +789,11 @@ export default function UrenPage() {
         alert(`Fout bij terugzetten: ${data.error}`)
         return
       }
-      if (data.restoredCount === 0) {
+      if (data.restoredCount === 0 && !data.herstuurdeRegels) {
         alert('Geen uren gevonden om terug te zetten.')
       }
       await load()
+      await loadArchiefFacturen(activeKlant?.naam ?? null)
     } catch (err: any) {
       alert(`Fout: ${err.message}`)
     } finally {
@@ -1389,36 +1433,65 @@ export default function UrenPage() {
       )}
 
       {/* Factuur archief */}
-      {activeKlant && klantArchiefUren.length > 0 && (
+      {activeKlant && archiefFacturen.length > 0 && (
         <div className="space-y-3 pt-2">
           <button
             onClick={() => setArchiefOpen(o => !o)}
             className="flex items-center gap-2 text-caption text-brand-text-secondary hover:text-brand-text-primary transition-colors"
           >
             <ChevronDown size={14} className={`transition-transform ${archiefOpen ? 'rotate-180' : ''}`} />
-            Factuur archief ({archiefGroepen.length} {archiefGroepen.length === 1 ? 'factuur' : 'facturen'}, {klantArchiefUren.length} rijen)
+            Factuur archief ({archiefFacturen.length} {archiefFacturen.length === 1 ? 'factuur' : 'facturen'})
+            <span className="text-brand-text-secondary/70">
+              {euro(archiefFacturen.reduce((s, f) => s + f.subtotaal, 0))} ex. btw
+            </span>
           </button>
 
-          {archiefOpen && archiefGroepen.map(([factuurnummer, groepUren]) => {
-            const datums = groepUren.map(u => u.datum).sort()
-            const datumVan = new Date(datums[0] + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
-            const datumTot = new Date(datums[datums.length - 1] + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })
-            const totaalUrenGroep = groepUren.reduce((s, u) => s + u.uren, 0)
-            const totaalBedragGroep = groepUren.reduce((s, u) => s + u.uren * u.uurtarief, 0)
-            const isRestoring = restoringFactuur === factuurnummer
+          {archiefOpen && archiefFacturen.map(f => {
+            const isRestoring = restoringFactuur === f.factuurnummer
+            const losseRegels = f.regels.filter(r => !r.uitUren).length
+            const datumTekst = f.datum
+              ? new Date(f.datum + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })
+              : null
 
             return (
-              <div key={factuurnummer} className="bg-white rounded-brand border border-brand-card-border overflow-hidden opacity-60 hover:opacity-100 transition-opacity">
+              <div key={f.factuurnummer} className="bg-white rounded-brand border border-brand-card-border overflow-hidden opacity-70 hover:opacity-100 transition-opacity">
                 <div className="flex items-center justify-between px-4 py-2.5 bg-brand-page-light/60 border-b border-brand-page-medium">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="font-uxum text-caption text-brand-text-primary font-semibold">{factuurnummer}</span>
-                    <span className="text-caption text-brand-text-secondary">{datumVan} – {datumTot}</span>
-                    <span className="text-caption text-brand-text-secondary">{totaalUrenGroep.toFixed(2)}u | {euro(totaalBedragGroep)} ex. btw</span>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    {f.factuurId ? (
+                      <Link
+                        href={`/facturen/${f.factuurId}`}
+                        className="font-uxum text-caption text-brand-text-primary font-semibold underline decoration-brand-card-border underline-offset-2 hover:decoration-brand-text-primary"
+                      >
+                        {f.factuurnummer}
+                      </Link>
+                    ) : (
+                      <span className="font-uxum text-caption text-brand-text-primary font-semibold">{f.factuurnummer}</span>
+                    )}
+                    {datumTekst && <span className="text-caption text-brand-text-secondary">{datumTekst}</span>}
+                    <span className="text-caption text-brand-text-primary font-semibold">{euro(f.subtotaal)} ex. btw</span>
+                    <span className="text-caption text-brand-text-secondary">
+                      {f.urenAantal > 0 && `${f.urenAantal.toFixed(2)}u uren`}
+                      {f.urenAantal > 0 && losseRegels > 0 && ' + '}
+                      {losseRegels > 0 && `${losseRegels} losse ${losseRegels === 1 ? 'regel' : 'regels'}`}
+                    </span>
+                    {f.status && (
+                      <span className="text-pill px-2 py-0.5 rounded bg-brand-page-medium text-brand-text-secondary font-semibold uppercase">
+                        {f.status}
+                      </span>
+                    )}
+                    {!f.factuurId && (
+                      <span className="text-pill px-2 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200 font-semibold">
+                        niet meer in de Dash
+                      </span>
+                    )}
                   </div>
                   <button
-                    onClick={() => handleRestoreFactuur(factuurnummer)}
-                    disabled={!!restoringFactuur}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-brand-sm text-caption border border-brand-card-border text-brand-text-secondary hover:text-brand-text-primary hover:border-brand-text-secondary transition-all disabled:opacity-40 ml-4 shrink-0"
+                    onClick={() => handleRestoreFactuur(f.factuurnummer)}
+                    disabled={!!restoringFactuur || f.status === 'betaald'}
+                    title={f.status === 'betaald'
+                      ? 'Deze factuur is betaald. Corrigeren doe je met een creditnota, niet door hem weg te gooien.'
+                      : 'Verwijdert de factuur en zet de uren en losse regels terug'}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-brand-sm text-caption border border-brand-card-border text-brand-text-secondary hover:text-brand-text-primary hover:border-brand-text-secondary transition-all disabled:opacity-40 disabled:cursor-not-allowed ml-4 shrink-0"
                   >
                     {isRestoring
                       ? <><RefreshCw size={12} className="animate-spin" /> Bezig...</>
@@ -1427,20 +1500,23 @@ export default function UrenPage() {
                 </div>
                 <table className="w-full text-body border-collapse">
                   <tbody>
-                    {groepUren
-                      .sort((a, b) => a.datum.localeCompare(b.datum))
-                      .map(u => (
-                        <tr key={u.id} className="border-b border-brand-page-medium last:border-0">
-                          <td className="px-3 py-1.5 text-caption text-brand-text-secondary w-36">
-                            {new Date(u.datum + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })}
-                          </td>
-                          <td className="px-3 py-1.5 text-caption">
-                            {u.omschrijving || <span className="text-brand-text-secondary/50 italic">geen omschrijving</span>}
-                          </td>
-                          <td className="px-3 py-1.5 text-caption text-right text-brand-text-secondary w-20">{u.uren.toFixed(2)}u</td>
-                          <td className="px-3 py-1.5 text-caption text-right font-semibold w-28">{euro(u.uren * u.uurtarief)}</td>
-                        </tr>
-                      ))}
+                    {f.regels.map((r, idx) => (
+                      <tr key={idx} className="border-b border-brand-page-medium last:border-0">
+                        <td className="px-3 py-1.5 text-caption text-brand-text-secondary w-36 align-top">
+                          {r.datum
+                            ? new Date(r.datum + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })
+                            : <span className="text-pill px-1.5 py-0.5 rounded bg-brand-lavender-light/60 text-brand-text-primary font-semibold">los</span>}
+                        </td>
+                        <td className="px-3 py-1.5 text-caption">
+                          {r.omschrijving || <span className="text-brand-text-secondary/50 italic">geen omschrijving</span>}
+                          {r.detail && <span className="block text-brand-text-secondary/80 italic">{r.detail}</span>}
+                        </td>
+                        <td className="px-3 py-1.5 text-caption text-right text-brand-text-secondary w-24 align-top whitespace-nowrap">
+                          {r.uitUren ? `${r.aantal.toFixed(2)}u` : `${r.aantal} x ${euro(r.prijsPerStuk)}`}
+                        </td>
+                        <td className="px-3 py-1.5 text-caption text-right font-semibold w-28 align-top">{euro(r.bedrag)}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -1674,8 +1750,19 @@ export default function UrenPage() {
             {/* Succes */}
             {factuurNummer && (
               <div className="p-5 rounded-brand bg-green-50 border border-green-200 text-green-800 space-y-2">
-                <p className="font-uxum text-body font-semibold">Factuur gegenereerd.</p>
-                <p className="text-body"><strong>{factuurNummer}</strong> is aangemaakt en automatisch opgeslagen als PDF.</p>
+                <p className="font-uxum text-body font-semibold">
+                  {conceptModus ? 'Concept opgeslagen.' : 'Factuur gegenereerd.'}
+                </p>
+                <p className="text-body">
+                  <strong>{factuurNummer}</strong> is aangemaakt en automatisch opgeslagen als PDF
+                  {conceptModus ? ' in de map _Concepten.' : '.'}
+                </p>
+                {conceptModus && (
+                  <p className="text-body">
+                    Je uren blijven openstaan. Maak het concept definitief bij Facturen, dan krijgt hij een echt
+                    factuurnummer en worden de uren afgeboekt.
+                  </p>
+                )}
                 <button onClick={closeFactuurModal} className="btn-primary mt-2">Sluiten</button>
               </div>
             )}
@@ -1961,17 +2048,32 @@ export default function UrenPage() {
                   </p>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
-                    onClick={roepFactuurAan}
+                    onClick={() => roepFactuurAan(false)}
                     disabled={generatingFactuur || (factuurDatumKeuze === 'custom' && !factuurCustomDatum)}
                     className="btn-primary flex items-center gap-2"
                   >
-                    {generatingFactuur
+                    {generatingFactuur && !conceptModus
                       ? <><RefreshCw size={15} className="animate-spin" /> Genereren...</>
                       : <><FileText size={15} /> Genereer factuur</>}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => roepFactuurAan(true)}
+                    disabled={generatingFactuur || (factuurDatumKeuze === 'custom' && !factuurCustomDatum)}
+                    className="btn-secondary flex items-center gap-2"
+                    title="Maakt een concept met een eigen C-nummer. Claimt geen factuurnummer en boekt je uren nog niet af."
+                  >
+                    {generatingFactuur && conceptModus
+                      ? <><RefreshCw size={15} className="animate-spin" /> Bezig...</>
+                      : <><FileEdit size={15} /> Concept</>}
+                  </button>
                   <button type="button" onClick={closeFactuurModal} className="btn-secondary">Annuleren</button>
+                  <p className="w-full text-caption text-brand-text-secondary">
+                    Een concept krijgt {conceptNummerPreview ?? 'een C-nummer'} en gaat naar de map _Concepten. Je uren
+                    blijven openstaan tot je hem definitief maakt.
+                  </p>
                 </div>
               </>
             )}

@@ -50,12 +50,12 @@ if (!cfg) throw new Error(`Onbekend bedrijf: ${p.company} (kies tde of daleyphot
 const daleyWerkRoot = process.env.DALEY_WERK_ROOT ?? `${homedir()}/Documents/DALEY WERK`
 const verkoopfacturenBase = `${daleyWerkRoot}/Bedrijf Administratie/Verkoopfacturen`
 
-// Logo: TDE heeft een ingebed logo (cfg.logoOverride); Daley Photography leest
-// z'n eigen logo uit het template-bestand.
-let logoSrc = cfg.logoOverride
+// Alle bedrijven hebben hun logo ingebed in factuurTemplate.mjs (cfg.logoOverride).
+// Het uit een HTML-bestand lezen is er bewust uit: dat bestand werd bij elke
+// generatie overschreven, waardoor het logo een keer verdween.
+const logoSrc = cfg.logoOverride
 if (!logoSrc) {
-  const templateHtml = await readFile(`${verkoopfacturenBase}/${cfg.templateFile}`, 'utf-8')
-  logoSrc = (templateHtml.match(/class="logo"[^>]*src="([^"]+)"/) ?? [])[1]
+  throw new Error(`Geen logo voor ${cfg.naam}. Zet het als data-URI in lib/pdf en koppel het aan logoOverride.`)
 }
 
 const html = buildFactuurHtml({
@@ -70,9 +70,12 @@ const html = buildFactuurHtml({
   logoSrc,
 })
 
-// Preview-bestand (zelfde plek als The Daley Dash gebruikt), zodat je 'm ook
-// handmatig kunt openen en printen.
-await writeFile(`${verkoopfacturenBase}/${cfg.templateFile}`, html, 'utf-8')
+// Werkbestand voor Chrome, in de cachemap en NIET in het factuurarchief: daar
+// horen alleen PDF's te staan. Zelfde plek als The Daley Dash gebruikt.
+const werkMap = `${homedir()}/Library/Caches/daley-dash`
+await mkdir(werkMap, { recursive: true })
+const previewFile = `${werkMap}/${cfg.templateFile}`
+await writeFile(previewFile, html, 'utf-8')
 
 const datum = new Date(`${p.factuurdatum}T12:00:00`)
 const jaar = datum.getFullYear()
@@ -83,7 +86,6 @@ const suffix = p.betaaldSuffix ?? ''
 const pdfPath = `${pdfDir}/${p.factuurnummer} ${p.klantNaamVoorBestand}${suffix}.pdf`
 
 const chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-const previewFile = `${verkoopfacturenBase}/${cfg.templateFile}`
 await new Promise((resolve) => {
   exec(`"${chrome}" --headless=new --disable-gpu --no-margins --virtual-time-budget=10000 --run-all-compositor-stages-before-draw --print-to-pdf="${pdfPath}" --no-pdf-header-footer "file://${previewFile}"`, () => resolve())
 })

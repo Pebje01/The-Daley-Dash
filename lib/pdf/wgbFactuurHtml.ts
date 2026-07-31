@@ -6,6 +6,9 @@
  *  - Klantlabel "Klant"
  *  - Tabel met aparte Datum-kolom: Omschrijving | Datum | Aantal | Prijs excl. | Totaal excl.
  *  - Numerieke datums (DD-MM-JJJJ)
+ *
+ * Sleepbare blokken: zie lib/pdf/factuurTemplate.mjs voor dezelfde aanpak bij
+ * TDE/Daley Photography (dblocks, layoutOverrides in mm, editMode-only drag-JS).
  */
 
 import { wgbLogoHorizontalBase64 } from './wgbLogoHorizontal'
@@ -30,6 +33,136 @@ function datumKort(isoDate: string): string {
   return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}`
 }
 
+// Vaste geometrie per blok (mm). Hero is full-bleed (geen content-marge), de
+// overige 4 blokken volgen de 13mm zijmarge van `.content`. Alleen de
+// verticale top-positie wordt bewaard, links/breedte staan vast.
+const BLOCK_GEOMETRY: Record<string, { left: number; width: number }> = {
+  hero: { left: 0, width: 210 },
+  klant: { left: 13, width: 184 },
+  tabel: { left: 13, width: 184 },
+  betaling: { left: 13, width: 184 },
+  footer: { left: 13, width: 184 },
+}
+
+function renderBlock(key: string, innerHtml: string, layoutOverrides: Record<string, number> | null | undefined, editMode: boolean): string {
+  const topMm = layoutOverrides && layoutOverrides[key] != null ? layoutOverrides[key] : null
+  const geo = BLOCK_GEOMETRY[key]
+  const styleAttr = topMm != null
+    ? ` style="position:absolute;top:${topMm}mm;left:${geo.left}mm;width:${geo.width}mm"`
+    : ''
+  const frozenAttr = topMm != null ? ' data-frozen="1"' : ''
+  const handle = editMode ? '<span class="drag-handle">&#9776;</span>' : ''
+  return `<div class="dblock" data-key="${key}"${frozenAttr}${styleAttr}>${handle}${innerHtml}</div>`
+}
+
+function editModeAssets(factuurId?: string): { css: string; button: string; script: string } {
+  const pc = '#03483A'
+  const companyNaam = 'We Grow Brands'
+  const css = `
+.dblock:hover{outline:1px dashed ${pc};outline-offset:2px}
+.drag-handle{position:absolute;left:-28px;top:50%;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;width:22px;height:30px;background:${pc};color:#fff;font-size:13px;border-radius:5px;cursor:ns-resize;user-select:none;z-index:60;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+@media print{.drag-handle{display:none!important}.dblock:hover{outline:none!important}}`
+
+  const button = `<button id="save-layout-btn">Sla indeling op</button><button id="save-default-btn">Maak dit de standaard voor ${companyNaam}</button>`
+
+  const script = `
+<script>
+(function(){
+  var page = document.querySelector('.page')
+  function enableDrag(){
+    var blocks = [].slice.call(document.querySelectorAll('.dblock'))
+    var pr = page.getBoundingClientRect()
+    // Eerst ALLE flow-posities meten, pas daarna bevriezen: zodra één blok
+    // op position:absolute gezet wordt, schuiven de blokken erna omhoog in de
+    // flow, dus meten en bevriezen mogen niet in dezelfde stap per blok.
+    var rects = blocks.map(function(b){ return b.dataset.frozen ? null : b.getBoundingClientRect() })
+    blocks.forEach(function(b, i){
+      var r = rects[i]
+      if (r) {
+        b.style.position = 'absolute'
+        b.style.top = (r.top - pr.top) + 'px'
+        b.style.left = (r.left - pr.left) + 'px'
+        b.style.width = r.width + 'px'
+      }
+      b.dataset.frozen = '1'
+      var h = b.querySelector('.drag-handle')
+      if (!h) return
+      h.addEventListener('pointerdown', function(e){
+        e.preventDefault()
+        var p2 = page.getBoundingClientRect(), br = b.getBoundingClientRect(), offY = e.clientY - br.top
+        function move(ev){
+          var nt = ev.clientY - p2.top - offY
+          nt = Math.max(0, Math.min(nt, p2.height - br.height))
+          b.style.top = nt + 'px'
+        }
+        function up(){ document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up) }
+        document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
+      })
+    })
+  }
+  if (document.fonts && document.fonts.ready) { document.fonts.ready.then(function(){ setTimeout(enableDrag, 80) }) }
+  else { window.addEventListener('load', function(){ setTimeout(enableDrag, 80) }) }
+
+  function computeOverrides(){
+    var pr2 = page.getBoundingClientRect()
+    var overrides = {}
+    document.querySelectorAll('.dblock').forEach(function(b){
+      var r = b.getBoundingClientRect()
+      var topMm = (r.top - pr2.top) / pr2.height * 297
+      overrides[b.dataset.key] = Math.round(topMm * 100) / 100
+    })
+    return overrides
+  }
+
+  var saveBtn = document.getElementById('save-layout-btn')
+  if (saveBtn) {
+    saveBtn.addEventListener('click', function(){
+      saveBtn.disabled = true
+      saveBtn.textContent = 'Bezig...'
+      fetch('/api/facturen/${factuurId}/regenerate-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ layoutOverrides: computeOverrides() }),
+      }).then(function(res){ return res.json() }).then(function(data){
+        saveBtn.disabled = false
+        saveBtn.textContent = 'Sla indeling op'
+        if (data && data.ok) { alert('Indeling opgeslagen en PDF opnieuw gegenereerd.') }
+        else { alert('Opslaan mislukt: ' + (data && data.error ? data.error : 'onbekende fout')) }
+      }).catch(function(err){
+        saveBtn.disabled = false
+        saveBtn.textContent = 'Sla indeling op'
+        alert('Opslaan mislukt: ' + err)
+      })
+    })
+  }
+
+  var defaultBtn = document.getElementById('save-default-btn')
+  if (defaultBtn) {
+    defaultBtn.addEventListener('click', function(){
+      defaultBtn.disabled = true
+      defaultBtn.textContent = 'Bezig...'
+      fetch('/api/facturen/${factuurId}/layout-default', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ layoutOverrides: computeOverrides() }),
+      }).then(function(res){ return res.json() }).then(function(data){
+        defaultBtn.disabled = false
+        defaultBtn.textContent = 'Maak dit de standaard voor ${companyNaam}'
+        if (data && data.ok) { alert('Standaardindeling opgeslagen. Nieuwe facturen van dit bedrijf starten voortaan met deze indeling.') }
+        else { alert('Opslaan mislukt: ' + (data && data.error ? data.error : 'onbekende fout')) }
+      }).catch(function(err){
+        defaultBtn.disabled = false
+        defaultBtn.textContent = 'Maak dit de standaard voor ${companyNaam}'
+        alert('Opslaan mislukt: ' + err)
+      })
+    })
+  }
+})()
+</script>`
+
+  return { css, button, script }
+}
+
 export function buildWgbFactuurHtml(opts: {
   logoSrc?: string
   factuurnummer: string
@@ -46,8 +179,11 @@ export function buildWgbFactuurHtml(opts: {
   vervaldatum: string
   betaallink?: string
   btwPercentage: number
+  layoutOverrides?: Record<string, number> | null
+  editMode?: boolean
+  factuurId?: string
 }): string {
-  const { factuurnummer, klant, regels, factuurdatum, vervaldatum, betaallink, btwPercentage } = opts
+  const { factuurnummer, klant, regels, factuurdatum, vervaldatum, betaallink, btwPercentage, layoutOverrides = null, editMode = false, factuurId } = opts
   const logoSrc = `data:image/png;base64,${wgbLogoHorizontalBase64}`
 
   const subtotaal = regels.reduce((s, r) => s + r.aantal * r.prijsPerStuk, 0)
@@ -64,12 +200,97 @@ export function buildWgbFactuurHtml(opts: {
     return `
       <tr>
         <td class="item-name">${r.omschrijving || 'Werkzaamheden'}${r.detail ? `<span class="item-sub">${r.detail}</span>` : ''}</td>
-        <td class="col-datum">${r.datum ? datumKort(r.datum) : '—'}</td>
+        <td class="col-datum">${r.datum ? datumKort(r.datum) : '-'}</td>
         <td>${aantalTekst}</td>
         <td>${prijsTekst}</td>
         <td>${euro(sub)}</td>
       </tr>`
   }).join('\n')
+
+  const edit = editMode ? editModeAssets(factuurId) : null
+
+  const heroBlock = renderBlock('hero', `
+    <div class="hero">
+      <div class="hero-left">
+        <div class="hero-title">FACTUUR</div>
+        <div class="hero-number">${factuurnummer}</div>
+      </div>
+      <div class="hero-right">
+        <img class="hero-logo" src="${logoSrc}" alt="We Grow Brands logo">
+        <div class="hero-sender">
+          <strong>We Grow Brands</strong>
+          Daley Jansen<br>
+          Noorderpad 47, 1461 CD Zuidoostbeemster<br>
+          hello@wegrowbrands.online<br>
+          06 36 16 26 39
+        </div>
+      </div>
+    </div>`, layoutOverrides, editMode)
+
+  const klantBlock = renderBlock('klant', `
+    <div class="row2">
+      <div class="client">
+        <div class="client-lbl">Klant</div>
+        <div class="client-name">${klant.bedrijfsnaam}</div>
+        ${klant.contactpersoon ? `t.a.v. ${klant.contactpersoon}<br>` : ''}
+        ${klant.adres}<br>
+        ${klant.postcode} ${klant.stad}
+      </div>
+      <div class="details">
+        <div>
+          <div class="d-lbl">Datum</div>
+          <div class="d-val">${datumKort(factuurdatum)}</div>
+        </div>
+        <div>
+          <div class="d-lbl">Vervaldatum</div>
+          <div class="d-val">${vervaldatumTekst}</div>
+        </div>
+        <div>
+          <div class="d-lbl">Factuurnummer</div>
+          <div class="d-val">${factuurnummer}</div>
+        </div>
+        ${klant.klantnummer ? `<div><div class="d-lbl">Klantnummer</div><div class="d-val">${klant.klantnummer}</div></div>` : ''}
+      </div>
+    </div>
+    <hr class="sep">`, layoutOverrides, editMode)
+
+  const tabelBlock = renderBlock('tabel', `
+    <div class="tw">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:42%">Omschrijving</th>
+            <th>Datum</th>
+            <th>Aantal</th>
+            <th>Prijs excl.</th>
+            <th>Totaal excl.</th>
+          </tr>
+        </thead>
+        <tbody>${itemRijen}</tbody>
+      </table>
+    </div>
+    <div class="totals">
+      <div class="t-row"><span class="t-lbl">Subtotaal excl. BTW</span><span class="t-val">${euro(subtotaal)}</span></div>
+      <div class="t-row"><span class="t-lbl">BTW ${btwPercentage}%</span><span class="t-val">${euro(btw)}</span></div>
+      <div class="t-row t-total"><span class="t-lbl">Totaal incl. BTW</span><span class="t-val">${euro(totaal)}</span></div>
+    </div>`, layoutOverrides, editMode)
+
+  const betalingBlock = renderBlock('betaling', `
+    <div class="banner">Bedankt voor deze opdracht!</div>
+    <div class="betaalinfo">
+      Gelieve het bedrag van <strong>${euro(totaal)}</strong> te voldoen voor <strong>${vervaldatumTekst}</strong> via IBAN <strong>NL78 KNAB 0414 3949 17</strong><br>
+      t.n.v. Daley Jansen, onder vermelding van factuurnummer <strong>${factuurnummer}</strong>.${betaallink ? `
+      <br><a class="ideal-btn" href="${betaallink}" target="_blank">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" stroke="white" stroke-width="1.5"/><path d="M8 12.5l3 3 5-6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Betaal direct via iDEAL
+      </a>` : ''}
+    </div>`, layoutOverrides, editMode)
+
+  const footerBlock = renderBlock('footer', `
+    <div class="footer">
+      <span>We Grow Brands is onderdeel van The Daley Edit | KVK 84818883 | BTW NL004023224B90 | IBAN NL78 KNAB 0414 3949 17</span>
+      <span>${factuurnummer}</span>
+    </div>`, layoutOverrides, editMode)
 
   return `<!DOCTYPE html>
 <html lang="nl">
@@ -81,12 +302,20 @@ export function buildWgbFactuurHtml(opts: {
 <style>
 @page{size:A4;margin:0}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{color-scheme:light}
 body{font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:9pt;color:#222;line-height:1.45;background:#f0f0f0}
 .save-bar{position:fixed;top:0;left:0;right:0;background:#03483A;padding:10px 20px;display:flex;align-items:center;gap:16px;z-index:1000}
 .save-bar button{background:#F7F3ED;color:#03483A;border:none;padding:7px 18px;font-weight:700;font-size:9pt;border-radius:5px;cursor:pointer}
 .save-bar span{color:#fff;font-size:9pt;opacity:.8}
 @media print{.save-bar{display:none!important}body{background:white}.page{margin-top:0!important;box-shadow:none!important}}
-.page{width:210mm;min-height:297mm;background:#fff;margin:60px auto 20px;box-shadow:0 4px 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+/* Nooit midden in een regel of blok afbreken, en de kolomkoppen herhalen op een
+   volgende pagina. De marges blijven hier op 0 staan, anders loopt de groene
+   hero niet meer door tot de paginarand. */
+thead{display:table-header-group}
+tbody tr{break-inside:avoid;page-break-inside:avoid}
+.totals,.footer{break-inside:avoid;page-break-inside:avoid}
+.page{width:210mm;min-height:297mm;background:#fff;margin:60px auto 20px;box-shadow:0 4px 24px rgba(0,0,0,.12);display:flex;flex-direction:column;position:relative}
+.dblock{position:relative}
 .hero{background:#03483A;height:65mm;flex-shrink:0;display:flex;align-items:flex-start;justify-content:space-between;padding:14mm 13mm 0 13mm}
 .hero-left{display:flex;flex-direction:column}
 .hero-title{font-family:'Instrument Serif',Georgia,serif;font-size:28pt;color:#fff;letter-spacing:.5px;line-height:1}
@@ -96,6 +325,7 @@ body{font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:9pt;color:#222;l
 .hero-sender{font-size:7pt;color:rgba(255,255,255,.8);line-height:1.6;margin-top:7mm;text-align:right}
 .hero-sender strong{color:#fff;font-size:8.5pt;font-weight:600;display:block;margin-bottom:1mm}
 .content{padding:0 13mm 12mm;display:flex;flex-direction:column;flex:1}
+.content>.dblock:last-child{margin-top:auto}
 .row2{display:grid;grid-template-columns:1fr 112mm;gap:6mm;margin:8mm 0 0;align-items:flex-start}
 .client{font-size:9pt;color:#2a2a2a;line-height:1.7}
 .client-lbl{font-size:7pt;color:#0A5C4A;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2mm}
@@ -126,98 +356,24 @@ tbody td:nth-child(3),tbody td:nth-child(4),tbody td:last-child{text-align:right
 .betaalinfo strong{color:#03483A;font-style:normal}
 .ideal-btn{display:inline-flex;align-items:center;gap:8px;margin-top:3mm;padding:7px 16px;background:#03483A;color:white;font-weight:700;font-size:9pt;font-style:normal;border-radius:6px;text-decoration:none}
 .ideal-btn svg{width:16px;height:16px}
-.footer{margin-top:auto;padding-top:3mm;border-top:1px solid #d8d0c0;display:flex;justify-content:space-between;font-size:7pt;color:#bbb}
+.footer{padding-top:3mm;border-top:1px solid #d8d0c0;display:flex;justify-content:space-between;font-size:7pt;color:#bbb}${edit ? edit.css : ''}
 </style>
 </head>
 <body>
 
 <div class="save-bar">
   <button onclick="window.print()">Opslaan als PDF</button>
+  ${edit ? edit.button : ''}
   <span>${factuurnummer} | ${klant.bedrijfsnaam}</span>
 </div>
 
 <div class="page">
-  <div class="hero">
-    <div class="hero-left">
-      <div class="hero-title">FACTUUR</div>
-      <div class="hero-number">${factuurnummer}</div>
-    </div>
-    <div class="hero-right">
-      <img class="hero-logo" src="${logoSrc}" alt="We Grow Brands logo">
-      <div class="hero-sender">
-        <strong>We Grow Brands</strong>
-        Daley Jansen<br>
-        Noorderpad 47, 1461 CD Zuidoostbeemster<br>
-        hello@wegrowbrands.online<br>
-        06 36 16 26 39
-      </div>
-    </div>
-  </div>
-
+  ${heroBlock}
   <div class="content">
-    <div class="row2">
-      <div class="client">
-        <div class="client-lbl">Klant</div>
-        <div class="client-name">${klant.bedrijfsnaam}</div>
-        ${klant.contactpersoon ? `t.a.v. ${klant.contactpersoon}<br>` : ''}
-        ${klant.adres}<br>
-        ${klant.postcode} ${klant.stad}
-      </div>
-      <div class="details">
-        <div>
-          <div class="d-lbl">Datum</div>
-          <div class="d-val">${datumKort(factuurdatum)}</div>
-        </div>
-        <div>
-          <div class="d-lbl">Vervaldatum</div>
-          <div class="d-val">${vervaldatumTekst}</div>
-        </div>
-        <div>
-          <div class="d-lbl">Factuurnummer</div>
-          <div class="d-val">${factuurnummer}</div>
-        </div>
-        ${klant.klantnummer ? `<div><div class="d-lbl">Klantnummer</div><div class="d-val">${klant.klantnummer}</div></div>` : ''}
-      </div>
-    </div>
-
-    <hr class="sep">
-
-    <div class="tw">
-      <table>
-        <thead>
-          <tr>
-            <th style="width:42%">Omschrijving</th>
-            <th>Datum</th>
-            <th>Aantal</th>
-            <th>Prijs excl.</th>
-            <th>Totaal excl.</th>
-          </tr>
-        </thead>
-        <tbody>${itemRijen}</tbody>
-      </table>
-    </div>
-
-    <div class="totals">
-      <div class="t-row"><span class="t-lbl">Subtotaal excl. BTW</span><span class="t-val">${euro(subtotaal)}</span></div>
-      <div class="t-row"><span class="t-lbl">BTW ${btwPercentage}%</span><span class="t-val">${euro(btw)}</span></div>
-      <div class="t-row t-total"><span class="t-lbl">Totaal incl. BTW</span><span class="t-val">${euro(totaal)}</span></div>
-    </div>
-
-    <div class="banner">Bedankt voor deze opdracht!</div>
-
-    <div class="betaalinfo">
-      Gelieve het bedrag van <strong>${euro(totaal)}</strong> te voldoen voor <strong>${vervaldatumTekst}</strong> via IBAN <strong>NL78 KNAB 0414 3949 17</strong><br>
-      t.n.v. Daley Jansen, onder vermelding van factuurnummer <strong>${factuurnummer}</strong>.${betaallink ? `
-      <br><a class="ideal-btn" href="${betaallink}" target="_blank">
-        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" stroke="white" stroke-width="1.5"/><path d="M8 12.5l3 3 5-6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Betaal direct via iDEAL
-      </a>` : ''}
-    </div>
-
-    <div class="footer">
-      <span>We Grow Brands is onderdeel van The Daley Edit | KVK 84818883 | BTW NL004023224B90 | IBAN NL78 KNAB 0414 3949 17</span>
-      <span>${factuurnummer}</span>
-    </div>
+    ${klantBlock}
+    ${tabelBlock}
+    ${betalingBlock}
+    ${footerBlock}
   </div>
 </div>
 <script>
@@ -243,6 +399,7 @@ tbody td:nth-child(3),tbody td:nth-child(4),tbody td:last-child{text-align:right
   if(document.fonts&&document.fonts.ready){ document.fonts.ready.then(fit); } else { fit(); }
 })();
 </script>
+${edit ? edit.script : ''}
 </body>
 </html>`
 }

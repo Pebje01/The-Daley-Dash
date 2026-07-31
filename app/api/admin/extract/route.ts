@@ -7,6 +7,15 @@ import { isAllowedAdminDocumentPath } from '@/lib/admin/documentPaths'
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * Zoekt het pdftotext-binary op. De Dash draait onder launchd met een kale PATH,
+ * waar /opt/homebrew/bin niet in staat, dus een kaal "pdftotext" werkt daar niet.
+ */
+function pdftotextBinary(): string {
+  const kandidaten = ['/opt/homebrew/bin/pdftotext', '/usr/local/bin/pdftotext', '/usr/bin/pdftotext']
+  return kandidaten.find(p => fs.existsSync(p)) ?? 'pdftotext'
+}
+
 export interface ExtractedLineItem {
   description: string
   details?: string | null
@@ -220,16 +229,22 @@ export async function POST(req: NextRequest) {
   if (process.env.GEMINI_API_KEY) {
     try {
       return NextResponse.json(await extractWithGemini(resolved, path.basename(resolved)))
-    } catch {
-      // Gemini mislukt, terugvallen op pdftotext
+    } catch (e) {
+      // Gemini mislukt, terugvallen op pdftotext. Wel loggen: anders zie je nooit
+      // dat elke sync stilletjes op de simpelere tekstlezer draait.
+      console.error('extract: Gemini mislukt, val terug op pdftotext:', e)
     }
   }
 
   let text: string
   try {
-    text = execSync(`pdftotext "${resolved}" -`, { encoding: 'utf8', timeout: 10000 })
-  } catch {
-    return NextResponse.json({ error: 'Tekst extractie mislukt' }, { status: 422 })
+    text = execSync(`${pdftotextBinary()} "${resolved}" -`, { encoding: 'utf8', timeout: 10000 })
+  } catch (e) {
+    console.error('extract: pdftotext mislukt:', e)
+    return NextResponse.json(
+      { error: 'Tekst extractie mislukt. Controleer of pdftotext (poppler) geïnstalleerd is.' },
+      { status: 422 }
+    )
   }
 
   return NextResponse.json(parseText(text, path.basename(resolved)))

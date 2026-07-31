@@ -29,7 +29,7 @@ app/
 │   ├── uren/               # Urenregistratie
 │   ├── belasting/          # BTW-rapportage + aangifte voorbereiding
 │   ├── crm/                # CRM-module (zie hieronder)
-│   │   ├── daley-list/ leads/ bedrijven/ contacten/ opdrachten/ facturen/
+│   │   ├── leads/ bedrijven/ contacten/ opdrachten/ facturen/ blocklist/
 │   └── crm-sync/           # ClickUp sync status + handmatige sync
 ├── api/
 │   ├── crm/                # relations (id-based), stats, bedrijven (lite, voor uren-FK)
@@ -57,12 +57,26 @@ middleware.ts               # Auth redirect middleware
 ## CRM-module (BELANGRIJK)
 
 ### Architectuur: één source of truth
-- **Supabase is de bron** voor CRM-data (leads, bedrijven, contacten, opdrachten, facturatie, Daley's List). ClickUp is losgekoppeld (juni 2026) en dient alleen nog als archief.
+- **Supabase is de bron** voor CRM-data (leads, bedrijven, contacten, opdrachten, facturatie). ClickUp is losgekoppeld (juni 2026) en dient alleen nog als archief.
+- **"Daley Jansen's List" bestaat niet meer** (juli 2026): dat was het `daley_list` entity-type, maar in de praktijk een takenlijst. De openstaande items zijn overgezet naar de `taken`-tabel (`/taken`) en het CRM-onderdeel + de route `/crm/daley-list` zijn verwijderd. De `taken`-tabel is dé to-do lijst; het `daley_list` entity-type blijft alleen als dode waarde in de EntityType-union staan.
 - Alle data staat in de tabel **`clickup_crm_records`** (alle entiteiten in één tabel, met `entity_type`, `clickup_task_id`, `custom_fields` JSON). Records aangemaakt na de loskoppeling hebben `clickup_task_id` met prefix `local-`.
 - Schrijven gaat via **`lib/crm/store.ts`** (create/update/delete/promote), rechtstreeks naar Supabase. Veldformaten blijven ClickUp-compatibel: drop_down = orderindex, relaties = array van task-stubs, labels = array van option-ids.
 - **ClickUp-sync is uitgeschakeld:** de routes cron/sync/webhook onder `/api/integrations/clickup/` geven 410. NOOIT opnieuw activeren; een sync zou lokale wijzigingen overschrijven. De oude synccode in `lib/clickup/sync.ts` wordt niet meer aangeroepen.
 - **Relaties** (bedrijf <-> contact <-> lead <-> opdracht) zitten in custom fields van het type `tasks`/`list_relationship`. `/api/crm/relations?id=...` leidt ze in beide richtingen af uit `clickup_crm_records`. NIET de legacy-tabellen gebruiken.
 - **Legacy-tabellen** `crm_bedrijven`, `crm_contacten`, `crm_leads`, `crm_opdrachten`, `crm_facturatie` zijn een eenmalige import en worden NIET bijgewerkt. Enige actieve rol: `uren_klanten.crm_bedrijf_id` verwijst naar `crm_bedrijven` (uren-koppeling). Bouw er geen nieuwe features op.
+
+### Leadfases en opvolging (juli 2026)
+- **Fases van leads staan in `lib/crm/pipeline.ts`**, niet meer in ClickUp. Bordkolommen: Nieuwe kans, Benaderd, In gesprek, Offerte uit, Later opvolgen, Gewonnen, Niets uitgekomen, Verloren. Oude statussen (on hold, klant on hold, blacklist, archief) blijven bestaan maar staan achter "Toon afgesloten fases".
+- De route `/api/crm/statuses` is weg: die haalde de statusconfig live uit ClickUp. Nieuwe statussen voeg je toe in `LEAD_FASES`.
+- **Fase en opvolging zijn twee losse assen.** De fase zegt waar een lead staat, `volgende_actie` zegt wanneer je er weer wat mee moet. Follow-up is dus nooit een kolom.
+- Kolommen op `clickup_crm_records`: `volgende_actie` (date), `volgende_actie_notitie`, `laatste_contact`, `contact_pogingen`, `contact_status`, `contact_status_tot`, `contact_status_reden` (migraties `20260724_crm_opvolging.sql` en `20260724_crm_contactstatus.sql`).
+- Elke fase heeft een standaard opvolgtermijn (`opvolgDagen`), per lead te overschrijven via de datumkiezer. Contact loggen zet die standaard automatisch.
+- **Contactstatus** is de derde as, naast fase en opvolging: `open`, `pauze` (zacht, optioneel tot een datum) of `blokkade` (hard). Een pauze met einddatum zet `volgende_actie` op die datum, zodat de relatie er vanzelf weer uit komt rollen. Een pauze waarvan de datum voorbij is telt via `contactStand()` weer als open.
+- Blokkade betekent geen opvolging en geen contact loggen. `updateCrmRecord` en `logContactMoment` in `lib/crm/store.ts` forceren dat server-side, ook bij het verslepen van een kaart. Contact loggen op een gepauzeerde relatie heft de pauze op.
+- Contactstatus geldt ook voor contacten en bedrijven (het blok staat in hun detailkaart), de fases en "Vandaag oppakken" zijn alleen voor leads.
+- **Blocklist:** geblokkeerde relaties verdwijnen van het leadbord (pauze blijft er wel op staan) en komen samen op `/crm/blocklist` (nav-item met Ban-icoon). Die pagina (`components/crm/BlocklistPage.tsx`) leest `/api/crm/blocklist` = alle records met `contact_status = 'blokkade'` over lead/contact/company, met reden + deblokkeerknop (PATCH contact_status = open). Het bord toont een "N op de blocklist" link naar die pagina.
+- Het blok "Vandaag oppakken" boven het bord toont alles met een actie vandaag of eerder, dwars door de fases heen.
+- CRM-records lopen nu via **`/api/crm/records`** (lijst, detail, promote, contact). De oude routes onder `/api/integrations/clickup/records/` zijn verwijderd.
 
 ### ClickUpCrmRecordsPage features
 - Lijst (gegroepeerd op status) + Board view, zoeken, status-filter dropdown
@@ -70,7 +84,25 @@ middleware.ts               # Auth redirect middleware
 - Detail-modal: naam, status, notities (dashboard-only, in `raw.notes`), deadline, bewerkbare custom fields (dropdown/labels/datum/tekst/bedrag), relatiepaneel, uren-koppeling, promote (lead -> opdracht -> factuur)
 - Custom fields schrijven: PATCH `/api/integrations/clickup/records/[id]` met `custom_fields: [{id, value}]`; dropdowns willen option-id's, labels arrays van option-id's, datums ms-timestamps
 
+## Factuur-PDF: pagina-opbouw (BELANGRIJK)
+- De afsluitende regel (`.footer`, met KVK/BTW/IBAN en het factuurnummer) hoort **alleen op de laatste pagina**. Nooit als herhalende paginavoettekst op elke pagina. Dit geldt voor de urenpagina-generator én voor de factuur-skills.
+- Marges komen van `@page` (13mm/13mm/11mm), niet van padding op `.page`. Met padding krijgt alleen de eerste pagina witruimte en plakt een tweede pagina tegen de bovenrand.
+- `.page` in print: `width:auto`, geen padding, `min-height:271mm!important`. Die `!important` is nodig omdat de basisregel voor `.page` ná het `@media print`-blok staat. Op precies 273mm rolt er door afronding een lege pagina uit.
+- Verder: `thead{display:table-header-group}`, `tbody tr` en de blokken totalen/betaling breken nooit middenin af.
+- Het WGB-sjabloon (`wgbFactuurHtml.ts`) houdt `@page{margin:0}`, anders loopt de groene hero niet meer door tot de paginarand. Daar staan alleen de afbreekregels.
+- Het werkbestand voor Chrome gaat naar `~/Library/Caches/daley-dash/`, nooit naar de facturenmap: daar horen alleen PDF's. Geldt voor `genereerFactuurPdf` én `scripts/genereer-factuur.mjs`.
+- Logo's staan als data-URI in `lib/pdf` (`tdeLogo.mjs`, `dpLogo.mjs`, `wgbLogo.ts`) en worden nooit uit een HTML-bestand gelezen.
+
+## Factuurnummering en concepten (BELANGRIJK)
+- Het datumdeel in een factuurnummer is de **factuurdatum**, niet de dag waarop je hem aanmaakt. Dat geldt voor de Dash én voor de factuur-skills (tde-factuur, wgb-factuur, daley-factuur).
+- Tel volgnummers altijd op het datumdeel in het **nummer** (`number ilike 'F-260731-%'`), nooit op de kolom `date`. Tellen op `date` gaf dubbele nummers zodra de factuurdatum in de toekomst lag.
+- Facturen die nog niet de deur uit gaan zijn **concepten**: eigen reeks `C-JJMMDD-XX`, PDF in `Verkoopfacturen/_Concepten`, status `concept`. Een concept claimt dus nooit een factuurnummer.
+- De scan (`/api/admin/scan`) slaat mappen over die met `_` beginnen, zodat concepten buiten de sync blijven, en waarschuwt als twee bestanden hetzelfde nummer dragen.
+- `POST /api/facturen/[id]/definitief` maakt een concept definitief: echt nummer uit de bedrijfsreeks, PDF naar de kwartaalmap, uren afboeken, status `verzonden`.
+- Uren op een concept krijgen wel het conceptnummer maar blijven `gefactureerd = false`, zodat ze pas bij definitief maken worden afgeboekt.
+
 ## Data-afspraken
+- **Montung hoort niet in de Dash.** Dat is een aparte VOF (BB-Import) met een eigen BTW-nummer en een eigen systeem in montung-voorraad. De Montung-mappen staan niet in `lib/admin/documentPaths.ts`, en `getFacturen` + `getFactuurStats` filteren net als de BTW-module op `EIGEN_BEDRIJVEN` (`lib/btw.ts`). Voeg Montung hier nooit aan toe.
 - `exclude_from_revenue` en `revenue_date` op facturen worden gerespecteerd door ZOWEL de facturenpagina als `getFactuurStats` (dashboardkaarten). Nieuwe omzetberekeningen moeten deze velden ook respecteren.
 - Verwachte omzet telt alleen NIET-gefactureerde uren mee (gefactureerde uren zitten al in facturen).
 - Migraties in `supabase/migrations/` draaien niet automatisch: uitvoeren via de Supabase SQL Editor of de Management API (`POST /v1/projects/fvywfygsjslojpvqrpxw/database/query`). Alle migraties t/m 20260610 zijn uitgevoerd.

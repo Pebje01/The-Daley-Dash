@@ -222,7 +222,19 @@ export default function LocaleBestandenSection({ type }: Props) {
                       className={`hover:bg-brand-page-light transition-colors cursor-pointer group ${!isInDash ? 'bg-orange-50/30' : ''}`}
                       title="Klik om te openen"
                     >
-                      <td className="px-5 py-3 font-mono text-caption text-brand-text-secondary">{f.number}</td>
+                      <td className="px-5 py-3 font-mono text-caption text-brand-text-secondary">
+                        <span className="inline-flex items-center gap-1.5">
+                          {f.number}
+                          {f.duplicaat && !isInDash && (
+                            <span
+                              className="text-pill px-2 py-0.5 rounded bg-red-50 text-red-600 font-semibold border border-red-200"
+                              title="Meerdere bestanden dragen dit nummer. Hernummer er één, anders koppelt de sync aan de verkeerde factuur."
+                            >
+                              Dubbel
+                            </span>
+                          )}
+                        </span>
+                      </td>
                       <td className="px-5 py-3 font-semibold text-brand-text-primary">
                         {doc ? (doc.clientName ?? '–') : <Skeleton />}
                       </td>

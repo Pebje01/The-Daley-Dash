@@ -1,5 +1,6 @@
 import { createClient } from './server'
 import { Factuur, LineItem, CompanyId, FactuurStatus } from '../types'
+import { EIGEN_BEDRIJVEN } from '../btw'
 
 // ── Types for DB rows ──────────────────────────────────────────────────────
 
@@ -100,9 +101,12 @@ interface FactuurFilters {
 export async function getFacturen(filters?: FactuurFilters): Promise<Factuur[]> {
   const supabase = createClient()
 
+  // Alleen de eigen bedrijven. Montung is een aparte VOF met een eigen
+  // administratie; oude montung-rijen mogen niet meetellen in deze lijst.
   let query = supabase
     .from('facturen')
     .select('*')
+    .in('company_id', EIGEN_BEDRIJVEN)
     .order('created_at', { ascending: false })
 
   if (filters?.status && filters.status !== 'alle') {
@@ -366,7 +370,9 @@ export async function getFactuurStats() {
     { data: pipelineOffertes },
     recent,
   ] = await Promise.all([
-    supabase.from('facturen').select('id, status, total, subtotal, date, due_date, paid_at, created_at, offerte_id, exclude_from_revenue, revenue_date'),
+    supabase.from('facturen')
+      .select('id, status, total, subtotal, date, due_date, paid_at, created_at, offerte_id, exclude_from_revenue, revenue_date')
+      .in('company_id', EIGEN_BEDRIJVEN),
     supabase.from('uren').select('datum, uren, uurtarief, gefactureerd'),
     supabase.from('offertes').select('id, subtotal, total, status, date').in('status', ['akkoord', 'verstuurd']),
     getFacturen(),
@@ -396,19 +402,32 @@ export async function getFactuurStats() {
     (f: any) => (openStatuses.includes(f.status) || f.status === 'te-laat') && f.due_date < todayStr
   ).length
 
-  // Betaald deze maand (op omzetdatum)
+  // Betaald deze maand: echte cashflow, op betaaldatum (paid_at), niet op factuurdatum
+  const paidDate = (f: any): string => ((f.paid_at || '') as string).split('T')[0]
   const paidThisMonth = facturen
-    .filter((f: any) => f.status === 'betaald' && effectiveDate(f) >= monthStart)
+    .filter((f: any) => f.status === 'betaald' && paidDate(f) >= monthStart)
     .reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
 
-  // Omzet: alleen betaalde facturen dit jaar (op omzetdatum)
-  const yearFacturen = facturen.filter((f: any) => f.status === 'betaald' && effectiveDate(f) >= yearStart)
-  const monthFacturen = facturen.filter((f: any) => f.status === 'betaald' && effectiveDate(f) >= monthStart)
+  // Omzet (factuurstelsel): elke verstuurde/betaalde factuur telt in zijn factuurjaar,
+  // ongeacht of hij al betaald is. Zo sluit het dashboard aan op de IB-aangifte.
+  const yearFacturen = facturen.filter((f: any) => activeStatuses.includes(f.status) && effectiveDate(f) >= yearStart)
+  const monthFacturen = facturen.filter((f: any) => activeStatuses.includes(f.status) && effectiveDate(f) >= monthStart)
 
   const revenueYear = yearFacturen.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0)
   const revenueYearIncl = yearFacturen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
   const revenueMonth = monthFacturen.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0)
   const revenueMonthIncl = monthFacturen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
+
+  // Vorige maand erbij: op de eerste van de maand staat "deze maand" op nul en lijkt
+  // het alsof er niets gebeurt, terwijl de maand ervoor juist goed kan zijn geweest.
+  const vorige = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const prevMonthStart = `${vorige.getFullYear()}-${String(vorige.getMonth() + 1).padStart(2, '0')}-01`
+  const prevMonthFacturen = facturen.filter(
+    (f: any) => activeStatuses.includes(f.status) && effectiveDate(f) >= prevMonthStart && effectiveDate(f) < monthStart
+  )
+  const revenuePrevMonth = prevMonthFacturen.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0)
+  const revenuePrevMonthIncl = prevMonthFacturen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
+  const prevMonthLabel = vorige.toLocaleDateString('nl-NL', { month: 'long' })
 
   // Verwachte omzet: actieve facturen + akkoord/verstuurd offertes ZONDER bijbehorende factuur + open uren
   const invoicedOfferteIds = new Set(
@@ -475,6 +494,9 @@ export async function getFactuurStats() {
     revenueYearIncl,
     revenueMonth,
     revenueMonthIncl,
+    revenuePrevMonth,
+    revenuePrevMonthIncl,
+    prevMonthLabel,
     verwachteOmzet,
     verwachteOmzetIncl,
     recentFacturen,

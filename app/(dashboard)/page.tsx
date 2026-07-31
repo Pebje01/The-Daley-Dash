@@ -52,11 +52,14 @@ export default function Dashboard() {
     revenueYearIncl: number
     revenueMonth: number
     revenueMonthIncl: number
+    revenuePrevMonth: number
+    revenuePrevMonthIncl: number
+    prevMonthLabel: string
     verwachteOmzet: number
     verwachteOmzetIncl: number
     recentFacturen: Factuur[]
     perMaand: { maand: string; openstaand: number; uren: number; totaal: number }[]
-  }>({ openFacturen: 0, totalOpenAmount: 0, overdueFacturen: 0, paidThisMonth: 0, revenueYear: 0, revenueYearIncl: 0, revenueMonth: 0, revenueMonthIncl: 0, verwachteOmzet: 0, verwachteOmzetIncl: 0, recentFacturen: [], perMaand: [] })
+  }>({ openFacturen: 0, totalOpenAmount: 0, overdueFacturen: 0, paidThisMonth: 0, revenueYear: 0, revenueYearIncl: 0, revenueMonth: 0, revenueMonthIncl: 0, revenuePrevMonth: 0, revenuePrevMonthIncl: 0, prevMonthLabel: '', verwachteOmzet: 0, verwachteOmzetIncl: 0, recentFacturen: [], perMaand: [] })
 
   const [abonnementen, setAbonnementen] = useState<Abonnement[]>([])
   const [crmStats, setCrmStats] = useState<{
@@ -180,6 +183,11 @@ export default function Dashboard() {
           </div>
           <p className="font-uxum text-stat text-brand-text-primary">{euro(factuurStats.revenueMonth)}</p>
           <p className="text-caption text-brand-text-secondary mt-1">incl. btw: {euro(factuurStats.revenueMonthIncl)}</p>
+          {factuurStats.revenuePrevMonth > 0 && (
+            <p className="text-caption text-brand-text-secondary/70 mt-0.5">
+              {factuurStats.prevMonthLabel}: {euro(factuurStats.revenuePrevMonth)}
+            </p>
+          )}
         </Link>
 
         <Link href="/offertes?status=akkoord" className="card hover:shadow-md transition-shadow cursor-pointer">

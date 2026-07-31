@@ -21,6 +21,22 @@ function unique(paths: string[]): string[] {
     })
 }
 
+/**
+ * Map waarin concept-facturen landen. De scan slaat mappen die met _ beginnen
+ * over, zodat een concept nooit als echte factuur meegesynct wordt.
+ */
+export const CONCEPTEN_MAP = '_Concepten'
+
+/**
+ * Map waar PDF's van teruggezette facturen heen gaan. Weggooien doen we niet,
+ * maar ze mogen ook niet in het archief blijven staan: dan pikt de sync ze weer
+ * op en kan hun nummer intussen aan een andere factuur zijn uitgegeven.
+ */
+export const VERWIJDERD_MAP = '_Teruggezet'
+
+// Montung (VOF BB-Import, voorheen Bleijenberg) staat bewust NIET in deze lijsten.
+// Dat is een aparte VOF met een eigen BTW-nummer, eigen nummerreeks en een eigen
+// systeem in montung-voorraad. Die facturen horen niet in de omzet van de Dash.
 export function getAdminFacturenPaths(): string[] {
   return unique([
     ...envPaths(process.env.ADMIN_FACTUREN_PATH),
@@ -28,8 +44,6 @@ export function getAdminFacturenPaths(): string[] {
     `${HOME}/Bedrijf Administratie/Facturen`,
     `${HOME}/We Grow Brands/Bedrijf Administratie/Facturen`,
     `${HOME}/DALEY PHOTOGRAPHY/Facturen`,
-    `${HOME}/Bleijenberg_Montung/Administratie/Facturen`,
-    `${HOME}/Montung/Documenten/Administratie/Verkoopfacturen`,
   ])
 }
 
@@ -38,8 +52,6 @@ export function getAdminOffertesPaths(): string[] {
     ...envPaths(process.env.ADMIN_OFFERTES_PATH),
     `${HOME}/Bedrijf Administratie/Offertes`,
     `${HOME}/We Grow Brands/Bedrijf Administratie/Offertes`,
-    `${HOME}/Bleijenberg_Montung/Administratie/Offertes`,
-    `${HOME}/Montung/Documenten/Administratie/Offertes`,
   ])
 }
 

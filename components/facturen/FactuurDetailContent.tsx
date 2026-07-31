@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import {
   ArrowLeft, Send, Download, CheckCircle2, XCircle, Trash2,
   Clock, RefreshCw, Save, Plus, GripVertical, ChevronDown, CreditCard,
-  FileText, FolderOpen
+  FileText, FolderOpen, FileCheck
 } from 'lucide-react'
 import { getCompany, COMPANIES } from '@/lib/companies'
 import { Factuur, LineItem, CompanyId, FactuurStatus } from '@/lib/types'
@@ -53,6 +53,7 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
   const [statusMenuOpen, setStatusMenuOpen] = useState(false)
   const statusMenuRef = useRef<HTMLDivElement>(null)
   const [pdfSaving, setPdfSaving] = useState(false)
+  const [definitiefBezig, setDefinitiefBezig] = useState(false)
   const [pdfFolderName, setPdfFolderName] = useState<string | null>(null)
 
   // Navigation helper: use onClose for drawer mode, router for page mode
@@ -151,6 +152,33 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
     if (handle) setPdfFolderName(handle.name)
   }
 
+  // Concept omzetten naar een echte factuur: nieuw nummer uit de bedrijfsreeks,
+  // PDF naar de kwartaalmap en de uren worden afgeboekt.
+  const handleDefinitiefMaken = async () => {
+    if (!factuur) return
+    const bevestigd = confirm(
+      `${factuur.number} wordt een echte factuur met een nieuw nummer, de PDF verhuist naar de kwartaalmap en de uren worden afgeboekt. Doorgaan?`
+    )
+    if (!bevestigd) return
+
+    setDefinitiefBezig(true)
+    try {
+      const res = await fetch(`/api/facturen/${id}/definitief`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data.error || 'Definitief maken mislukt')
+        return
+      }
+      router.refresh()
+      window.location.reload()
+    } catch (err) {
+      console.error('Definitief maken mislukt:', err)
+      alert('Definitief maken mislukt')
+    } finally {
+      setDefinitiefBezig(false)
+    }
+  }
+
   // Sluit status dropdown bij klik buiten het menu
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -174,6 +202,9 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
 
   const company = getCompany(factuur.companyId)
   const isOverdue = factuur.status === 'te-laat' || ((factuur.status === 'verzonden' || factuur.status === 'herinnering-verzonden') && new Date(factuur.dueDate) < new Date())
+  // Een concept draagt een nummer uit de losse C-reeks en heeft dus nog geen
+  // echt factuurnummer geclaimd.
+  const isConcept = factuur.number.toUpperCase().startsWith('C-')
 
   const handleStatusChange = async (status: FactuurStatus) => {
     try {
@@ -397,10 +428,23 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
             <FileText size={14} />
             {pdfSaving ? 'Opslaan...' : 'PDF opslaan'}
           </button>
+          <button
+            onClick={() => window.open(`/api/facturen/${factuur.id}/editor`, '_blank')}
+            className="btn-secondary"
+            title="Open de sleepbare editor in een nieuw tabblad"
+          >
+            <GripVertical size={14} />
+            Editor openen
+          </button>
           <button onClick={() => setEditing(!editing)} className="btn-secondary">
             {editing ? 'Annuleer' : 'Bewerken'}
           </button>
-          {(factuur.status === 'concept') && (
+          {isConcept && (
+            <button onClick={handleDefinitiefMaken} disabled={definitiefBezig} className="btn-primary">
+              <FileCheck size={14} /> {definitiefBezig ? 'Bezig...' : 'Definitief maken'}
+            </button>
+          )}
+          {factuur.status === 'concept' && !isConcept && (
             <button onClick={() => handleStatusChange('verzonden')} className="btn-primary">
               <Send size={14} /> Markeer als verzonden
             </button>
@@ -664,10 +708,22 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
               </div>
               <FactuurStatusBadge status={isOverdue && factuur.status === 'verzonden' ? 'te-laat' : factuur.status} />
             </div>
+            {isConcept && (
+              <p className="text-caption text-brand-text-secondary mt-3 p-3 rounded-brand bg-brand-page-light border border-brand-card-border">
+                Dit is een concept met een nummer uit de losse C-reeks. Gebruik <strong>Definitief maken</strong> om er
+                een echte factuur van te maken: dan krijgt hij pas een factuurnummer, verhuist de PDF naar de
+                kwartaalmap en worden de uren afgeboekt. Hem hier zomaar op verzonden zetten laat het C-nummer staan.
+              </p>
+            )}
             <div className="flex gap-2 flex-wrap mt-4">
-              {factuur.status === 'concept' && (
+              {factuur.status === 'concept' && !isConcept && (
                 <button onClick={() => handleStatusChange('verzonden')} className="btn-primary">
                   <Send size={14} /> Markeer als verzonden
+                </button>
+              )}
+              {isConcept && (
+                <button onClick={handleDefinitiefMaken} disabled={definitiefBezig} className="btn-primary">
+                  <FileCheck size={14} /> {definitiefBezig ? 'Bezig...' : 'Definitief maken'}
                 </button>
               )}
               {(factuur.status === 'verzonden' || factuur.status === 'herinnering-verzonden' || factuur.status === 'te-laat') && (
@@ -675,27 +731,27 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
                   <CreditCard size={14} /> Markeer als betaald
                 </button>
               )}
-              {factuur.status !== 'concept' && (
+              {factuur.status !== 'concept' && !isConcept && (
                 <button onClick={() => handleStatusChange('concept')} className="btn-secondary">
                   Concept
                 </button>
               )}
-              {factuur.status !== 'verzonden' && (
+              {factuur.status !== 'verzonden' && !isConcept && (
                 <button onClick={() => handleStatusChange('verzonden')} className="btn-secondary">
                   Verzonden
                 </button>
               )}
-              {factuur.status !== 'herinnering-verzonden' && (
+              {factuur.status !== 'herinnering-verzonden' && !isConcept && (
                 <button onClick={() => handleStatusChange('herinnering-verzonden')} className="btn-secondary text-brand-status-orange">
                   <Send size={14} /> Herinnering verzonden
                 </button>
               )}
-              {factuur.status !== 'betaald' && (
+              {factuur.status !== 'betaald' && !isConcept && (
                 <button onClick={() => handleStatusChange('betaald')} className="btn-secondary text-brand-lime-accent">
                   <CheckCircle2 size={14} /> Betaald
                 </button>
               )}
-              {factuur.status !== 'te-laat' && (
+              {factuur.status !== 'te-laat' && !isConcept && (
                 <button onClick={() => handleStatusChange('te-laat')} className="btn-secondary text-brand-pink-accent">
                   <XCircle size={14} /> Te laat
                 </button>
