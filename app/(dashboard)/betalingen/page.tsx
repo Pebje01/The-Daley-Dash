@@ -21,7 +21,7 @@ interface Kasstroom {
   openstaandAantal: number
   gemiddeldeBetaaltermijn: number | null
   maanden: { maand: string; label: string; gefactureerdExcl: number; gefactureerdIncl: number; ontvangen: number; aantalOntvangen: number }[]
-  laatsteBetalingen: { id: string; nummer: string; klant: string; bedrijf: string; betaaldOp: string; factuurdatum: string; bedrag: number; dagen: number }[]
+  laatsteBetalingen: { id: string; nummer: string; klant: string; bedrijf: string; betaaldOp: string; factuurdatum: string; bedrag: number; dagen: number; vooraf: boolean }[]
   openstaandeFacturen: { id: string; nummer: string; klant: string; bedrijf: string; vervaldatum: string; bedrag: number; dagenOpen: number; teLaat: boolean }[]
 }
 
@@ -255,7 +255,11 @@ export default function BetalingenPage() {
                       </Link>
                     </td>
                     <td className="py-1.5">{b.klant}</td>
-                    <td className="py-1.5 text-right text-caption text-brand-text-secondary">{b.dagen} dagen</td>
+                    <td className="py-1.5 text-right text-caption text-brand-text-secondary">
+                      {b.vooraf
+                        ? <span title="Betaald voordat de factuur verstuurd was">vooraf betaald</span>
+                        : `${b.dagen} dagen`}
+                    </td>
                     <td className="py-1.5 text-right font-semibold">{euro(b.bedrag)}</td>
                   </tr>
                 ))}

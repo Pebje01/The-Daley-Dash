@@ -61,10 +61,14 @@ export async function GET() {
   }).reverse()
 
   // Hoe snel je klanten betalen: dagen tussen factuurdatum en betaaldatum.
-  const looptijden = betaald
-    .filter(f => f.date && f.paid_at)
-    .map(f => Math.round((new Date(dag(f.paid_at)).getTime() - new Date(dag(f.date)).getTime()) / 86400000))
-    .filter(d => d >= 0)
+  //
+  // Stond de betaling al binnen voordat de factuur de deur uit ging, dan komt daar
+  // een negatief getal uit. Dat zegt niets over de klant, die heeft juist niet
+  // hoeven wachten, dus dat telt als 0 dagen.
+  const looptijd = (f: FactuurRij): number =>
+    Math.max(0, Math.round((new Date(dag(f.paid_at)).getTime() - new Date(dag(f.date)).getTime()) / 86400000))
+
+  const looptijden = betaald.filter(f => f.date && f.paid_at).map(looptijd)
   const gemiddeldeBetaaltermijn = looptijden.length
     ? Math.round(looptijden.reduce((s, d) => s + d, 0) / looptijden.length)
     : null
@@ -89,7 +93,10 @@ export async function GET() {
         betaaldOp: dag(f.paid_at),
         factuurdatum: dag(f.date),
         bedrag: Number(f.total ?? 0),
-        dagen: Math.round((new Date(dag(f.paid_at)).getTime() - new Date(dag(f.date)).getTime()) / 86400000),
+        dagen: looptijd(f),
+        // Betaald voordat de factuur verstuurd was. Dan is er niet gewacht, maar
+        // liep de factuur achter op de betaling.
+        vooraf: new Date(dag(f.paid_at)).getTime() < new Date(dag(f.date)).getTime(),
       })),
     openstaandeFacturen: openstaand
       .sort((a, b) => dag(a.due_date).localeCompare(dag(b.due_date)))
