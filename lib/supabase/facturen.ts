@@ -371,7 +371,7 @@ export async function getFactuurStats() {
     recent,
   ] = await Promise.all([
     supabase.from('facturen')
-      .select('id, status, total, subtotal, date, due_date, paid_at, created_at, offerte_id, exclude_from_revenue, revenue_date')
+      .select('id, number, client_name, status, total, subtotal, date, due_date, paid_at, created_at, offerte_id, exclude_from_revenue, revenue_date')
       .in('company_id', EIGEN_BEDRIJVEN),
     supabase.from('uren').select('datum, uren, uurtarief, gefactureerd'),
     supabase.from('offertes').select('id, subtotal, total, status, date').in('status', ['akkoord', 'verstuurd']),
@@ -439,6 +439,18 @@ export async function getFactuurStats() {
       incl: regels.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0),
       aantal: regels.length,
       ontvangen,
+      // De facturen zelf, zodat je vanaf het dashboard direct kunt doorklikken
+      // naar wat die maand precies opbouwt.
+      facturen: regels
+        .slice()
+        .sort((a: any, b: any) => effectiveDate(b).localeCompare(effectiveDate(a)))
+        .map((f: any) => ({
+          id: f.id,
+          nummer: f.number,
+          klant: f.client_name,
+          bedrag: f.total ?? 0,
+          status: f.status,
+        })),
     }
   })
 

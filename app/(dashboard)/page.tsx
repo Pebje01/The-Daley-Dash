@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
-import { Plus, TrendingUp, AlertCircle, CheckCircle2, ArrowRight, FileText, Clock, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, TrendingUp, AlertCircle, CheckCircle2, ArrowRight, FileText, Clock, RefreshCw, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
 import ActiesWidget from '@/components/ActiesWidget'
 import { getCompany } from '@/lib/companies'
 import { FactuurStatusBadge, OfferteStatusBadge } from '@/components/StatusBadge'
@@ -52,7 +52,10 @@ export default function Dashboard() {
     revenueYearIncl: number
     revenueMonth: number
     revenueMonthIncl: number
-    omzetPerMaand: { maand: string; label: string; excl: number; incl: number; aantal: number; ontvangen: number }[]
+    omzetPerMaand: {
+      maand: string; label: string; excl: number; incl: number; aantal: number; ontvangen: number
+      facturen: { id: string; nummer: string; klant: string; bedrag: number; status: string }[]
+    }[]
     verwachteOmzet: number
     verwachteOmzetIncl: number
     recentFacturen: Factuur[]
@@ -62,6 +65,7 @@ export default function Dashboard() {
   // Welke maand de omzetkaart toont. -1 betekent "nog niet gezet", dan springt hij
   // naar de huidige maand zodra de cijfers binnen zijn.
   const [maandIndex, setMaandIndex] = useState(-1)
+  const [maandOpen, setMaandOpen] = useState(false)
   const gekozenMaand = factuurStats.omzetPerMaand[maandIndex] ?? factuurStats.omzetPerMaand[factuurStats.omzetPerMaand.length - 1]
 
   useEffect(() => {
@@ -214,9 +218,34 @@ export default function Dashboard() {
           </div>
           <p className="font-uxum text-stat text-brand-text-primary">{euro(gekozenMaand?.excl ?? 0)}</p>
           <p className="text-caption text-brand-text-secondary mt-1">incl. btw: {euro(gekozenMaand?.incl ?? 0)}</p>
-          <p className="text-caption text-brand-text-secondary/70 mt-0.5">
-            {gekozenMaand?.aantal ?? 0} {gekozenMaand?.aantal === 1 ? 'factuur' : 'facturen'}
-          </p>
+          {(gekozenMaand?.aantal ?? 0) === 0 ? (
+            <p className="text-caption text-brand-text-secondary/70 mt-0.5">geen facturen</p>
+          ) : (
+            <button
+              onClick={() => setMaandOpen(o => !o)}
+              className="flex items-center gap-1 text-caption text-brand-text-secondary/70 hover:text-brand-text-primary mt-0.5 transition-colors"
+            >
+              {gekozenMaand!.aantal} {gekozenMaand!.aantal === 1 ? 'factuur' : 'facturen'}
+              <ChevronDown size={12} className={`transition-transform ${maandOpen ? 'rotate-180' : ''}`} />
+            </button>
+          )}
+          {maandOpen && gekozenMaand && gekozenMaand.facturen.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-brand-page-medium space-y-1">
+              {gekozenMaand.facturen.map(f => (
+                <Link
+                  key={f.id}
+                  href={`/facturen/${f.id}`}
+                  className="flex items-baseline justify-between gap-2 text-caption hover:bg-brand-page-light rounded px-1 -mx-1 py-0.5 transition-colors"
+                >
+                  <span className="truncate">
+                    <span className="font-mono text-brand-text-secondary">{f.nummer}</span>
+                    <span className="ml-1.5 text-brand-text-primary">{f.klant}</span>
+                  </span>
+                  <span className="font-semibold whitespace-nowrap">{euro(f.bedrag)}</span>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
 
         <Link href="/offertes?status=akkoord" className="card hover:shadow-md transition-shadow cursor-pointer">
