@@ -5,6 +5,7 @@ import {
   Receipt, Landmark, PiggyBank, Calculator, Upload, RefreshCw, Info,
   CheckCircle2, AlertTriangle, Trash2, Plus, FileText, ArrowRight, Banknote,
 } from 'lucide-react'
+import { useMelding } from '@/components/MeldingProvider'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n || 0)
@@ -68,6 +69,7 @@ function deadline(eind: string) {
 }
 
 export default function BtwAangiftePage({ params }: { params: { kwartaal: string } }) {
+  const melding = useMelding()
   const router = useRouter()
   const [data, setData] = useState<BtwData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -117,7 +119,13 @@ export default function BtwAangiftePage({ params }: { params: { kwartaal: string
   }
 
   async function handleResetBank() {
-    if (!confirm('Alle geimporteerde banktransacties van dit kwartaal verwijderen?')) return
+    const akkoord = await melding.bevestig({
+      titel: 'Banktransacties van dit kwartaal verwijderen?',
+      tekst: 'Alle geïmporteerde transacties van dit kwartaal worden gewist. Je kunt het bestand daarna opnieuw importeren.',
+      bevestigLabel: 'Verwijderen',
+      gevaarlijk: true,
+    })
+    if (!akkoord) return
     setBusy('reset')
     await fetch(`/api/belasting/btw/${params.kwartaal}/import`, { method: 'DELETE' })
     await fetchData()

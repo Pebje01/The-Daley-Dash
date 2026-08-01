@@ -12,6 +12,7 @@ import { OfferteStatusBadge } from '@/components/StatusBadge'
 import { saveOffertePdf } from '@/lib/pdf/offertePdf'
 import { pickOfferteFolder, getOfferteFolder } from '@/lib/pdf/folderStorage'
 import { dataChanged } from '@/lib/events'
+import { useMelding } from '@/components/MeldingProvider'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -294,6 +295,7 @@ interface OfferteDetailContentProps {
 }
 
 export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteDetailContentProps) {
+  const melding = useMelding()
   const router = useRouter()
   const [offerte, setOfferte] = useState<Offerte | null>(null)
   const [loading, setLoading] = useState(true)
@@ -455,7 +457,7 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
       if (res.ok) dataChanged('offertes')
       fetchOfferte()
     } catch {
-      alert('Status wijzigen mislukt')
+      melding.fout('Status wijzigen mislukt')
     }
   }
 
@@ -468,7 +470,7 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
       dataChanged('offertes')
       goBack()
     } catch {
-      alert('Verwijderen mislukt')
+      melding.fout('Verwijderen mislukt')
       setDeleting(false)
       setShowDeleteModal(false)
     }

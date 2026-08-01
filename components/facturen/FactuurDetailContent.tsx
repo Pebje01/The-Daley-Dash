@@ -1,8 +1,8 @@
 'use client'
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { Fragment, useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  ArrowLeft, Send, Download, CheckCircle2, XCircle, Trash2,
+  ArrowLeft, Send, CheckCircle2, XCircle, Trash2,
   Clock, RefreshCw, Save, Plus, GripVertical, ChevronDown, CreditCard,
   FileText, FolderOpen, FileCheck
 } from 'lucide-react'
@@ -11,6 +11,7 @@ import { Factuur, LineItem, CompanyId, FactuurStatus } from '@/lib/types'
 import { FactuurStatusBadge } from '@/components/StatusBadge'
 import { getFacturenFolder, pickFacturenFolder } from '@/lib/pdf/folderStorage'
 import { dataChanged } from '@/lib/events'
+import { useMelding } from '@/components/MeldingProvider'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -46,6 +47,7 @@ interface FactuurDetailContentProps {
 
 export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurDetailContentProps) {
   const router = useRouter()
+  const melding = useMelding()
   const [factuur, setFactuur] = useState<Factuur | null>(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
@@ -138,11 +140,11 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
       const res = await fetch(`/api/facturen/${id}/regenerate-pdf`, { method: 'POST' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        alert(data.error || 'PDF opslaan mislukt')
+        melding.fout(data.error || 'PDF opslaan mislukt')
       }
     } catch (err) {
       console.error('PDF opslaan mislukt:', err)
-      alert('PDF opslaan mislukt')
+      melding.fout('PDF opslaan mislukt')
     }
     setPdfSaving(false)
   }
@@ -156,9 +158,11 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
   // PDF naar de kwartaalmap en de uren worden afgeboekt.
   const handleDefinitiefMaken = async () => {
     if (!factuur) return
-    const bevestigd = confirm(
-      `${factuur.number} wordt een echte factuur met een nieuw nummer, de PDF verhuist naar de kwartaalmap en de uren worden afgeboekt. Doorgaan?`
-    )
+    const bevestigd = await melding.bevestig({
+      titel: `${factuur.number} definitief maken?`,
+      tekst: 'De factuur krijgt een nieuw nummer uit de bedrijfsreeks, de PDF verhuist naar de kwartaalmap en de uren worden afgeboekt.',
+      bevestigLabel: 'Definitief maken',
+    })
     if (!bevestigd) return
 
     setDefinitiefBezig(true)
@@ -166,14 +170,14 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
       const res = await fetch(`/api/facturen/${id}/definitief`, { method: 'POST' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        alert(data.error || 'Definitief maken mislukt')
+        melding.fout(data.error || 'Definitief maken mislukt')
         return
       }
       router.refresh()
       window.location.reload()
     } catch (err) {
       console.error('Definitief maken mislukt:', err)
-      alert('Definitief maken mislukt')
+      melding.fout('Definitief maken mislukt')
     } finally {
       setDefinitiefBezig(false)
     }
@@ -221,7 +225,7 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
       dataChanged('facturen')
       fetchFactuur()
     } catch {
-      alert('Status wijzigen mislukt')
+      melding.fout('Status wijzigen mislukt')
     }
   }
 
@@ -231,7 +235,13 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
 
   const handleDelete = async () => {
     if (!factuur) return
-    if (!confirm(`${factuur.number} (${euro(factuur.total)}) verwijderen?\n\nEr wordt eerst een kopie in de prullenbak gezet en de gekoppelde uren komen weer vrij.`)) return
+    const wilVerwijderen = await melding.bevestig({
+      titel: `${factuur.number} verwijderen?`,
+      tekst: `${euro(factuur.total)} voor ${factuur.client.name}.\n\nEr gaat eerst een kopie naar de prullenbak en de gekoppelde uren komen weer vrij.`,
+      bevestigLabel: 'Verwijderen',
+      gevaarlijk: true,
+    })
+    if (!wilVerwijderen) return
 
     const verwijder = async (bevestigdVerstuurd: boolean) =>
       fetch(`/api/facturen/${id}${bevestigdVerstuurd ? '?bevestigdVerstuurd=true' : ''}`, { method: 'DELETE' })
@@ -244,27 +254,33 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
       if (res.status === 409) {
         const data = await res.json().catch(() => ({}))
         if (!data?.needsBevestiging) {
-          alert(data?.error ?? 'Verwijderen mislukt')
+          melding.fout(data?.error ?? 'Verwijderen mislukt')
           return
         }
-        if (!confirm(`Let op: ${factuur.number} is al verstuurd naar ${factuur.client.name}.\n\nEen verstuurde factuur hoort in je administratie te blijven. Weet je zeker dat je hem toch wilt verwijderen?`)) return
+        const tochWeg = await melding.bevestig({
+          titel: 'Deze factuur is al verstuurd',
+          tekst: `${factuur.number} is de deur uit naar ${factuur.client.name}. Een verstuurde factuur hoort in je administratie te blijven.\n\nWeet je zeker dat je hem toch wilt verwijderen?`,
+          bevestigLabel: 'Toch verwijderen',
+          gevaarlijk: true,
+        })
+        if (!tochWeg) return
         res = await verwijder(true)
       }
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        alert(data?.error ?? 'Verwijderen mislukt')
+        melding.fout(data?.error ?? 'Verwijderen mislukt')
         return
       }
 
       const data = await res.json().catch(() => ({}))
       if (data?.urenVrijgegeven > 0) {
-        alert(`${factuur.number} staat in de prullenbak. ${data.urenVrijgegeven} uur-registratie${data.urenVrijgegeven === 1 ? '' : 's'} staat weer open.`)
+        melding.gelukt(`${factuur.number} staat in de prullenbak. ${data.urenVrijgegeven} uur-registratie${data.urenVrijgegeven === 1 ? '' : 's'} staat weer open.`)
       }
       dataChanged('facturen')
       goBack()
     } catch {
-      alert('Verwijderen mislukt')
+      melding.fout('Verwijderen mislukt')
     }
   }
 
@@ -343,7 +359,7 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
 
       setEditing(false)
     } catch {
-      alert('Opslaan mislukt')
+      melding.fout('Opslaan mislukt')
     }
     setSaving(false)
   }
@@ -903,7 +919,10 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
               </thead>
               <tbody className="divide-y divide-brand-page-medium">
                 {viewSections.map((section, sIdx) => (
-                  <>
+                  // Fragment met key: een sectie levert meerdere <tr>'s op, dus
+                  // een wrapper-div kan hier niet. Zonder key klaagde React bij
+                  // het openen van elke factuur.
+                  <Fragment key={`sectie-${sIdx}`}>
                     {section.title && (
                       <tr key={`section-${sIdx}`} className="bg-brand-page-light/50">
                         <td colSpan={4} className="px-3 sm:px-5 py-2.5 font-semibold text-brand-text-primary text-caption uppercase tracking-wide">
@@ -922,7 +941,7 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
                         <td className="px-3 sm:px-5 py-3.5 text-right font-semibold text-brand-text-primary">{euro(item.quantity * item.unitPrice)}</td>
                       </tr>
                     ))}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

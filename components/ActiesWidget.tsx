@@ -4,12 +4,14 @@ import { AlertCircle, Clock, XCircle, CheckCircle2, X, Send } from 'lucide-react
 import { Actie } from '@/lib/types'
 import { getCompany } from '@/lib/companies'
 import { dataChanged, onDataChanged } from '@/lib/events'
+import { useMelding } from '@/components/MeldingProvider'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
 }
 
 function ActieRij({ actie, onUpdate }: { actie: Actie; onUpdate: () => void }) {
+  const melding = useMelding()
   const [bezig, setBezig] = useState(false)
 
   const handleUpdate = async (status: 'goedgekeurd' | 'afgewezen') => {
@@ -28,7 +30,7 @@ function ActieRij({ actie, onUpdate }: { actie: Actie; onUpdate: () => void }) {
     const res = await fetch(`/api/acties/${actie.id}/stuur`, { method: 'POST' })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
-      alert(data.error || 'Verzenden mislukt')
+      melding.fout(data.error || 'Verzenden mislukt')
       setBezig(false)
       return
     }

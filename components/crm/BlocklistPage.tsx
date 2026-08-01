@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Ban, RefreshCw, Undo2, BadgeDollarSign, Building2, ContactRound } from 'lucide-react'
+import { useMelding } from '@/components/MeldingProvider'
 
 interface BlockRecord {
   id: string
@@ -26,6 +27,7 @@ function fmtDatum(iso?: string | null): string | null {
 }
 
 export default function BlocklistPage() {
+  const melding = useMelding()
   const [items, setItems] = useState<BlockRecord[]>([])
   const [state, setState] = useState<'loading' | 'error' | 'done'>('loading')
   const [bezig, setBezig] = useState<string | null>(null)
@@ -41,7 +43,12 @@ export default function BlocklistPage() {
   useEffect(() => { load() }, [load])
 
   const deblokkeer = async (rec: BlockRecord) => {
-    if (!confirm(`${rec.name} weer benaderbaar maken?`)) return
+    const akkoord = await melding.bevestig({
+      titel: `${rec.name} weer benaderbaar maken?`,
+      tekst: 'De blokkade gaat eraf en de relatie komt weer terug in de opvolging.',
+      bevestigLabel: 'Deblokkeren',
+    })
+    if (!akkoord) return
     setBezig(rec.id)
     try {
       const res = await fetch(`/api/crm/records/${rec.id}`, {
@@ -52,7 +59,7 @@ export default function BlocklistPage() {
       if (!res.ok) throw new Error()
       setItems((prev) => prev.filter((i) => i.id !== rec.id))
     } catch {
-      alert('Deblokkeren mislukt, probeer opnieuw.')
+      melding.fout('Deblokkeren mislukt, probeer opnieuw.')
     } finally {
       setBezig(null)
     }

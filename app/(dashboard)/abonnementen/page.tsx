@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, type ReactNode } from 'react'
-import { Plus, Repeat2, Search, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Repeat2, Search, Trash2 } from 'lucide-react'
+import { useMelding } from '@/components/MeldingProvider'
 import { Abonnement, AbonnementStatus, AbonnementInterval, CompanyId } from '@/lib/types'
 import { getCompany, COMPANIES } from '@/lib/companies'
 import { useColumnOrder, useColumnDnD } from '@/lib/columnOrder'
@@ -55,6 +56,7 @@ const intervalLabels: Record<AbonnementInterval, string> = {
 }
 
 export default function AbonnementenPage() {
+  const melding = useMelding()
   const { order, move } = useColumnOrder('abonnementen', ABO_KOLOMMEN.map(c => c.key))
   const dnd = useColumnDnD(move)
   const [abonnementen, setAbonnementen] = useState<Abonnement[]>([])
@@ -127,17 +129,22 @@ export default function AbonnementenPage() {
         loadAbonnementen()
       } else {
         const err = await res.json().catch(() => ({ error: 'Onbekende fout' }))
-        alert(`Opslaan mislukt: ${err.error}`)
+        melding.fout(`Opslaan mislukt: ${err.error}`)
       }
     } catch (e) {
       console.error('abonnement opslaan fout:', e)
-      alert('Kon abonnement niet opslaan, zie console.')
+      melding.fout('Kon abonnement niet opslaan, zie de console voor details.')
     }
     setSaving(false)
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Weet je zeker dat je dit abonnement wilt verwijderen?')) return
+    const akkoord = await melding.bevestig({
+      titel: 'Abonnement verwijderen?',
+      bevestigLabel: 'Verwijderen',
+      gevaarlijk: true,
+    })
+    if (!akkoord) return
     await fetch(`/api/abonnementen/${id}`, { method: 'DELETE' })
     loadAbonnementen()
   }
