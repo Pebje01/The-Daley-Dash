@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
-
-const ALLOWED_BASES = [
-  process.env.ADMIN_FACTUREN_PATH,
-  process.env.ADMIN_OFFERTES_PATH,
-].filter(Boolean) as string[]
+import { isAllowedAdminDocumentPath } from '@/lib/admin/documentPaths'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,9 +11,12 @@ export async function GET(req: NextRequest) {
 
   const resolved = path.resolve(filePath)
 
-  // Veiligheidscheck: alleen bestanden binnen de geconfigureerde mappen
-  const isAllowed = ALLOWED_BASES.some(base => resolved.startsWith(path.resolve(base)))
-  if (!isAllowed) return NextResponse.json({ error: 'Toegang geweigerd' }, { status: 403 })
+  // Veiligheidscheck via de gedeelde helper, die op mapgrens vergelijkt in
+  // plaats van op tekst. Met `startsWith` gaf een map die naast de basismap
+  // staat en met dezelfde letters begint (Verkoopfacturen-prive) ook toegang.
+  if (!isAllowedAdminDocumentPath(resolved)) {
+    return NextResponse.json({ error: 'Toegang geweigerd' }, { status: 403 })
+  }
 
   if (!fs.existsSync(resolved)) return NextResponse.json({ error: 'Bestand niet gevonden' }, { status: 404 })
 

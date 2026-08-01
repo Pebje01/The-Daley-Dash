@@ -6,7 +6,7 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": [
         "-c",
-        "cd \"/Users/daleyjansen_1/Developer/the-daley-dash\" && npx next dev -p 3003 -H 0.0.0.0"
+        "cd \"/Users/daleyjansen_1/Developer/the-daley-dash\" && npx next dev -p 3003 -H 127.0.0.1"
       ],
       "port": 3003,
       "autoPort": false

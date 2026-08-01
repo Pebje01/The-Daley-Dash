@@ -13,8 +13,23 @@ export async function POST(
     return NextResponse.json({ error: 'Offerte not found' }, { status: 404 })
   }
 
+  // De GET-route controleerde `isPublic` wel, deze niet. Een offerte die niet
+  // gedeeld is kon dus wel akkoord gezet worden door wie het id kende.
+  if (!offerte.isPublic) {
+    return NextResponse.json({ error: 'Offerte is not public' }, { status: 403 })
+  }
+
   if (offerte.status === 'akkoord') {
     return NextResponse.json({ error: 'Already approved' }, { status: 400 })
+  }
+
+  // Een verlopen offerte accepteren hoort niet: de prijzen gelden dan niet meer.
+  const vandaag = new Date().toISOString().split('T')[0]
+  if (offerte.validUntil && offerte.validUntil < vandaag) {
+    return NextResponse.json(
+      { error: 'Deze offerte is verlopen. Neem even contact op voor een nieuwe.' },
+      { status: 410 }
+    )
   }
 
   const { clientName, clientEmail, agreedToTerms } = await request.json()

@@ -9,10 +9,15 @@ export const COMPANIES: Company[] = [
     color: '#C8963E',
     bgColor: '#FDF6EC',
     email: 'hello@thedaleyedit.nl',
-    phone: '+31 6 00000000',
-    address: 'Amsterdam, Nederland',
-    kvk: '00000000',
-    btw: 'NL000000000B01',
+    // Deze stonden op placeholders (KVK 00000000, BTW NL000000000B01, Amsterdam).
+    // offertePdf.ts zet ze letterlijk op de offerte, dus de eerste TDE-offerte
+    // was met een nep-KVK de deur uit gegaan. Waardes komen uit de vaste
+    // factuurvoettekst: The Daley Edit, Daley Photography en We Grow Brands
+    // vallen onder hetzelfde KVK- en BTW-nummer.
+    phone: '0636162639',
+    address: 'Noorderpad 47, 1461 CD Zuidoostbeemster',
+    kvk: '84818883',
+    btw: 'NL004023224B90',
     iban: 'NL78 KNAB 0414 3949 17',
     prefix: { offerte: 'OF', factuur: 'F' },
   },

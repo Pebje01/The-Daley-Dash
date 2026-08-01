@@ -5,7 +5,13 @@ export const dynamic = 'force-dynamic'
 
 function isAuthorizedCron(request: NextRequest) {
   const secret = process.env.CRON_SECRET
-  if (!secret) return true
+  // Fail closed. Stond eerst op `if (!secret) return true`, waardoor deze route
+  // voor iedereen open lag zodra de omgevingsvariabele ontbrak. Precies het
+  // moment waarop je die bescherming het hardst nodig hebt.
+  if (!secret) {
+    console.error('CRON_SECRET ontbreekt, cron-route geweigerd')
+    return false
+  }
   const auth = request.headers.get('authorization')
   return auth === `Bearer ${secret}`
 }
