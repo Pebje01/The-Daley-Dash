@@ -19,15 +19,17 @@ export interface SyncSamenvatting {
   skipped: number
   failed: number
   ontbrekend: OntbrekendDoc[]
+  /** PDF's uit de oude nummerreeks van vóór de Dash, bewust niet geïmporteerd. */
+  overgeslagenOud: number
 }
 
 type SyncBericht =
-  | { type: 'scan'; total: number; scanned: number; ontbrekend?: OntbrekendDoc[] }
+  | { type: 'scan'; total: number; scanned: number; ontbrekend?: OntbrekendDoc[]; overgeslagenOud?: number }
   | { type: 'progress'; current: number; total: number }
-  | { type: 'done'; imported: number; skipped: number; failed: number; ontbrekend?: OntbrekendDoc[] }
+  | { type: 'done'; imported: number; skipped: number; failed: number; ontbrekend?: OntbrekendDoc[]; overgeslagenOud?: number }
   | { type: 'error'; message: string }
 
-const LEEG: SyncSamenvatting = { imported: 0, skipped: 0, failed: 0, ontbrekend: [] }
+const LEEG: SyncSamenvatting = { imported: 0, skipped: 0, failed: 0, ontbrekend: [], overgeslagenOud: 0 }
 
 export async function runSync(onBericht?: (msg: SyncBericht) => void): Promise<SyncSamenvatting> {
   const res = await fetch('/api/admin/sync', { method: 'POST' })
@@ -54,14 +56,19 @@ export async function runSync(onBericht?: (msg: SyncBericht) => void): Promise<S
         continue
       }
       onBericht?.(msg)
-      if (msg.type === 'scan' && msg.ontbrekend) {
-        samenvatting = { ...samenvatting, ontbrekend: msg.ontbrekend }
+      if (msg.type === 'scan') {
+        samenvatting = {
+          ...samenvatting,
+          ontbrekend: msg.ontbrekend ?? samenvatting.ontbrekend,
+          overgeslagenOud: msg.overgeslagenOud ?? samenvatting.overgeslagenOud,
+        }
       } else if (msg.type === 'done') {
         samenvatting = {
           imported: msg.imported ?? 0,
           skipped: msg.skipped ?? 0,
           failed: msg.failed ?? 0,
           ontbrekend: msg.ontbrekend ?? samenvatting.ontbrekend,
+          overgeslagenOud: msg.overgeslagenOud ?? samenvatting.overgeslagenOud,
         }
       }
     }

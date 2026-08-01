@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, FileText, Receipt, Users, Settings,
   CreditCard, Repeat2, BadgeDollarSign, Building2, ContactRound, BriefcaseBusiness, ScrollText,
-  ChevronRight, LogOut, Landmark, CheckSquare, Clock, FileBarChart, Percent, Menu, X, Ban,
+  LogOut, Landmark, CheckSquare, Clock, FileBarChart, Percent, Menu, X, Ban,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'

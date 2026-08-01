@@ -1,6 +1,4 @@
-import { createServerClient } from '@supabase/ssr'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 
 export function createClient() {
   // Auth tijdelijk uitgeschakeld — gebruik service role key om RLS te bypassen

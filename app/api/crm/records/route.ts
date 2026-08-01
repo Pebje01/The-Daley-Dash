@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createCrmRecord } from '@/lib/crm/store'
-import type { ClickUpCrmEntityType } from '@/lib/clickup/config'
+import { CRM_ENTITY_TYPES, type CrmEntityType } from '@/lib/crm/types'
 
-const ALLOWED_ENTITY_TYPES = new Set(['daley_list', 'lead', 'company', 'contact', 'assignment', 'clickup_invoice'])
+const ALLOWED_ENTITY_TYPES = new Set<string>(CRM_ENTITY_TYPES)
 
 const RECORD_COLUMNS =
   'id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, dash_tags, due_date, clickup_date_updated, synced_at, volgende_actie, volgende_actie_notitie, laatste_contact, contact_pogingen, contact_status, contact_status_tot, contact_status_reden'
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     }
 
-    const record = await createCrmRecord(entity_type as ClickUpCrmEntityType, {
+    const record = await createCrmRecord(entity_type as CrmEntityType, {
       name: name.trim(),
       status,
       description,

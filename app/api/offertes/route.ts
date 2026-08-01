@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { getOffertes, createOfferte, getTodayOfferteCount } from '@/lib/supabase/offertes'
 import { generateOfferteNumber } from '@/lib/offerte-utils'
 

@@ -9,7 +9,6 @@ import { Offerte, Factuur, Abonnement } from '@/lib/types'
 import { useActiveCompany } from '@/components/CompanyContext'
 import { onDataChanged } from '@/lib/events'
 import { useDrawer } from '@/components/DrawerContext'
-import { createClient } from '@/lib/supabase/client'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -124,20 +123,16 @@ export default function Dashboard() {
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onVisible)
 
-    // Supabase Realtime: herlaad bij wijzigingen in offertes of facturen
-    const supabase = createClient()
-    const channel = supabase
-      .channel('dashboard-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'offertes' }, () => fetchData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'facturen' }, () => fetchData())
-      .subscribe()
+    // Hier stond een Supabase Realtime-abonnement op offertes en facturen. Dat
+    // leverde nooit een event op: de browser gebruikt de anon-key en op alle
+    // tabellen staat RLS aan zonder policies. De focus- en zichtbaarheidsrefresh
+    // hierboven deed al het werk.
 
     return () => {
       if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current)
       cleanupDataChanged()
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVisible)
-      supabase.removeChannel(channel)
     }
   }, [fetchData])
 

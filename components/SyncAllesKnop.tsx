@@ -93,7 +93,14 @@ export default function SyncAllesKnop({ onRefresh, onOntbrekend }: SyncAllesKnop
     }
     const label = result && result.imported > 0 ? `${result.imported} nieuw` : 'Actueel'
     const tooltip = result
-      ? `${result.imported} geïmporteerd, ${result.skipped} al aanwezig${result.failed > 0 ? `, ${result.failed} mislukt` : ''}`
+      ? [
+          `${result.imported} geïmporteerd`,
+          `${result.skipped} al aanwezig`,
+          result.failed > 0 ? `${result.failed} mislukt` : null,
+          // Nooit stil overslaan: anders lees je "actueel" terwijl er tientallen
+          // PDF's bewust buiten de import blijven.
+          result.overgeslagenOud > 0 ? `${result.overgeslagenOud} uit de oude nummerreeks overgeslagen` : null,
+        ].filter(Boolean).join(', ')
       : ''
     return (
       <button

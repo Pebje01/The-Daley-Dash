@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { getFacturen, createFactuur, getTodayFactuurCount } from '@/lib/supabase/facturen'
 import { generateFactuurNumber } from '@/lib/factuur-utils'
 

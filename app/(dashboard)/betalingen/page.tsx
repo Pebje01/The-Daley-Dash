@@ -6,7 +6,6 @@ import { ArrowRight, CreditCard, RefreshCw, Search } from 'lucide-react'
 import { Betaling, BetalingStatus } from '@/lib/types'
 import { getCompany } from '@/lib/companies'
 import { onDataChanged } from '@/lib/events'
-import { createClient } from '@/lib/supabase/client'
 import { useColumnOrder, useColumnDnD } from '@/lib/columnOrder'
 import { ColumnGrip } from '@/components/ColumnGrip'
 
@@ -102,23 +101,19 @@ export default function BetalingenPage() {
 
   useEffect(() => { loadBetalingen() }, [statusFilter, search])
 
-  // Ververs mee bij wijzigingen elders (drawer, andere pagina's) en via Supabase Realtime
+  // Ververs mee bij wijzigingen elders (drawer, andere pagina's) en bij focus.
+  // Het Realtime-abonnement dat hier stond leverde nooit events op: RLS staat
+  // aan zonder policies, dus de anon-key ziet niets. Zie de facturenpagina.
   useEffect(() => {
     const cleanup = onDataChanged((type) => {
       if (type === 'betalingen' || type === 'facturen') loadBetalingen()
     })
-    const supabase = createClient()
-    const channel = supabase
-      .channel('betalingen-list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'betalingen' }, () => loadBetalingen())
-      .subscribe()
     const onFocus = () => loadBetalingen()
     const onVisible = () => { if (document.visibilityState === 'visible') loadBetalingen() }
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       cleanup()
-      supabase.removeChannel(channel)
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVisible)
     }

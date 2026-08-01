@@ -2,10 +2,11 @@
 import { Suspense, useEffect, useState, useCallback, useRef, useMemo, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Plus, Search, RefreshCw, ChevronDown, Upload, FolderOpen, Eye, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown, TrendingUp, CalendarDays, X, AlertTriangle } from 'lucide-react'
+import { Plus, Search, RefreshCw, ChevronDown, Upload, FolderOpen, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown, TrendingUp, CalendarDays, X, AlertTriangle } from 'lucide-react'
 import LocaleBestandenSection from '@/components/LocaleBestandenSection'
 import SyncAllesKnop from '@/components/SyncAllesKnop'
 import { runSync, type OntbrekendDoc } from '@/lib/admin/syncClient'
+import { useMelding } from '@/components/MeldingProvider'
 import { getCompany, COMPANIES } from '@/lib/companies'
 import { Factuur, FactuurStatus, CompanyId } from '@/lib/types'
 import { FactuurStatusBadge } from '@/components/StatusBadge'
@@ -13,7 +14,6 @@ import { useActiveCompany } from '@/components/CompanyContext'
 import { pickFacturenFolder, getFacturenFolder, findFactuurPdfHandle } from '@/lib/pdf/folderStorage'
 import { dataChanged, onDataChanged } from '@/lib/events'
 import { useDrawer } from '@/components/DrawerContext'
-import { createClient } from '@/lib/supabase/client'
 import { useColumnOrder, useColumnDnD } from '@/lib/columnOrder'
 import { ColumnGrip } from '@/components/ColumnGrip'
 
@@ -179,6 +179,7 @@ export default function FacturenPage() {
 }
 
 function FacturenContent() {
+  const melding = useMelding()
   const searchParams = useSearchParams()
   const { activeCompany } = useActiveCompany()
   const { openDrawer } = useDrawer()
@@ -244,18 +245,13 @@ function FacturenContent() {
     return cleanup
   }, [fetchFacturen])
 
-  // Supabase Realtime: herlaad direct bij wijzigingen in facturen tabel
-  useEffect(() => {
-    const supabase = createClient()
-    const channel = supabase
-      .channel('facturen-list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'facturen' }, () => fetchFacturen())
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [fetchFacturen])
-
-  // Vangnet: herlaad zodra het venster weer focus/zichtbaar wordt.
-  // Werkt ook als Supabase Realtime niet aanstaat.
+  // Hier stond een Supabase Realtime-abonnement op de facturen-tabel. Dat kon
+  // nooit werken: de browser gebruikt de anon-key, en op alle tabellen staat RLS
+  // aan zonder policies, dus Realtime levert die rol nul events. Het leek alsof
+  // er live-updates waren, maar in de praktijk deed onderstaande focus-refresh
+  // al het werk. Weggehaald in plaats van policies toevoegen, want dat zou de
+  // hele administratie open zetten voor iedereen met de publieke anon-key.
+  // Herlaad zodra het venster weer focus of zichtbaarheid krijgt.
   useEffect(() => {
     const onFocus = () => fetchFacturen()
     const onVisible = () => { if (document.visibilityState === 'visible') fetchFacturen() }
@@ -431,12 +427,12 @@ function FacturenContent() {
     try {
       const folderHandle = await getFacturenFolder()
       if (!folderHandle) {
-        alert('Selecteer eerst de facturen map via het map-icoontje rechtsboven.')
+        melding.info('Selecteer eerst de facturen map via het map-icoontje rechtsboven.')
         return
       }
       const fileHandle = await findFactuurPdfHandle(factuur.number, folderHandle)
       if (!fileHandle) {
-        alert(`PDF niet gevonden voor ${factuur.number}.\nControleer of de PDF is opgeslagen in de geselecteerde map.`)
+        melding.fout(`PDF niet gevonden voor ${factuur.number}. Controleer of de PDF in de geselecteerde map staat.`)
         return
       }
       const file = await fileHandle.getFile()
@@ -546,7 +542,7 @@ function FacturenContent() {
                                 setOntbrekend(prev => prev.filter(d => d.number !== doc.number))
                                 fetchLocalFiles()
                               } else {
-                                alert('PDF opnieuw opslaan mislukt')
+                                melding.fout('PDF opnieuw opslaan mislukt')
                               }
                             } finally {
                               setHerstelBezig(null)
@@ -756,7 +752,7 @@ function FacturenContent() {
                                 }
                                 fetchFacturen()
                               } catch {
-                                alert('Import mislukt, controleer het bestandsformaat')
+                                melding.fout('Import mislukt, controleer het bestandsformaat')
                               }
                               e.target.value = ''
                             }}

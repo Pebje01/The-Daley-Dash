@@ -1,4 +1,5 @@
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 
 export interface AdminSyncState {
@@ -9,8 +10,28 @@ export interface AdminSyncState {
 
 const EMPTY_STATE: AdminSyncState = { facturen: [], offertes: [] }
 
+/**
+ * Deze state onthoudt welke nummers de sync ooit op schijf heeft gezien, en
+ * bepaalt daarmee wanneer een ontbrekende PDF gemeld wordt.
+ *
+ * Stond eerst in `.next/`, dus in de buildmap. Bij elke schone build was hij weg
+ * en gedroeg de sync zich stilzwijgend anders. Nu op een vaste plek buiten de
+ * build, met eenmalige overname van het oude bestand zodat er niets verloren
+ * gaat bij het overstappen.
+ */
 function statePath(): string {
+  const basis = process.env.DALEY_DASH_STATE_DIR
+    ?? path.join(os.homedir(), 'Library', 'Application Support', 'daley-dash')
+  return path.join(basis, 'admin-sync-state.json')
+}
+
+function oudeStatePath(): string {
   return path.join(process.cwd(), '.next', 'admin-sync-state.json')
+}
+
+function schrijfState(next: AdminSyncState) {
+  fs.mkdirSync(path.dirname(statePath()), { recursive: true })
+  fs.writeFileSync(statePath(), JSON.stringify(next, null, 2))
 }
 
 function normalize(numbers: Iterable<string>): string[] {
@@ -18,17 +39,20 @@ function normalize(numbers: Iterable<string>): string[] {
 }
 
 export function readAdminSyncState(): AdminSyncState {
-  try {
-    const raw = fs.readFileSync(statePath(), 'utf8')
-    const parsed = JSON.parse(raw) as Partial<AdminSyncState>
-    return {
-      facturen: normalize(parsed.facturen ?? []),
-      offertes: normalize(parsed.offertes ?? []),
-      updatedAt: parsed.updatedAt,
+  for (const pad of [statePath(), oudeStatePath()]) {
+    try {
+      const raw = fs.readFileSync(pad, 'utf8')
+      const parsed = JSON.parse(raw) as Partial<AdminSyncState>
+      return {
+        facturen: normalize(parsed.facturen ?? []),
+        offertes: normalize(parsed.offertes ?? []),
+        updatedAt: parsed.updatedAt,
+      }
+    } catch {
+      // Volgende locatie proberen; de oude plek in .next is de terugvaloptie.
     }
-  } catch {
-    return EMPTY_STATE
   }
+  return EMPTY_STATE
 }
 
 export function mergeAdminSyncSeen(seen: { facturen?: Iterable<string>; offertes?: Iterable<string> }) {
@@ -39,8 +63,7 @@ export function mergeAdminSyncSeen(seen: { facturen?: Iterable<string>; offertes
     updatedAt: new Date().toISOString(),
   }
   try {
-    fs.mkdirSync(path.dirname(statePath()), { recursive: true })
-    fs.writeFileSync(statePath(), JSON.stringify(next, null, 2))
+    schrijfState(next)
   } catch {
     // Lokale sync-state is een cache; scannen mag niet falen als schrijven niet kan.
   }
@@ -56,8 +79,7 @@ export function forgetAdminSyncNumbers(removed: { facturen?: Iterable<string>; o
     updatedAt: new Date().toISOString(),
   }
   try {
-    fs.mkdirSync(path.dirname(statePath()), { recursive: true })
-    fs.writeFileSync(statePath(), JSON.stringify(next, null, 2))
+    schrijfState(next)
   } catch {
     // Lokale sync-state is een cache; opruimen uit DB is al uitgevoerd.
   }

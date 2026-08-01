@@ -1,6 +1,6 @@
 'use client'
 import { Suspense, useEffect, useState, useCallback, useRef, useMemo, type ReactNode } from 'react'
-import Link from 'next/link'
+
 import { useSearchParams } from 'next/navigation'
 import { Plus, Search, RefreshCw, ChevronDown, Trash2, Upload, FolderOpen, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import LocaleBestandenSection from '@/components/LocaleBestandenSection'
@@ -12,8 +12,8 @@ import SyncAllesKnop from '@/components/SyncAllesKnop'
 import { dataChanged, onDataChanged } from '@/lib/events'
 import { pickOfferteFolder, getOfferteFolder } from '@/lib/pdf/folderStorage'
 import { useDrawer } from '@/components/DrawerContext'
-import { createClient } from '@/lib/supabase/client'
 import { useColumnOrder, useColumnDnD } from '@/lib/columnOrder'
+import { useMelding } from '@/components/MeldingProvider'
 import { ColumnGrip } from '@/components/ColumnGrip'
 
 // Verschuifbare kolommen voor de offertes-tabel (acties blijft vast achteraan).
@@ -262,6 +262,7 @@ export default function OffertesPage() {
 }
 
 function OffertesContent() {
+  const melding = useMelding()
   const searchParams = useSearchParams()
   const { activeCompany } = useActiveCompany()
   const { openDrawer } = useDrawer()
@@ -355,18 +356,9 @@ function OffertesContent() {
     return cleanup
   }, [fetchOffertes])
 
-  // Supabase Realtime: herlaad direct bij wijzigingen in offertes tabel
-  useEffect(() => {
-    const supabase = createClient()
-    const channel = supabase
-      .channel('offertes-list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'offertes' }, () => fetchOffertes())
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [fetchOffertes])
-
-  // Vangnet: herlaad zodra het venster weer focus/zichtbaar wordt.
-  // Werkt ook als Supabase Realtime niet aanstaat.
+  // Realtime-abonnement weggehaald: met RLS zonder policies krijgt de anon-key
+  // nooit events, dus dit deed niets. Zie de toelichting op de facturenpagina.
+  // Herlaad zodra het venster weer focus of zichtbaarheid krijgt.
   useEffect(() => {
     const onFocus = () => fetchOffertes()
     const onVisible = () => { if (document.visibilityState === 'visible') fetchOffertes() }
@@ -481,7 +473,7 @@ function OffertesContent() {
       fetchOffertes()
       dataChanged('offertes')
     } catch {
-      alert('Verwijderen mislukt')
+      melding.fout('Verwijderen mislukt')
     }
     setDeleting(false)
   }
@@ -709,7 +701,7 @@ function OffertesContent() {
                                 dataChanged('offertes')
                                 fetchOffertes()
                               } catch {
-                                alert('Import mislukt, controleer het bestandsformaat')
+                                melding.fout('Import mislukt, controleer het bestandsformaat')
                               }
                               e.target.value = ''
                             }}

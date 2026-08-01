@@ -2,6 +2,13 @@
   "extends": "next/core-web-vitals",
   "rules": {
     "@typescript-eslint/no-explicit-any": "off",
-    "no-unused-vars": "warn"
+    "no-unused-vars": [
+      "warn",
+      {
+        "args": "none",
+        "varsIgnorePattern": "^_",
+        "ignoreRestSiblings": true
+      }
+    ]
   }
 }

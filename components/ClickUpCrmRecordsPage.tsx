@@ -21,7 +21,10 @@ import { DashTagsProvider, InlineTags, type DashTag, DASH_TAG_KLEURNAMEN } from 
 import { useColumnOrder, useColumnDnD, useColumnWidths } from '@/lib/columnOrder'
 import { ColumnGrip } from '@/components/ColumnGrip'
 
-type EntityType = 'daley_list' | 'lead' | 'company' | 'contact' | 'assignment' | 'clickup_invoice'
+// Zelfde union als lib/crm/types.ts. 'daley_list' is eruit: dat onderdeel is in
+// juli 2026 opgegaan in de taken-tabel en er staan geen records meer van in de
+// database, dus de dode waarde sleepte alleen nog labels en routes mee.
+type EntityType = 'lead' | 'company' | 'contact' | 'assignment' | 'clickup_invoice'
 
 // ── Centrale keuze-opties (crm_field_options) ───────────────────────
 // Keuzevelden (labels/drop_down) lazen hun opties uit de per-record kopie
@@ -457,7 +460,6 @@ function promoteInfo(entity: EntityType, status?: string | null): { label: strin
 
 function titleFor(entity: EntityType): string {
   const map: Record<EntityType, string> = {
-    daley_list: "Daley Jansen's List",
     lead: 'Leads (kansen)',
     company: 'Bedrijven',
     assignment: 'Opdrachten',
@@ -1438,7 +1440,6 @@ const ENTITY_HREF: Record<string, string> = {
   lead: '/crm/leads',
   assignment: '/crm/opdrachten',
   clickup_invoice: '/crm/facturen',
-  daley_list: '/crm/daley-list',
 }
 
 // Relatie- en systeemvelden worden elders getoond, niet als los veld
@@ -1797,7 +1798,6 @@ const RELATIE_VELD_TREFWOORDEN: Record<string, string[]> = {
   lead: ['lead', 'kans'],
   assignment: ['opdracht'],
   clickup_invoice: ['factuur', 'factur'],
-  daley_list: [],
 }
 
 /** Zoekt op een veldenlijst het relatieveld (tasks/list_relationship) dat naar `targetEntity` wijst. */

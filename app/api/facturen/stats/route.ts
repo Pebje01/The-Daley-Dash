@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { getFactuurStats } from '@/lib/supabase/facturen'
 
 export const dynamic = 'force-dynamic'

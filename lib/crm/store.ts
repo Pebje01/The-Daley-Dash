@@ -1,11 +1,11 @@
-// Supabase-only CRM-laag: vervangt de ClickUp-schrijfpaden uit lib/clickup/sync.ts.
+// Supabase-only CRM-laag. Verving de oude ClickUp-schrijfpaden, die code is weg.
 // De tabel clickup_crm_records is de source of truth; er wordt niets meer naar
 // ClickUp gepusht. Veldformaten blijven identiek aan wat de sync ooit opsloeg
 // (drop_down = orderindex, relaties = array van task-stubs), zodat de bestaande
 // UI en /api/crm/relations blijven werken.
 import { randomUUID } from 'crypto'
 import { createServiceClient } from '@/lib/supabase/service'
-import type { ClickUpCrmEntityType } from '@/lib/clickup/config'
+import type { CrmEntityType } from '@/lib/crm/types'
 
 export interface CrmRecordData {
   name?: string
@@ -102,7 +102,7 @@ function diffFields(before: any[], after: any[]): ActiviteitInput[] {
 }
 
 /** Leeg sjabloon van velddefinities, gebaseerd op een bestaand record van hetzelfde type. */
-async function getFieldTemplate(entityType: ClickUpCrmEntityType): Promise<any[]> {
+async function getFieldTemplate(entityType: CrmEntityType): Promise<any[]> {
   const supabase = createServiceClient()
   const { data } = await supabase
     .from('clickup_crm_records')
@@ -186,7 +186,7 @@ async function applyFieldUpdates(
   return fields
 }
 
-export async function createCrmRecord(entityType: ClickUpCrmEntityType, data: CrmRecordData) {
+export async function createCrmRecord(entityType: CrmEntityType, data: CrmRecordData) {
   const supabase = createServiceClient()
   const now = new Date().toISOString()
 
@@ -461,7 +461,7 @@ export async function deleteCrmRecord(recordId: string) {
 // gekopieerd. Dropdowns kopiëren op orderindex (lijsten delen de optievolgorde).
 
 interface PromoteTarget {
-  target: ClickUpCrmEntityType
+  target: CrmEntityType
   namePrefix?: string
   fieldNames: string[]
   linkBackFieldName?: string

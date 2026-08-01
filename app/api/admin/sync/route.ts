@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+
 import fs from 'fs'
 import path from 'path'
 import { execSync } from 'child_process'
@@ -70,6 +70,21 @@ function extractNumber(filename: string): { number: string | null; type: 'factuu
   if (fOldShort) return { number: fOldShort[1].toUpperCase(), type: 'factuur' }
   return { number: null, type: 'factuur' }
 }
+
+/**
+ * De nummerreeks van vóór de Dash: 2020F-0010, 2024F-1011-01, 2026F-0306-01.
+ * Daar liggen 58 PDF's van in de administratie. Die horen niet in de Dash:
+ * ze zijn van vóór dit systeem en zouden de omzetcijfers vervuilen.
+ *
+ * De sync probeerde ze tot nu toe elke keer opnieuw te importeren. Dat mislukte
+ * telkens (Gemini komt er niet uit, en de terugval `pdftotext` staat niet op
+ * deze Mac), wat honderden regels `pdftotext: command not found` in de log
+ * opleverde en bij elke achtergrondsync opnieuw AI-verzoeken kostte.
+ *
+ * Wil je ze toch importeren, haal dan deze filter weg. Dan komen ze er in één
+ * keer bij, mét hun bedragen in de omzet.
+ */
+const OUDE_NUMMERREEKS = /^\d{4}F-/
 
 // ── Text extraction ────────────────────────────────────────────────────────
 
@@ -460,22 +475,27 @@ export async function POST() {
         const factuurSet = new Set(existingFacturen.filter(f => f.number).map(f => f.number!.toUpperCase()))
         const offerteSet = new Set(existingOffertes.filter(o => o.number).map(o => o.number!.toUpperCase()))
 
-        const toProcess: ScannedFile[] = scannedFiles
+        const nieuweBestanden: ScannedFile[] = scannedFiles
           .filter(f => {
             if (!f.number) return false
             const set = f.type === 'factuur' ? factuurSet : offerteSet
             return !set.has(f.number)
           })
 
+        // Bewust overgeslagen, en dat melden we ook. Stil laten vallen zou
+        // lezen als "alles is meegenomen" terwijl er 58 stuks buiten blijven.
+        const toProcess = nieuweBestanden.filter(f => !OUDE_NUMMERREEKS.test(f.number!))
+        const overgeslagenOud = nieuweBestanden.length - toProcess.length
+
         mergeAdminSyncSeen({
           facturen: currentFactuurNumbers,
           offertes: currentOfferteNumbers,
         })
 
-        send({ type: 'scan', total: toProcess.length, scanned: rawFiles.length, ontbrekend })
+        send({ type: 'scan', total: toProcess.length, scanned: rawFiles.length, ontbrekend, overgeslagenOud })
 
         if (toProcess.length === 0) {
-          send({ type: 'done', imported: 0, skipped: 0, failed: 0, ontbrekend })
+          send({ type: 'done', imported: 0, skipped: 0, failed: 0, ontbrekend, overgeslagenOud })
           controller.close()
           return
         }
@@ -494,7 +514,7 @@ export async function POST() {
           send({ type: 'progress', current: processed, total: toProcess.length, imported, skipped, failed })
         })
 
-        send({ type: 'done', imported, skipped, failed, ontbrekend })
+        send({ type: 'done', imported, skipped, failed, ontbrekend, overgeslagenOud })
       } catch (err) {
         send({ type: 'error', message: String(err) })
       } finally {
