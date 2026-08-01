@@ -1,6 +1,7 @@
 import { createClient } from './server'
 import { Factuur, LineItem, CompanyId, FactuurStatus } from '../types'
 import { EIGEN_BEDRIJVEN } from '../btw'
+import { jaarPeriode, maandPeriode, valtBinnen } from '../periode'
 
 // ── Types for DB rows ──────────────────────────────────────────────────────
 
@@ -484,9 +485,14 @@ export interface MaandRegel {
 export async function getFactuurStats() {
   const supabase = createClient()
   const now = new Date()
-  const yearStart = `${now.getFullYear()}-01-01`
-  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
   const todayStr = now.toISOString().split('T')[0]
+  // Boven- én ondergrens. Met alleen een ondergrens telde een factuur met een
+  // datum in december al mee in "deze maand", en een factuur van volgend jaar in
+  // de omzet van dit jaar. Zie lib/periode.ts.
+  const ditJaar = jaarPeriode(now)
+  const dezeMaand = maandPeriode(now)
+  const inJaar = (d: string) => valtBinnen(d, ditJaar)
+  const inMaand = (d: string) => valtBinnen(d, dezeMaand)
 
   const [
     { data: all, error },
@@ -498,7 +504,12 @@ export async function getFactuurStats() {
       .select('id, number, client_name, status, total, subtotal, date, due_date, paid_at, created_at, offerte_id, exclude_from_revenue, revenue_date')
       .in('company_id', EIGEN_BEDRIJVEN),
     supabase.from('uren').select('datum, uren, uurtarief, gefactureerd'),
-    supabase.from('offertes').select('id, subtotal, total, status, date').in('status', ['akkoord', 'verstuurd']),
+    // Ook hier op eigen bedrijven filteren, net als bij de facturen hierboven.
+    // Anders telde de verwachte omzet offertes mee van bedrijven die in de
+    // gerealiseerde omzet juist buiten beschouwing blijven.
+    supabase.from('offertes').select('id, subtotal, total, status, date')
+      .in('status', ['akkoord', 'verstuurd'])
+      .in('company_id', EIGEN_BEDRIJVEN),
     getFacturen(),
   ])
   if (error) throw error
@@ -508,11 +519,8 @@ export async function getFactuurStats() {
   // Zelfde semantiek als de facturenpagina: omzet telt op revenue_date als die gezet is
   const effectiveDate = (f: any): string => ((f.revenue_date || f.date || '') as string).split('T')[0]
 
-  // Actieve facturen: verzonden + herinnering + betaald + te-laat (niet concept/geannuleerd), dit jaar
+  // Actieve facturen: verzonden + herinnering + betaald + te-laat (niet concept/geannuleerd)
   const activeStatuses = ['verzonden', 'herinnering-verzonden', 'betaald', 'te-laat']
-  const activeFacturen = facturen.filter(
-    (f: any) => activeStatuses.includes(f.status) && effectiveDate(f) >= yearStart
-  )
 
   // Openstaande facturen (verzonden of herinnering verzonden)
   const openStatuses = ['verzonden', 'herinnering-verzonden']
@@ -529,13 +537,13 @@ export async function getFactuurStats() {
   // Betaald deze maand: echte cashflow, op betaaldatum (paid_at), niet op factuurdatum
   const paidDate = (f: any): string => ((f.paid_at || '') as string).split('T')[0]
   const paidThisMonth = facturen
-    .filter((f: any) => f.status === 'betaald' && paidDate(f) >= monthStart)
+    .filter((f: any) => f.status === 'betaald' && inMaand(paidDate(f)))
     .reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
 
   // Omzet (factuurstelsel): elke verstuurde/betaalde factuur telt in zijn factuurjaar,
   // ongeacht of hij al betaald is. Zo sluit het dashboard aan op de IB-aangifte.
-  const yearFacturen = facturen.filter((f: any) => activeStatuses.includes(f.status) && effectiveDate(f) >= yearStart)
-  const monthFacturen = facturen.filter((f: any) => activeStatuses.includes(f.status) && effectiveDate(f) >= monthStart)
+  const yearFacturen = facturen.filter((f: any) => activeStatuses.includes(f.status) && inJaar(effectiveDate(f)))
+  const monthFacturen = facturen.filter((f: any) => activeStatuses.includes(f.status) && inMaand(effectiveDate(f)))
 
   const revenueYear = yearFacturen.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0)
   const revenueYearIncl = yearFacturen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
@@ -606,10 +614,14 @@ export async function getFactuurStats() {
     nogTeOntvangen.reduce((sum: number, f: any) => sum + (f.subtotal ?? 0), 0) +
     uninvoicedOffertes.reduce((sum: number, o: any) => sum + (o.subtotal ?? 0), 0) +
     urenSubtotal
+  // Open uren hebben nog geen factuur en dus nog geen vastgesteld BTW-tarief.
+  // 21% is de aanname, want dat is wat er in de praktijk op staat. Staat hier
+  // als constante zodat het geen los kommagetal middenin een som is.
+  const AANNAME_BTW_OPEN_UREN = 0.21
   const verwachteOmzetIncl =
     nogTeOntvangen.reduce((sum: number, f: any) => sum + (f.total ?? 0), 0) +
     uninvoicedOffertes.reduce((sum: number, o: any) => sum + (o.total ?? 0), 0) +
-    urenSubtotal * 1.21
+    urenSubtotal * (1 + AANNAME_BTW_OPEN_UREN)
 
   // Verwachte omzet per maand: alleen openstaande facturen (verzonden/te-laat) + uren
   const maandMap = new Map<string, { openstaand: number; uren: number }>()

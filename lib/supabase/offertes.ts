@@ -1,5 +1,6 @@
 import { createClient } from './server'
 import { Offerte, LineItem, CompanyId, OfferteStatus } from '../types'
+import { alleenDatum, jaarPeriode, maandPeriode, valtBinnen } from '../periode'
 
 // ── Types for DB rows ──────────────────────────────────────────────────────
 
@@ -397,8 +398,13 @@ export async function getTodayOfferteCount(companyId?: CompanyId): Promise<numbe
 export async function getOfferteStats() {
   const supabase = createClient()
   const now = new Date()
-  const yearStart = `${now.getFullYear()}-01-01`
-  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  // Met alleen een ondergrens telde een offerte met een datum verderop in het
+  // jaar al mee in "deze maand". Zelfde fout als in getFactuurStats.
+  const ditJaar = jaarPeriode(now)
+  const dezeMaand = maandPeriode(now)
+  const inJaar = (d: string) => valtBinnen(d, ditJaar)
+  const inMaand = (d: string) => valtBinnen(d, dezeMaand)
+  const datumVan = (o: any): string => alleenDatum(o.date)
 
   const { data: all, error } = await supabase
     .from('offertes')
@@ -416,17 +422,17 @@ export async function getOfferteStats() {
     .filter((o: any) => o.status === 'akkoord')
     .reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
   const acceptedThisMonth = offertes
-    .filter((o: any) => o.status === 'akkoord' && o.created_at >= monthStart)
+    .filter((o: any) => o.status === 'akkoord' && inMaand(alleenDatum(o.created_at)))
     .reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
 
   // Openstaande offertes deze maand (verstuurd)
-  const openMonthOffertes = offertes.filter((o: any) => o.status === 'verstuurd' && o.date >= monthStart)
+  const openMonthOffertes = offertes.filter((o: any) => o.status === 'verstuurd' && inMaand(datumVan(o)))
   const openMonthCount = openMonthOffertes.length
   const openMonthAmount = openMonthOffertes.reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
 
-  // Omzet berekeningen: alleen goedgekeurde offertes vanaf 2026
-  const yearOffertes = offertes.filter((o: any) => o.status === 'akkoord' && o.date >= yearStart)
-  const monthOffertes = offertes.filter((o: any) => o.status === 'akkoord' && o.date >= monthStart)
+  // Omzet berekeningen: alleen goedgekeurde offertes binnen het lopende jaar
+  const yearOffertes = offertes.filter((o: any) => o.status === 'akkoord' && inJaar(datumVan(o)))
+  const monthOffertes = offertes.filter((o: any) => o.status === 'akkoord' && inMaand(datumVan(o)))
 
   const revenueYear = yearOffertes.reduce((sum: number, o: any) => sum + (o.subtotal ?? 0), 0)
   const revenueYearIncl = yearOffertes.reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
