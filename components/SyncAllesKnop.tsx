@@ -1,26 +1,21 @@
 'use client'
 import { useState } from 'react'
-import { RefreshCw, Check } from 'lucide-react'
+import { RefreshCw, Check, AlertTriangle } from 'lucide-react'
 import { dataChanged } from '@/lib/events'
+import { runSync, type OntbrekendDoc, type SyncSamenvatting } from '@/lib/admin/syncClient'
 
 type SyncState = 'idle' | 'scanning' | 'importing' | 'done' | 'error'
 
-interface SyncResult {
-  imported: number
-  skipped: number
-  failed: number
-  removedFacturen: number
-  removedOffertes: number
-}
-
 interface SyncAllesKnopProps {
   onRefresh?: () => void
+  /** Documenten waarvan de PDF niet meer op zijn plek ligt. De sync verwijdert die nooit zelf. */
+  onOntbrekend?: (docs: OntbrekendDoc[]) => void
 }
 
-export default function SyncAllesKnop({ onRefresh }: SyncAllesKnopProps) {
+export default function SyncAllesKnop({ onRefresh, onOntbrekend }: SyncAllesKnopProps) {
   const [state, setState] = useState<SyncState>('idle')
   const [progress, setProgress] = useState({ current: 0, total: 0 })
-  const [result, setResult] = useState<SyncResult | null>(null)
+  const [result, setResult] = useState<SyncSamenvatting | null>(null)
 
   const handleSync = async () => {
     setState('scanning')
@@ -31,70 +26,24 @@ export default function SyncAllesKnop({ onRefresh }: SyncAllesKnopProps) {
     onRefresh?.()
 
     try {
-      const res = await fetch('/api/admin/sync', { method: 'POST' })
-      if (!res.ok || !res.body) {
-        setState('done')
-        setResult({ imported: 0, skipped: 0, failed: 0, removedFacturen: 0, removedOffertes: 0 })
-        onRefresh?.()
-        return
-      }
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          if (!line.trim()) continue
-          try {
-            const msg = JSON.parse(line)
-            if (msg.type === 'scan') {
-              setState('importing')
-              setProgress({ current: 0, total: msg.total })
-              if (msg.total === 0) {
-                setResult({
-                  imported: 0,
-                  skipped: 0,
-                  failed: msg.removed?.failed ?? 0,
-                  removedFacturen: msg.removed?.facturen ?? 0,
-                  removedOffertes: msg.removed?.offertes ?? 0,
-                })
-                setState('done')
-              }
-            } else if (msg.type === 'progress') {
-              setProgress({ current: msg.current, total: msg.total })
-            } else if (msg.type === 'done') {
-              const r = {
-                imported: msg.imported ?? 0,
-                skipped: msg.skipped ?? 0,
-                failed: msg.failed ?? 0,
-                removedFacturen: msg.removed?.facturen ?? 0,
-                removedOffertes: msg.removed?.offertes ?? 0,
-              }
-              setResult(r)
-              if (r.imported > 0 || r.removedFacturen > 0) {
-                dataChanged('facturen')
-              }
-              if (r.imported > 0 || r.removedOffertes > 0) {
-                dataChanged('offertes')
-              }
-              setState('done')
-            } else if (msg.type === 'error') {
-              setState('done')
-            }
-          } catch {
-            // parse error, skip line
-          }
+      const samenvatting = await runSync(msg => {
+        if (msg.type === 'scan') {
+          setState('importing')
+          setProgress({ current: 0, total: msg.total })
+        } else if (msg.type === 'progress') {
+          setProgress({ current: msg.current, total: msg.total })
         }
+      })
+
+      setResult(samenvatting)
+      onOntbrekend?.(samenvatting.ontbrekend)
+      if (samenvatting.imported > 0) {
+        dataChanged('facturen')
+        dataChanged('offertes')
       }
+      setState('done')
     } catch {
-      // Bij netwerk/systeemfout toch "done" tonen (niet blokkeren)
+      // Bij netwerk- of systeemfout toch "done" tonen (niet blokkeren)
       setState('done')
     } finally {
       onRefresh?.()
@@ -127,14 +76,24 @@ export default function SyncAllesKnop({ onRefresh }: SyncAllesKnopProps) {
   }
 
   if (state === 'done') {
-    const removedTotal = result ? result.removedFacturen + result.removedOffertes : 0
-    const label = result && result.imported > 0
-      ? `${result.imported} nieuw`
-      : removedTotal > 0
-        ? `${removedTotal} weg`
-        : 'Actueel'
+    const ontbreekt = result?.ontbrekend.length ?? 0
+    // Ontbrekende PDF's wegen zwaarder dan een geslaagde import: dat is het
+    // signaal dat er iets uit de administratie verdwenen is.
+    if (ontbreekt > 0) {
+      return (
+        <button
+          onClick={reset}
+          className="btn-secondary px-3 flex items-center gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50"
+          title={`${ontbreekt} document${ontbreekt === 1 ? '' : 'en'} zonder PDF op de vaste plek. Er is niets verwijderd.`}
+        >
+          <AlertTriangle size={14} />
+          <span className="text-caption">{ontbreekt} zonder PDF</span>
+        </button>
+      )
+    }
+    const label = result && result.imported > 0 ? `${result.imported} nieuw` : 'Actueel'
     const tooltip = result
-      ? `${result.imported} geïmporteerd, ${result.skipped} al aanwezig, ${removedTotal} verwijderd${result.failed > 0 ? `, ${result.failed} mislukt` : ''}`
+      ? `${result.imported} geïmporteerd, ${result.skipped} al aanwezig${result.failed > 0 ? `, ${result.failed} mislukt` : ''}`
       : ''
     return (
       <button
@@ -152,7 +111,7 @@ export default function SyncAllesKnop({ onRefresh }: SyncAllesKnopProps) {
     <button
       onClick={handleSync}
       className="btn-secondary px-3 flex items-center gap-1.5"
-      title="Sync bestanden — herlaad lokale bestanden en importeer nieuwe PDFs"
+      title="Sync bestanden: herlaad lokale bestanden en importeer nieuwe PDF's"
     >
       <RefreshCw size={14} />
       <span className="text-caption">Sync bestanden</span>

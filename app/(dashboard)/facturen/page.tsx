@@ -2,9 +2,10 @@
 import { Suspense, useEffect, useState, useCallback, useRef, useMemo, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Plus, Search, RefreshCw, ChevronDown, Upload, FolderOpen, Eye, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown, TrendingUp, CalendarDays, X } from 'lucide-react'
+import { Plus, Search, RefreshCw, ChevronDown, Upload, FolderOpen, Eye, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown, TrendingUp, CalendarDays, X, AlertTriangle } from 'lucide-react'
 import LocaleBestandenSection from '@/components/LocaleBestandenSection'
 import SyncAllesKnop from '@/components/SyncAllesKnop'
+import { runSync, type OntbrekendDoc } from '@/lib/admin/syncClient'
 import { getCompany, COMPANIES } from '@/lib/companies'
 import { Factuur, FactuurStatus, CompanyId } from '@/lib/types'
 import { FactuurStatusBadge } from '@/components/StatusBadge'
@@ -370,6 +371,10 @@ function FacturenContent() {
   const totalOpen = facturen.filter(f => f.status === 'verzonden' || f.status === 'herinnering-verzonden' || f.status === 'te-laat').reduce((s, f) => s + (showInclBtw ? f.total : f.subtotal), 0)
 
   const [openingPdf, setOpeningPdf] = useState<string | null>(null)
+  // Facturen waarvan de PDF niet meer op zijn vaste plek ligt. De sync raakt ze
+  // niet aan, jij beslist wat er moet gebeuren.
+  const [ontbrekend, setOntbrekend] = useState<OntbrekendDoc[]>([])
+  const [herstelBezig, setHerstelBezig] = useState<string | null>(null)
   const [localFileMap, setLocalFileMap] = useState<Map<string, string>>(new Map())
   const localFileSignatureRef = useRef('')
   const backgroundSyncRef = useRef(false)
@@ -386,8 +391,13 @@ function FacturenContent() {
         setLocalFileMap(map)
         if (previousSignature && previousSignature !== signature && !backgroundSyncRef.current) {
           backgroundSyncRef.current = true
-          fetch('/api/admin/sync', { method: 'POST' })
-            .then(r => r.text())
+          // Deze sync draait automatisch zodra er iets in de mappen verandert.
+          // Juist daarom mag hij niets verwijderen: verplaats je een PDF in
+          // Finder, dan is dat binnen 30 seconden hier zichtbaar. Ontbrekende
+          // bestanden komen als waarschuwing terug, niet als verwijdering.
+          runSync()
+            .then(samenvatting => setOntbrekend(samenvatting.ontbrekend))
+            .catch(() => {})
             .finally(() => {
               backgroundSyncRef.current = false
               fetchFacturen()
@@ -478,12 +488,91 @@ function FacturenContent() {
             <ExternalLink size={15} />
             <span className="text-caption">Finder</span>
           </button>
-          <SyncAllesKnop onRefresh={() => { fetchFacturen(); fetchLocalFiles() }} />
+          <SyncAllesKnop
+            onRefresh={() => { fetchFacturen(); fetchLocalFiles() }}
+            onOntbrekend={setOntbrekend}
+          />
           <button onClick={() => openDrawer({ type: 'factuur-nieuw' })} className="btn-primary">
             <Plus size={15} /> Nieuwe factuur
           </button>
         </div>
       </div>
+
+      {/* PDF ontbreekt: melden, nooit verwijderen. Zie docs/audit-2026-08-01.md punt 1b. */}
+      {ontbrekend.length > 0 && (
+        <div className="card border-amber-300 bg-amber-50/60 p-4 mb-4">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-body font-medium text-brand-text-primary">
+                {ontbrekend.length === 1
+                  ? 'Van 1 document ligt de PDF niet op zijn vaste plek'
+                  : `Van ${ontbrekend.length} documenten ligt de PDF niet op zijn vaste plek`}
+              </p>
+              <p className="text-caption text-brand-text-secondary mt-0.5">
+                Er is niets verwijderd. Kies zelf wat er moet gebeuren.
+              </p>
+              <ul className="mt-3 flex flex-col gap-2">
+                {ontbrekend.map(doc => {
+                  const factuur = facturen.find(f => f.number.toUpperCase() === doc.number)
+                  return (
+                    <li key={`${doc.type}-${doc.number}`} className="flex items-center gap-3 flex-wrap">
+                      <span className="text-caption font-medium text-brand-text-primary tabular-nums">{doc.number}</span>
+                      {factuur && (
+                        <span className="text-caption text-brand-text-secondary truncate max-w-[200px]">
+                          {factuur.client.name}
+                        </span>
+                      )}
+                      <span className="text-caption text-brand-text-secondary">
+                        {doc.gevondenOp
+                          ? `staat nu in ${doc.gevondenOp.replace(/^.*DALEY WERK\//, '').replace(/\/[^/]+$/, '')}`
+                          : 'nergens meer gevonden'}
+                      </span>
+                      {doc.gevondenOp && (
+                        <button
+                          onClick={() => callFileAction(doc.gevondenOp!, 'reveal')}
+                          className="text-caption text-brand-purple hover:underline"
+                        >
+                          Toon in Finder
+                        </button>
+                      )}
+                      {factuur && (
+                        <button
+                          onClick={async () => {
+                            setHerstelBezig(factuur.id)
+                            try {
+                              const res = await fetch(`/api/facturen/${factuur.id}/regenerate-pdf`, { method: 'POST' })
+                              if (res.ok) {
+                                setOntbrekend(prev => prev.filter(d => d.number !== doc.number))
+                                fetchLocalFiles()
+                              } else {
+                                alert('PDF opnieuw opslaan mislukt')
+                              }
+                            } finally {
+                              setHerstelBezig(null)
+                            }
+                          }}
+                          disabled={herstelBezig === factuur.id}
+                          className="text-caption text-brand-purple hover:underline disabled:opacity-50"
+                        >
+                          {herstelBezig === factuur.id ? 'Bezig...' : 'PDF opnieuw opslaan'}
+                        </button>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+            <button
+              onClick={() => setOntbrekend([])}
+              className="text-brand-text-secondary hover:text-brand-text-primary shrink-0"
+              title="Melding sluiten"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Company tabs */}
       <div className="flex gap-2 mb-4">

@@ -4,7 +4,7 @@ import path from 'path'
 import { execSync } from 'child_process'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createClient } from '@/lib/supabase/server'
-import { getAdminFacturenPaths, getAdminOffertesPaths } from '@/lib/admin/documentPaths'
+import { getAdminFacturenPaths, getAdminOffertesPaths, zoekDocumentBestand } from '@/lib/admin/documentPaths'
 import { forgetAdminSyncNumbers, mergeAdminSyncSeen, readAdminSyncState } from '@/lib/admin/syncState'
 
 export const dynamic = 'force-dynamic'
@@ -332,44 +332,62 @@ async function importDoc(
   return 'imported'
 }
 
-async function pruneMissingDocs(
-  supabase: ReturnType<typeof createClient>,
+export interface OntbrekendDoc {
+  type: 'factuur' | 'offerte'
+  number: string
+  /** Waar het bestand wél gevonden is, als het alleen verplaatst blijkt. */
+  gevondenOp: string | null
+}
+
+/**
+ * Meldt documenten waarvan de PDF niet meer op zijn plek ligt. Verwijdert niets.
+ *
+ * Dit was `pruneMissingDocs` en die gooide zulke facturen uit Supabase. Op
+ * 1 augustus 2026 kostte dat een verstuurde factuur van 1.403,90 euro: de PDF
+ * was alleen naar een andere map verplaatst, maar de sync leidde daaruit af dat
+ * de factuur niet meer bestond. Een bestandssysteem is geen bron van waarheid
+ * over wat je gefactureerd hebt, dus de beslissing om iets weg te gooien ligt
+ * nu bij de gebruiker.
+ *
+ * Nummers waarvan ook de databaserij weg is, zijn netjes via de app verwijderd.
+ * Die halen we uit de state, zodat de melding niet eeuwig blijft terugkomen.
+ */
+function signaleerMissendeDocs(
   existingFacturen: ExistingDocRow[],
   existingOffertes: ExistingDocRow[],
   currentFactuurNumbers: Set<string>,
   currentOfferteNumbers: Set<string>,
-): Promise<{ facturen: number; offertes: number; failed: number }> {
+): OntbrekendDoc[] {
   const state = readAdminSyncState()
-  const missingFacturen = new Set(state.facturen.filter(n => !currentFactuurNumbers.has(n)))
-  const missingOffertes = new Set(state.offertes.filter(n => !currentOfferteNumbers.has(n)))
-  const removedFacturen: string[] = []
-  const removedOffertes: string[] = []
-  let failed = 0
+  const ontbrekend: OntbrekendDoc[] = []
+  const opgeruimd = { facturen: [] as string[], offertes: [] as string[] }
 
-  const factuurRows = existingFacturen.filter(row => row.number && missingFacturen.has(row.number.toUpperCase()))
-  if (factuurRows.length > 0) {
-    const ids = factuurRows.map(row => row.id)
-    await supabase.from('factuur_line_items').delete().in('factuur_id', ids)
-    const { error } = await supabase.from('facturen').delete().in('id', ids)
-    if (error) failed += factuurRows.length
-    else removedFacturen.push(...factuurRows.map(row => row.number!.toUpperCase()))
+  const check = (
+    type: 'factuur' | 'offerte',
+    stateNummers: string[],
+    aanwezig: Set<string>,
+    rijen: ExistingDocRow[],
+  ) => {
+    const inDatabase = new Set(rijen.filter(r => r.number).map(r => r.number!.toUpperCase()))
+    for (const nummer of stateNummers) {
+      if (aanwezig.has(nummer)) continue
+      if (!inDatabase.has(nummer)) {
+        // Bestand weg én rij weg: via de app verwijderd, niets aan de hand.
+        opgeruimd[type === 'factuur' ? 'facturen' : 'offertes'].push(nummer)
+        continue
+      }
+      ontbrekend.push({ type, number: nummer, gevondenOp: zoekDocumentBestand(nummer) })
+    }
   }
 
-  const offerteRows = existingOffertes.filter(row => row.number && missingOffertes.has(row.number.toUpperCase()))
-  if (offerteRows.length > 0) {
-    const ids = offerteRows.map(row => row.id)
-    await supabase.from('line_items').delete().in('offerte_id', ids)
-    await supabase.from('facturen').update({ offerte_id: null }).in('offerte_id', ids)
-    const { error } = await supabase.from('offertes').delete().in('id', ids)
-    if (error) failed += offerteRows.length
-    else removedOffertes.push(...offerteRows.map(row => row.number!.toUpperCase()))
+  check('factuur', state.facturen, currentFactuurNumbers, existingFacturen)
+  check('offerte', state.offertes, currentOfferteNumbers, existingOffertes)
+
+  if (opgeruimd.facturen.length > 0 || opgeruimd.offertes.length > 0) {
+    forgetAdminSyncNumbers(opgeruimd)
   }
 
-  if (removedFacturen.length > 0 || removedOffertes.length > 0) {
-    forgetAdminSyncNumbers({ facturen: removedFacturen, offertes: removedOffertes })
-  }
-
-  return { facturen: removedFacturen.length, offertes: removedOffertes.length, failed }
+  return ontbrekend
 }
 
 // ── Concurrency helper ─────────────────────────────────────────────────────
@@ -432,8 +450,7 @@ export async function POST() {
 
         const existingFacturen = (facturen ?? []) as ExistingDocRow[]
         const existingOffertes = (offertes ?? []) as ExistingDocRow[]
-        const removed = await pruneMissingDocs(
-          supabase,
+        const ontbrekend = signaleerMissendeDocs(
           existingFacturen,
           existingOffertes,
           currentFactuurNumbers,
@@ -455,10 +472,10 @@ export async function POST() {
           offertes: currentOfferteNumbers,
         })
 
-        send({ type: 'scan', total: toProcess.length, scanned: rawFiles.length, removed })
+        send({ type: 'scan', total: toProcess.length, scanned: rawFiles.length, ontbrekend })
 
         if (toProcess.length === 0) {
-          send({ type: 'done', imported: 0, skipped: 0, failed: removed.failed, removed })
+          send({ type: 'done', imported: 0, skipped: 0, failed: 0, ontbrekend })
           controller.close()
           return
         }
@@ -477,7 +494,7 @@ export async function POST() {
           send({ type: 'progress', current: processed, total: toProcess.length, imported, skipped, failed })
         })
 
-        send({ type: 'done', imported, skipped, failed: failed + removed.failed, removed })
+        send({ type: 'done', imported, skipped, failed, ontbrekend })
       } catch (err) {
         send({ type: 'error', message: String(err) })
       } finally {

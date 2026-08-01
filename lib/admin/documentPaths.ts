@@ -1,3 +1,4 @@
+import fs, { type Dirent } from 'fs'
 import path from 'path'
 import { homedir } from 'os'
 
@@ -57,6 +58,66 @@ export function getAdminOffertesPaths(): string[] {
 
 export function getAdminDocumentPaths(): string[] {
   return unique([...getAdminFacturenPaths(), ...getAdminOffertesPaths()])
+}
+
+/**
+ * Mappen waarin we zoeken als een PDF niet meer op zijn vaste plek ligt.
+ * Ruimer dan de scanmappen, want een verplaatst bestand is geen verwijderd
+ * bestand. Bevat bewust ook `_Concepten` en `_Teruggezet`, die de scan overslaat.
+ */
+function getAdminZoekPaths(): string[] {
+  return unique([
+    ...getAdminDocumentPaths(),
+    `${HOME}/Bedrijf Administratie`,
+    `${HOME}/We Grow Brands/Bedrijf Administratie`,
+    `${HOME}/DALEY PHOTOGRAPHY`,
+  ])
+}
+
+/**
+ * Zoekt de PDF van een factuur- of offertenummer in de hele administratie.
+ *
+ * Hiermee kan de sync het verschil zien tussen "de PDF is verplaatst" en "de
+ * PDF is echt weg". Dat onderscheid ontbrak, waardoor een factuur waarvan de
+ * PDF naar een andere map ging uit de database verdween.
+ */
+export function zoekDocumentBestand(nummer: string): string | null {
+  const doel = nummer.toUpperCase()
+  const bezocht = new Set<string>()
+
+  function loop(map: string, diepte: number): string | null {
+    if (diepte > 6) return null
+    const echt = path.resolve(map)
+    if (bezocht.has(echt)) return null
+    bezocht.add(echt)
+
+    let entries: Dirent[]
+    try {
+      entries = fs.readdirSync(echt, { withFileTypes: true })
+    } catch {
+      return null
+    }
+
+    for (const entry of entries) {
+      const vol = path.join(echt, entry.name)
+      if (entry.isFile()) {
+        if (!entry.name.toLowerCase().endsWith('.pdf')) continue
+        if (entry.name.toUpperCase().startsWith(doel)) return vol
+      }
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue
+      const gevonden = loop(path.join(echt, entry.name), diepte + 1)
+      if (gevonden) return gevonden
+    }
+    return null
+  }
+
+  for (const basis of getAdminZoekPaths()) {
+    const gevonden = loop(basis, 0)
+    if (gevonden) return gevonden
+  }
+  return null
 }
 
 export function isAllowedAdminDocumentPath(absolutePath: string): boolean {
