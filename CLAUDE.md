@@ -122,9 +122,17 @@ middleware.ts               # Auth redirect middleware
 - De offertepagina leest `company_id` uit Supabase en toont automatisch de juiste huisstijl
 - Klanten zien bijv.: `wegrowbrands.online/offerte/[uuid]` of `thedaleyedit.nl/offerte/[uuid]`
 
-### Dashboard afschermen in productie
-- `middleware.ts` beschermt `/(dashboard)/*` via Supabase auth
-- Nog toe te voegen: productie-IP-check of extra wachtwoordlaag zodat dashboard alleen voor eigenaar toegankelijk is
+### Dashboard afschermen (BELANGRIJK)
+- **Auth staat bewust UIT.** Dat is een keuze, geen vergeten TODO. `lib/supabase/middleware.ts` laat alles door en `lib/supabase/server.ts` gebruikt de service-role key, waarmee RLS overal omzeild wordt.
+- Dat kan omdat de Dash **alleen lokaal** draait en de server sinds 1 augustus 2026 **alleen op 127.0.0.1** luistert (`dev` en `start` in package.json, plus `.claude/launch.json`). Daarvoor stond hij op 0.0.0.0 en kon iedereen op hetzelfde wifi-netwerk de hele administratie openen.
+- **Verander die host nooit terug naar 0.0.0.0** zonder eerst auth aan te zetten.
+- Zet auth WEL aan zodra: de Dash gedeployed wordt, hij op een ander adres gaat luisteren, of er iemand anders bij moet. Dan moeten `middleware.ts` én `server.ts` allebei terug, want alleen de middleware is niet genoeg.
+- Er is één Supabase-gebruiker: `hello@thedaleyedit.nl`.
+
+### Verwijderen van facturen (BELANGRIJK)
+- Alles loopt via `verwijderFactuurVeilig()` in `lib/supabase/facturen.ts`. Nooit rechtstreeks `.delete()` op `facturen`.
+- Die helper zet eerst een volledige kopie in `facturen_prullenbak`, geeft de gekoppelde uren weer vrij, en weigert verstuurde facturen (`verzonden`, `herinnering-verzonden`, `betaald`, `te-laat`) zonder expliciete bevestiging.
+- **De bestandssync verwijdert niets.** Ontbreekt een PDF, dan meldt hij dat en zoekt hij het nummer eerst in de hele administratie. Een verplaatst bestand is geen verwijderde factuur. Zie `docs/audit-2026-08-01.md` punt 1b voor wat er misging.
 
 ### Offertenummering
 - Format: `OF-YYMMDD-NN` (bijv. `OF-260315-01`)
