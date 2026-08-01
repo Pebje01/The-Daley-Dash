@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getFactuur, updateFactuur, deleteFactuur } from '@/lib/supabase/facturen'
+import { getFactuur, updateFactuur, verwijderFactuurVeilig, FactuurVerstuurdError } from '@/lib/supabase/facturen'
 
 export async function GET(
   request: NextRequest,
@@ -40,6 +40,25 @@ export async function DELETE(
 ) {
   // Auth tijdelijk uitgeschakeld
 
-  await deleteFactuur(params.id)
-  return NextResponse.json({ ok: true })
+  // Een verstuurde factuur weggooien kan alleen als de interface expliciet
+  // bevestigt dat je dat wilt. De kopie belandt hoe dan ook in de prullenbak.
+  const bevestigd = request.nextUrl.searchParams.get('bevestigdVerstuurd') === 'true'
+
+  try {
+    const { number, urenVrijgegeven } = await verwijderFactuurVeilig(params.id, {
+      bron: 'dashboard',
+      bevestigdVerstuurd: bevestigd,
+    })
+    return NextResponse.json({ ok: true, number, urenVrijgegeven })
+  } catch (err) {
+    if (err instanceof FactuurVerstuurdError) {
+      return NextResponse.json(
+        { error: err.message, needsBevestiging: true, number: err.factuurnummer, status: err.status },
+        { status: 409 }
+      )
+    }
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`DELETE /api/facturen/${params.id} fout:`, msg, err)
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
 }

@@ -230,9 +230,37 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
   }
 
   const handleDelete = async () => {
-    if (!confirm('Weet je zeker dat je deze factuur wilt verwijderen?')) return
+    if (!factuur) return
+    if (!confirm(`${factuur.number} (${euro(factuur.total)}) verwijderen?\n\nEr wordt eerst een kopie in de prullenbak gezet en de gekoppelde uren komen weer vrij.`)) return
+
+    const verwijder = async (bevestigdVerstuurd: boolean) =>
+      fetch(`/api/facturen/${id}${bevestigdVerstuurd ? '?bevestigdVerstuurd=true' : ''}`, { method: 'DELETE' })
+
     try {
-      await fetch(`/api/facturen/${id}`, { method: 'DELETE' })
+      let res = await verwijder(false)
+
+      // Een verstuurde factuur is de deur uit en is een wettelijk document.
+      // Die gaat alleen weg na een tweede, expliciete bevestiging.
+      if (res.status === 409) {
+        const data = await res.json().catch(() => ({}))
+        if (!data?.needsBevestiging) {
+          alert(data?.error ?? 'Verwijderen mislukt')
+          return
+        }
+        if (!confirm(`Let op: ${factuur.number} is al verstuurd naar ${factuur.client.name}.\n\nEen verstuurde factuur hoort in je administratie te blijven. Weet je zeker dat je hem toch wilt verwijderen?`)) return
+        res = await verwijder(true)
+      }
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data?.error ?? 'Verwijderen mislukt')
+        return
+      }
+
+      const data = await res.json().catch(() => ({}))
+      if (data?.urenVrijgegeven > 0) {
+        alert(`${factuur.number} staat in de prullenbak. ${data.urenVrijgegeven} uur-registratie${data.urenVrijgegeven === 1 ? '' : 's'} staat weer open.`)
+      }
       dataChanged('facturen')
       goBack()
     } catch {

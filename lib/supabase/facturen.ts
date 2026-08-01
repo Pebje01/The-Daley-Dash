@@ -322,11 +322,135 @@ export async function updateFactuur(
   return getFactuur(id) as Promise<Factuur>
 }
 
-export async function deleteFactuur(id: string): Promise<void> {
+/**
+ * Statussen die betekenen: deze factuur is de deur uit. Dat is een wettelijk
+ * document, dus die verdwijnt nooit zomaar. Alleen met een expliciete
+ * bevestiging vanuit de interface, nooit door een automatisch proces.
+ */
+export const VERSTUURDE_STATUSSEN: FactuurStatus[] = [
+  'verzonden', 'herinnering-verzonden', 'betaald', 'te-laat',
+]
+
+export interface VerwijderOpties {
+  /** Waar de verwijdering vandaan komt, voor de prullenbak: 'dashboard', 'uren-restore', 'sync' */
+  bron: string
+  reden?: string
+  /**
+   * Nodig zodra de factuur al verstuurd is. Zonder deze vlag weigert de helper,
+   * zodat een achtergrondproces er nooit per ongeluk een weg kan gooien.
+   */
+  bevestigdVerstuurd?: boolean
+}
+
+export class FactuurVerstuurdError extends Error {
+  constructor(public factuurnummer: string, public status: string) {
+    super(`Factuur ${factuurnummer} heeft status "${status}" en is dus verstuurd. Verwijderen kan alleen met een expliciete bevestiging.`)
+    this.name = 'FactuurVerstuurdError'
+  }
+}
+
+/**
+ * De enige plek waar een factuur uit Supabase verdwijnt.
+ *
+ * Achtergrond: de bestandssync verwijderde op 1 augustus 2026 een verstuurde
+ * factuur omdat de PDF verplaatst was. Er was geen prullenbak, geen bevestiging
+ * en geen bruikbare back-up. Sindsdien geldt: elke verwijdering gaat hier
+ * doorheen, legt eerst een volledige kopie in `facturen_prullenbak` en geeft de
+ * gekoppelde uren weer vrij.
+ *
+ * Uren vrijgeven hoorde hier thuis en niet alleen in de uren-restore route:
+ * anders blijven ze op `gefactureerd` staan met een nummer dat niet meer
+ * bestaat, en verdwijnen ze stil uit je nog te factureren werk.
+ */
+export async function verwijderFactuurVeilig(
+  id: string,
+  opties: VerwijderOpties,
+): Promise<{ number: string; urenVrijgegeven: number }> {
   const supabase = createClient()
+
+  const { data: rij, error: leesFout } = await supabase
+    .from('facturen')
+    .select('*')
+    .eq('id', id)
+    .single()
+  if (leesFout || !rij) throw leesFout ?? new Error('Factuur niet gevonden')
+
+  const factuur = rij as DbFactuur
+  if (
+    VERSTUURDE_STATUSSEN.includes(factuur.status as FactuurStatus) &&
+    !opties.bevestigdVerstuurd
+  ) {
+    throw new FactuurVerstuurdError(factuur.number, factuur.status)
+  }
+
+  const { data: regels } = await supabase
+    .from('factuur_line_items')
+    .select('*')
+    .eq('factuur_id', id)
+    .order('sort_order')
+
+  // Eerst de kopie, dan pas verwijderen. Loopt de kopie stuk, dan blijft de
+  // factuur gewoon staan.
+  const { error: kopieFout } = await supabase.from('facturen_prullenbak').insert({
+    factuur_id: factuur.id,
+    number: factuur.number,
+    company_id: factuur.company_id,
+    client_name: factuur.client_name,
+    status: factuur.status,
+    date: factuur.date,
+    total: factuur.total,
+    bron: opties.bron,
+    reden: opties.reden ?? null,
+    factuur: rij,
+    regels: regels ?? [],
+  })
+  if (kopieFout) throw kopieFout
+
+  const { data: vrijgegeven } = await supabase
+    .from('uren')
+    .update({ gefactureerd: false, factuurnummer: null, updated_at: new Date().toISOString() })
+    .eq('factuurnummer', factuur.number)
+    .select('id')
+
   await supabase.from('factuur_line_items').delete().eq('factuur_id', id)
   const { error } = await supabase.from('facturen').delete().eq('id', id)
   if (error) throw error
+
+  return { number: factuur.number, urenVrijgegeven: vrijgegeven?.length ?? 0 }
+}
+
+/** Zet een factuur uit de prullenbak terug, inclusief regels. */
+export async function herstelFactuurUitPrullenbak(prullenbakId: string): Promise<string> {
+  const supabase = createClient()
+
+  const { data: bak, error: leesFout } = await supabase
+    .from('facturen_prullenbak')
+    .select('*')
+    .eq('id', prullenbakId)
+    .single()
+  if (leesFout || !bak) throw leesFout ?? new Error('Niet gevonden in de prullenbak')
+
+  const rij = (bak as { factuur: Record<string, unknown> }).factuur
+  const regels = ((bak as { regels: Record<string, unknown>[] }).regels ?? [])
+
+  const { error: insertFout } = await supabase.from('facturen').insert(rij)
+  if (insertFout) throw insertFout
+
+  if (regels.length > 0) {
+    const { error: regelFout } = await supabase.from('factuur_line_items').insert(regels)
+    if (regelFout) throw regelFout
+  }
+
+  await supabase.from('facturen_prullenbak').delete().eq('id', prullenbakId)
+  return String((rij as { number?: string }).number ?? '')
+}
+
+/**
+ * @deprecated Gebruik `verwijderFactuurVeilig`. Deze wrapper blijft bestaan voor
+ * bestaande aanroepen en verwijdert nooit een verstuurde factuur zonder bevestiging.
+ */
+export async function deleteFactuur(id: string, opties?: Partial<VerwijderOpties>): Promise<void> {
+  await verwijderFactuurVeilig(id, { bron: 'dashboard', ...opties })
 }
 
 export async function getTodayFactuurCount(companyId?: CompanyId): Promise<number> {

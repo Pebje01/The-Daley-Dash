@@ -3,6 +3,7 @@ import { readdir, mkdir, rename } from 'fs/promises'
 import { homedir } from 'os'
 import path from 'path'
 import { createClient } from '@/lib/supabase/server'
+import { verwijderFactuurVeilig } from '@/lib/supabase/facturen'
 import { VERWIJDERD_MAP } from '@/lib/admin/documentPaths'
 
 export const dynamic = 'force-dynamic'
@@ -147,15 +148,15 @@ export async function POST(request: NextRequest) {
         .maybeSingle()
 
       if (factuurRij?.id) {
-        await supabase.from('factuur_line_items').delete().eq('factuur_id', factuurRij.id)
+        // Via de gedeelde helper, zodat er ook hier eerst een kopie in de
+        // prullenbak belandt. Terugzetten is een bewuste actie met een
+        // bevestiging in de interface, dus een verstuurde factuur mag hier weg.
+        await verwijderFactuurVeilig(factuurRij.id, {
+          bron: 'uren-restore',
+          reden: 'Factuur teruggezet vanaf de urenpagina',
+          bevestigdVerstuurd: true,
+        })
       }
-
-      const { error: factuurError } = await supabase
-        .from('facturen')
-        .delete()
-        .eq('number', factuurnummer)
-
-      if (factuurError) throw factuurError
 
       geparkeerdePdfs = await parkeerFactuurPdfs(factuurnummer)
     }
