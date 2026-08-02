@@ -82,7 +82,11 @@ export async function GET(
   // 4) Grondslag bepaalt welke facturen de omzet vormen:
   //    - kasstelsel: facturen die in dit kwartaal betaald zijn (op betaaldatum)
   //    - factuurstelsel: facturen met factuurdatum in dit kwartaal
-  const grondslag = aangifte.grondslag || 'kasstelsel'
+  // Daley staat op het factuurstelsel: ze heeft nooit kasstelsel aangevraagd en
+  // factureert zakelijk. Nieuwe kwartalen krijgen daarom die grondslag. Kwartalen
+  // met een eigen waarde houden die, ook als daar nog kasstelsel staat: wat je
+  // hebt ingediend moet je in de app kunnen terugzien zoals je het indiende.
+  const grondslag = aangifte.grondslag || 'factuurstelsel'
   const omzetFacturen = grondslag === 'kasstelsel' ? facturenBetaald : facturenPeriode
 
   // 5) Reconciliatie factuur <-> bank (controle, alleen zinvol als er bank-import is)

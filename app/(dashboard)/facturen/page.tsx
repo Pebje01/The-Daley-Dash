@@ -823,7 +823,7 @@ function FacturenContent() {
                       >
                         <TrendingUp size={13} />
                       </button>
-                      {/* Omzetdatum overschrijven */}
+                      {/* Datum waarop het werk is verricht, als die afwijkt van de factuurdatum */}
                       {revenueDateEdit === f.id ? (
                         <div className="flex items-center gap-1">
                           <input
@@ -849,13 +849,15 @@ function FacturenContent() {
                       ) : (
                         <>
                           {f.revenueDate && (
-                            <span className="text-[10px] text-brand-purple font-medium" title="Omzetdatum overschreven">
+                            <span className="text-[10px] text-brand-purple font-medium" title="Het werk is in deze maand verricht, daarom telt de omzet daar en niet op de factuurdatum">
                               {new Date(f.revenueDate).toLocaleDateString('nl-NL', { month: 'short', year: '2-digit' })}
                             </span>
                           )}
                           <button
                             onClick={() => setRevenueDateEdit(f.id)}
-                            title={f.revenueDate ? `Omzetdatum: ${new Date(f.revenueDate).toLocaleDateString('nl-NL')} — klik om te wijzigen` : 'Omzetdatum instellen'}
+                            title={f.revenueDate
+                              ? `Werk verricht op ${new Date(f.revenueDate).toLocaleDateString('nl-NL')}, de omzet telt daar. Klik om te wijzigen.`
+                              : 'Werk in een andere periode verricht dan de factuurdatum? Zet hier de datum waarop je het werk deed, dan telt de omzet in dat jaar (goed koopmansgebruik).'}
                             className={`p-0.5 rounded transition-all ${f.revenueDate ? 'text-brand-purple' : 'opacity-0 group-hover:opacity-100 text-brand-text-secondary hover:text-brand-purple'}`}
                           >
                             <CalendarDays size={13} />

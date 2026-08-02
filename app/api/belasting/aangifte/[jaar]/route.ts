@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { EIGEN_BEDRIJVEN } from '@/lib/btw'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,6 +42,9 @@ export async function GET(
   const { data: facturenRaw, error: facErr } = await supabase
     .from('facturen')
     .select('id, number, client_name, date, due_date, subtotal, total, status, paid_at, exclude_from_revenue')
+    // Alleen de eigen bedrijven. Montung is een aparte VOF met een eigen aangifte
+    // en hoort dus niet in de persoonlijke inkomstenbelasting.
+    .in('company_id', EIGEN_BEDRIJVEN)
     .gte('date', jaarStart)
     .lte('date', jaarEind)
     .order('date', { ascending: true })
