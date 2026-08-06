@@ -16,6 +16,14 @@ export interface CrmRecordData {
   custom_fields?: Array<{ id: string; value: any }>
   /** Notion-stijl labels (array van crm_dash_tags id's); eigen tagging in de Dash. */
   dash_tags?: string[]
+  /** Alleen voor het promoveren van een ruwe_lead naar een volwaardig entity_type. */
+  entity_type?: CrmEntityType
+  /** Onderstaande velden zijn alleen relevant voor entity_type ruwe_lead. */
+  ruwe_contact_email?: string | null
+  ruwe_website?: string | null
+  ruwe_bron?: string | null
+  ruwe_fit_reden?: string | null
+  ruwe_prioriteit?: 'ster' | 'normaal' | 'laag' | null
   /** Opvolging: datum waarop je deze lead weer oppakt (yyyy-mm-dd), null wist hem. */
   volgende_actie?: string | null
   volgende_actie_notitie?: string | null
@@ -27,7 +35,7 @@ export interface CrmRecordData {
 }
 
 const RECORD_COLUMNS =
-  'id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, dash_tags, due_date, clickup_date_updated, synced_at, raw, volgende_actie, volgende_actie_notitie, laatste_contact, contact_pogingen, contact_status, contact_status_tot, contact_status_reden'
+  'id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, dash_tags, due_date, clickup_date_updated, synced_at, raw, volgende_actie, volgende_actie_notitie, laatste_contact, contact_pogingen, contact_status, contact_status_tot, contact_status_reden, ai_status, ai_score, ai_prioriteit, ai_branche, ai_website, ai_samenvatting, ai_signalen, ai_volgende_stap, ai_beoordeeld_op, ai_model, ai_fout, ruwe_contact_email, ruwe_website, ruwe_bron, ruwe_fit_reden, ruwe_prioriteit'
 
 function toIso(value: string | number | undefined): string | null {
   if (value === undefined || value === null || value === '') return null
@@ -215,6 +223,11 @@ export async function createCrmRecord(entityType: CrmEntityType, data: CrmRecord
     synced_at: now,
     updated_at: now,
     active: true,
+    ruwe_contact_email: data.ruwe_contact_email || null,
+    ruwe_website: data.ruwe_website || null,
+    ruwe_bron: data.ruwe_bron || null,
+    ruwe_fit_reden: data.ruwe_fit_reden || null,
+    ruwe_prioriteit: data.ruwe_prioriteit || null,
   }
 
   const { data: record, error } = await supabase
@@ -249,6 +262,7 @@ export async function updateCrmRecord(recordId: string, data: CrmRecordData) {
 
   if (data.name !== undefined) update.name = data.name
   if (data.status !== undefined) update.status = data.status
+  if (data.entity_type !== undefined) update.entity_type = data.entity_type
   if (data.due_date !== undefined) update.due_date = toIso(data.due_date)
   if (data.description !== undefined || data.notes !== undefined) {
     const raw = { ...(existing.raw || {}) }
@@ -278,6 +292,11 @@ export async function updateCrmRecord(recordId: string, data: CrmRecordData) {
   if (data.contact_status_reden !== undefined) {
     update.contact_status_reden = data.contact_status_reden || null
   }
+  if (data.ruwe_contact_email !== undefined) update.ruwe_contact_email = data.ruwe_contact_email || null
+  if (data.ruwe_website !== undefined) update.ruwe_website = data.ruwe_website || null
+  if (data.ruwe_bron !== undefined) update.ruwe_bron = data.ruwe_bron || null
+  if (data.ruwe_fit_reden !== undefined) update.ruwe_fit_reden = data.ruwe_fit_reden || null
+  if (data.ruwe_prioriteit !== undefined) update.ruwe_prioriteit = data.ruwe_prioriteit || null
 
   const nieuweStand = (update.contact_status ?? existing.contact_status ?? 'open') as string
   if (nieuweStand === 'blokkade') {
@@ -303,6 +322,14 @@ export async function updateCrmRecord(recordId: string, data: CrmRecordData) {
 
   // Activiteitenfeed: log wat er daadwerkelijk veranderd is
   const activiteiten: ActiviteitInput[] = []
+  if (data.entity_type !== undefined && data.entity_type !== existing.entity_type) {
+    activiteiten.push({
+      soort: 'promotie',
+      omschrijving: 'Gepromoveerd naar ' + data.entity_type,
+      oude_waarde: existing.entity_type,
+      nieuwe_waarde: data.entity_type,
+    })
+  }
   if (data.status !== undefined && data.status !== existing.status) {
     activiteiten.push({ soort: 'status', omschrijving: 'Status gewijzigd', oude_waarde: existing.status, nieuwe_waarde: data.status })
   }

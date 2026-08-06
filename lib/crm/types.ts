@@ -12,6 +12,7 @@
  */
 export type CrmEntityType =
   | 'lead'
+  | 'ruwe_lead'
   | 'company'
   | 'contact'
   | 'assignment'
@@ -19,6 +20,7 @@ export type CrmEntityType =
 
 export const CRM_ENTITY_TYPES: CrmEntityType[] = [
   'lead',
+  'ruwe_lead',
   'company',
   'contact',
   'assignment',

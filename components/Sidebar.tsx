@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, FileText, Receipt, Users, Settings,
   CreditCard, Repeat2, BadgeDollarSign, Building2, ContactRound, BriefcaseBusiness, ScrollText,
-  LogOut, Landmark, CheckSquare, Clock, FileBarChart, Percent, Menu, X, Ban,
+  LogOut, Landmark, CheckSquare, Clock, FileBarChart, Percent, Menu, X, Ban, Inbox,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
@@ -28,6 +28,7 @@ const financialNav = [
 ]
 
 const crmNav = [
+  { label: 'Ruwe leads', href: '/crm/ruwe-leads', icon: Inbox },
   { label: 'Leads', href: '/crm/leads', icon: BadgeDollarSign },
   { label: 'Bedrijven', href: '/crm/bedrijven', icon: Building2 },
   { label: 'Contacten', href: '/crm/contacten', icon: ContactRound },

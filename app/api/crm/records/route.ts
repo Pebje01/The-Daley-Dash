@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createCrmRecord } from '@/lib/crm/store'
 import { CRM_ENTITY_TYPES, type CrmEntityType } from '@/lib/crm/types'
+import { planKwalificatie } from '@/lib/ai/kwalificatie-wachtrij'
 
 const ALLOWED_ENTITY_TYPES = new Set<string>(CRM_ENTITY_TYPES)
 
 const RECORD_COLUMNS =
-  'id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, dash_tags, due_date, clickup_date_updated, synced_at, volgende_actie, volgende_actie_notitie, laatste_contact, contact_pogingen, contact_status, contact_status_tot, contact_status_reden'
+  'id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, dash_tags, due_date, clickup_date_updated, synced_at, volgende_actie, volgende_actie_notitie, laatste_contact, contact_pogingen, contact_status, contact_status_tot, contact_status_reden, ai_status, ai_score, ai_prioriteit, ai_branche, ai_website, ai_samenvatting, ai_signalen, ai_volgende_stap, ai_beoordeeld_op, ai_model, ai_fout, ruwe_contact_email, ruwe_website, ruwe_bron, ruwe_fit_reden, ruwe_prioriteit'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,7 +46,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { entity_type, name, status, description, due_date, custom_fields } = body
+    const {
+      entity_type, name, status, description, due_date, custom_fields,
+      ruwe_contact_email, ruwe_website, ruwe_bron, ruwe_fit_reden, ruwe_prioriteit,
+    } = body
 
     if (!entity_type || !ALLOWED_ENTITY_TYPES.has(entity_type)) {
       return NextResponse.json({ error: 'Invalid entity_type' }, { status: 400 })
@@ -60,7 +64,20 @@ export async function POST(request: NextRequest) {
       description,
       due_date,
       custom_fields,
+      ruwe_contact_email,
+      ruwe_website,
+      ruwe_bron,
+      ruwe_fit_reden,
+      ruwe_prioriteit,
     })
+
+    // Nieuwe leads (en ruwe leads, de triagelaag ervoor) gaan meteen de
+    // AI-wachtrij in. Bewust niet awaiten: de kwalificatie duurt een minuut,
+    // de gebruiker krijgt zijn record nu terug en de score druppelt er zo
+    // achteraan in.
+    if (entity_type === 'lead' || entity_type === 'ruwe_lead') {
+      planKwalificatie(record.id)
+    }
 
     return NextResponse.json({ item: record }, { status: 201 })
   } catch (e: any) {

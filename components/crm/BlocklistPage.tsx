@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Ban, RefreshCw, Undo2, BadgeDollarSign, Building2, ContactRound } from 'lucide-react'
+import { Ban, RefreshCw, Undo2, BadgeDollarSign, Building2, ContactRound, Inbox } from 'lucide-react'
 import { useMelding } from '@/components/MeldingProvider'
 
 interface BlockRecord {
   id: string
-  entity_type: 'lead' | 'contact' | 'company'
+  entity_type: 'lead' | 'ruwe_lead' | 'contact' | 'company'
   name: string
   status?: string | null
   contact_status_reden?: string | null
@@ -17,6 +17,7 @@ interface BlockRecord {
 
 const ENTITY_META: Record<BlockRecord['entity_type'], { label: string; href: string; icon: typeof Ban }> = {
   lead: { label: 'Lead', href: '/crm/leads', icon: BadgeDollarSign },
+  ruwe_lead: { label: 'Ruwe lead', href: '/crm/ruwe-leads', icon: Inbox },
   contact: { label: 'Contact', href: '/crm/contacten', icon: ContactRound },
   company: { label: 'Bedrijf', href: '/crm/bedrijven', icon: Building2 },
 }

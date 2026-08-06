@@ -16,7 +16,7 @@ export async function GET() {
     .from('clickup_crm_records')
     .select('id, entity_type, name, status, contact_status_reden, laatste_contact, updated_at')
     .eq('contact_status', 'blokkade')
-    .in('entity_type', ['lead', 'contact', 'company'])
+    .in('entity_type', ['lead', 'ruwe_lead', 'contact', 'company'])
     .order('updated_at', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

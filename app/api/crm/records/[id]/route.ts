@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { updateCrmRecord, deleteCrmRecord } from '@/lib/crm/store'
+import { CRM_ENTITY_TYPES } from '@/lib/crm/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,10 +37,14 @@ export async function PATCH(
       name, status, description, due_date, custom_fields, notes, dash_tags,
       volgende_actie, volgende_actie_notitie,
       contact_status, contact_status_tot, contact_status_reden,
+      entity_type,
     } = body
 
     if (contact_status !== undefined && !['open', 'pauze', 'blokkade'].includes(contact_status)) {
       return NextResponse.json({ error: 'Onbekende contactstatus' }, { status: 400 })
+    }
+    if (entity_type !== undefined && !CRM_ENTITY_TYPES.includes(entity_type)) {
+      return NextResponse.json({ error: 'Onbekend entity_type' }, { status: 400 })
     }
 
     // Supabase is de source of truth, alles gaat direct naar de database
@@ -56,6 +61,7 @@ export async function PATCH(
       contact_status,
       contact_status_tot,
       contact_status_reden,
+      entity_type,
     })
 
     return NextResponse.json({ item: record })

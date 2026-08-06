@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       if (error || !data) {
         return NextResponse.json({ error: 'Lead niet gevonden' }, { status: 404 })
       }
-      if (data.entity_type !== 'lead') {
+      if (!['lead', 'ruwe_lead'].includes(data.entity_type)) {
         return NextResponse.json({ error: 'Alleen leads kunnen gekwalificeerd worden' }, { status: 400 })
       }
 
