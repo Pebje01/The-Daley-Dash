@@ -320,7 +320,11 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
           btwAmount,
           total,
           notes: notes || undefined,
-          molliePaymentUrl: molliePaymentUrl || undefined,
+          // Bewust `|| null` in plaats van `|| undefined`: undefined valt weg
+          // uit de JSON-body, dus een leeggemaakt veld liet de oude betaallink
+          // in Supabase gewoon staan. Met null wist "Wijzigingen opslaan" hem
+          // ook echt als je het veld leegmaakt.
+          molliePaymentUrl: molliePaymentUrl || null,
           date: factuurDate || undefined,
           dueDate: factuurDueDate || undefined,
           revenueDate: revenueDate || null,

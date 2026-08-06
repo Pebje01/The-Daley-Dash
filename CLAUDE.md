@@ -78,6 +78,18 @@ middleware.ts               # Auth redirect middleware
 - Het blok "Vandaag oppakken" boven het bord toont alles met een actie vandaag of eerder, dwars door de fases heen.
 - CRM-records lopen nu via **`/api/crm/records`** (lijst, detail, promote, contact). De oude routes onder `/api/integrations/clickup/records/` zijn verwijderd.
 
+### AI-kwalificatie van leads (augustus 2026)
+- Nieuwe leads worden automatisch beoordeeld door Claude: branchelabel, score 0-100, plus- en minpunten, en een voorgestelde eerste stap. De AI zoekt zelf de website op en leest die.
+- **Draait op het Claude-abonnement, niet op API-credits.** `lib/ai/claude-cli.ts` start de lokale `claude` CLI (`-p` met `--json-schema`, tools WebSearch en WebFetch). Daarom werkt dit alleen lokaal: op een server zonder ingelogde CLI is er alsnog een API-key nodig.
+- De CLI wordt bewust vanuit de tmp-map gestart, zodat deze CLAUDE.md niet wordt meegeladen. En het binary wordt zelf opgezocht (`~/.local/bin/claude`), want de LaunchAgent erft een kale PATH.
+- **De AI is adviserend, nooit sturend.** Hij schrijft alleen in de `ai_*`-kolommen. Fase, `volgende_actie` en `contact_status` blijven handwerk. Verander dat niet zonder overleg: het bord is bewust van de gebruiker.
+- Criteria staan los in `lib/ai/lead-criteria.ts`, zodat je kunt bijstellen wat een goede lead is zonder aan de motor te komen.
+- Instapelpunten: automatisch bij `POST /api/crm/records` (entity_type lead), handmatig via `POST /api/crm/leads/kwalificeer` met `{id}`, en in bulk met `{alleOnbeoordeelde: true}`.
+- **De bulkroute pakt alleen levende fases**, geen gewonnen, verloren, gearchiveerde of geblokkeerde leads. Die beoordelen kost limiet en levert niets op. Let op de `.or('contact_status.is.null,...')`: een kale `.neq` gooit ook alle NULL-rijen eruit.
+- Wachtrij met max 2 tegelijk (`lib/ai/kwalificatie-wachtrij.ts`, instelbaar via `LEAD_AI_CONCURRENCY`). Zonder rem zou een import net zoveel claude-processen starten als er leads zijn.
+- Vangnet voor leads die buiten de Dash om binnenkomen: LaunchAgent `com.daley.lead-ai` draait `scripts/kwalificeer-leads.mjs --watch`, elk kwartier, max 10 per ronde. Logt naar `/tmp/daley-lead-ai.log`.
+- Uitzetten: `LEAD_AI_UIT=1` in `.env.local`. Model wisselen: `CLAUDE_CLI_MODEL`.
+
 ### ClickUpCrmRecordsPage features
 - Lijst (gegroepeerd op status) + Board view, zoeken, status-filter dropdown
 - Kolomsortering (klik op kolomkop), bulk-selectie met bulk status/verwijderen

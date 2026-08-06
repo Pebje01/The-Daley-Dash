@@ -49,6 +49,10 @@ interface CompanyCfg {
   templateFile: string
   previewFile?: string
   logoOverride?: string
+  /** Maximale logohoogte in px, standaard 56. Per bedrijf, want de logo's hebben een andere verhouding. */
+  logoMaxHeight?: number
+  /** Maximale logobreedte in px, standaard 215. Moet meegroeien met logoMaxHeight. */
+  logoMaxWidth?: number
   defaultOmschrijving: string
 }
 

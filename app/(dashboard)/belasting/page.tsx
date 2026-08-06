@@ -189,7 +189,7 @@ function GroepSectie({ groep, jaar, huidigKw, toonIB, toonMaandoverzicht }: {
       <div className="card mb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-body">BTW per kwartaal</h2>
-          <span className="text-caption text-brand-text-secondary">op betaaldatum (kasstelsel)</span>
+          <span className="text-caption text-brand-text-secondary">op factuurdatum (factuurstelsel)</span>
         </div>
         <div className="grid grid-cols-4 gap-3">
           {groep.kwartalen.map(kw => {

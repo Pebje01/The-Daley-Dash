@@ -46,31 +46,20 @@ function berekenGroep(
     && bedrijven.includes(f.company_id)
     && !f.exclude_from_revenue
 
-  // OMZET / INKOMSTENBELASTING: factuurstelsel, op factuurdatum (`date`).
+  // OMZET / IB / BTW: allemaal factuurstelsel, op factuurdatum (`date`). Daley
+  // staat op het factuurstelsel (nooit kasstelsel aangevraagd), dus BTW hoort
+  // net als omzet/IB bij het kwartaal van de factuurdatum, niet de betaaldatum.
+  // Zelfde grondslag als de kwartaal-aangifte (nieuwe kwartalen), zodat dit
+  // overzicht en de aangifte altijd gelijklopen.
   const omzetRows = alleFacturen
     .filter((f: any) => inGroep(f) && f.date >= yearStart && f.date <= yearEnd)
     .map((f: any) => ({ subtotal: f.subtotal ?? 0, total: f.total ?? 0, date: f.date }))
 
-  // BTW: kasstelsel, op betaaldatum (`paid_at`). Zelfde grondslag als de
-  // kwartaal-aangifte, zodat overzicht en aangifte altijd gelijklopen.
-  const btwRows = alleFacturen
-    .filter((f: any) => {
-      if (!inGroep(f) || !f.paid_at) return false
-      const pd = String(f.paid_at).slice(0, 10)
-      return pd >= yearStart && pd <= yearEnd
-    })
-    .map((f: any) => ({
-      subtotal: f.subtotal ?? 0,
-      total: f.total ?? 0,
-      date: String(f.paid_at).slice(0, 10), // bucketen op betaaldatum
-    }))
-
-  // BTW per kwartaal/jaar op betaaldatum; omzet per maand op factuurdatum (IB-planning).
-  const kwartalen = aggregeerPerKwartaal(btwRows)
+  const kwartalen = aggregeerPerKwartaal(omzetRows)
   const maanden = aggregeerPerMaand(omzetRows)
 
   const totaalOmzetExcl = omzetRows.reduce((s: number, f: any) => s + (f.subtotal ?? 0), 0)
-  const totaalBtw = btwRows.reduce((s: number, f: any) => s + ((f.total ?? 0) - (f.subtotal ?? 0)), 0)
+  const totaalBtw = omzetRows.reduce((s: number, f: any) => s + ((f.total ?? 0) - (f.subtotal ?? 0)), 0)
 
   const huidigKw = huidigKwartaal()
   const btwDitKwartaal = kwartalen[huidigKw - 1]?.btwBedrag ?? 0

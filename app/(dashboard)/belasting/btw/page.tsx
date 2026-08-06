@@ -1,11 +1,12 @@
 import { redirect } from 'next/navigation'
 
-// Stuur door naar het laatst afgesloten kwartaal (dat is meestal het kwartaal
-// waarvoor de aangifte openstaat).
+// Stuur door naar het huidige kwartaal, zodat de pagina altijd het lopende
+// kwartaal toont (live BTW-opzij-te-zetten-bedrag). Oudere kwartalen (bijv.
+// om een aangifte te controleren of in te dienen) blijf je bereiken via de
+// kwartaal-selector op de aangiftepagina zelf.
 export default function BtwIndexPage() {
   const now = new Date()
-  let jaar = now.getFullYear()
-  let kw = Math.floor(now.getMonth() / 3) + 1 - 1
-  if (kw === 0) { kw = 4; jaar -= 1 }
+  const jaar = now.getFullYear()
+  const kw = Math.floor(now.getMonth() / 3) + 1
   redirect(`/belasting/btw/${jaar}-Q${kw}`)
 }

@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
-import { Plus, TrendingUp, AlertCircle, CheckCircle2, ArrowRight, FileText, Clock, RefreshCw, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
+import { Plus, TrendingUp, AlertCircle, CheckCircle2, ArrowRight, FileText, Clock, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, PiggyBank } from 'lucide-react'
 import ActiesWidget from '@/components/ActiesWidget'
 import { getCompany } from '@/lib/companies'
 import { FactuurStatusBadge, OfferteStatusBadge } from '@/components/StatusBadge'
@@ -73,6 +73,12 @@ export default function Dashboard() {
     }
   }, [factuurStats.omzetPerMaand.length, maandIndex])
 
+  const [belastingStats, setBelastingStats] = useState<{
+    jaar: number
+    huidigKwartaal: number
+    eigen: { btwDitKwartaal: number }
+  } | null>(null)
+
   const [abonnementen, setAbonnementen] = useState<Abonnement[]>([])
   const [crmStats, setCrmStats] = useState<{
     openLeads: number
@@ -102,11 +108,13 @@ export default function Dashboard() {
         fetch('/api/facturen/stats').then(r => r.ok ? r.json() : null),
         fetch('/api/abonnementen?status=actief').then(r => r.ok ? r.json() : null),
         fetch('/api/crm/stats').then(r => r.ok ? r.json() : null),
-      ]).then(([off, fac, abo, crm]) => {
+        fetch('/api/belasting/stats').then(r => r.ok ? r.json() : null),
+      ]).then(([off, fac, abo, crm, bel]) => {
         if (off) setOfferteStats(off)
         if (fac) setFactuurStats(fac)
         if (abo) setAbonnementen(abo)
         if (crm) setCrmStats(crm)
+        if (bel) setBelastingStats(bel)
       }).finally(() => {
         const wacht = minimumDuur - (Date.now() - start)
         if (wacht > 0) setTimeout(() => setLoading(false), wacht)
@@ -449,8 +457,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Betalingen + Abonnementen */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      {/* Betalingen + BTW + Abonnementen */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <Link href="/facturen" className="card hover:shadow-md transition-shadow cursor-pointer block">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-body">Betalingen overzicht</h2>
@@ -472,6 +480,19 @@ export default function Dashboard() {
               </p>
             </div>
           </div>
+        </Link>
+
+        <Link href="/belasting" className="card hover:shadow-md transition-shadow cursor-pointer block">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-body">BTW opzij zetten</h2>
+            <div className="w-8 h-8 rounded-brand-sm bg-brand-lime flex items-center justify-center">
+              <PiggyBank size={17} className="text-brand-lime-accent" />
+            </div>
+          </div>
+          <p className="font-uxum text-stat text-brand-text-primary">{euro(belastingStats?.eigen.btwDitKwartaal ?? 0)}</p>
+          <p className="text-caption text-brand-text-secondary mt-1">
+            {belastingStats ? `Q${belastingStats.huidigKwartaal} ${belastingStats.jaar} · factuurstelsel` : 'dit kwartaal'}
+          </p>
         </Link>
 
         <Link href="/abonnementen" className="card hover:shadow-md transition-shadow cursor-pointer block">

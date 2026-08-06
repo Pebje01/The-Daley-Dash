@@ -17,6 +17,7 @@ import {
 import {
   OpvolgBadge, OpvolgPicker, ContactKnop, ContactSamenvatting, ContactStatusBlok,
 } from '@/components/crm/OpvolgControls'
+import { AiScoreBadge, AiKwalificatieBlok } from '@/components/crm/AiKwalificatie'
 import { DashTagsProvider, InlineTags, type DashTag, DASH_TAG_KLEURNAMEN } from '@/components/CrmTagPicker'
 import { useColumnOrder, useColumnDnD, useColumnWidths } from '@/lib/columnOrder'
 import { ColumnGrip } from '@/components/ColumnGrip'
@@ -91,6 +92,19 @@ interface CrmRecord {
   contact_status?: string | null
   contact_status_tot?: string | null
   contact_status_reden?: string | null
+  // AI-kwalificatie (zie lib/ai/kwalificeer-lead.ts). Advies, geen automaat:
+  // deze velden sturen nooit de fase of de opvolging aan.
+  ai_status?: string | null
+  ai_score?: number | null
+  ai_prioriteit?: string | null
+  ai_branche?: string | null
+  ai_website?: string | null
+  ai_samenvatting?: string | null
+  ai_signalen?: { plus?: string[]; min?: string[] } | null
+  ai_volgende_stap?: string | null
+  ai_beoordeeld_op?: string | null
+  ai_model?: string | null
+  ai_fout?: string | null
 }
 
 // ── Status visual config ────────────────────────────────────────────
@@ -1165,6 +1179,11 @@ function BoardCard({
           {toonOpvolging && <ContactSamenvatting record={item} />}
         </div>
       )}
+      {item.entity_type === 'lead' && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <AiScoreBadge record={item} />
+        </div>
+      )}
       {fields.length > 0 && (
         <div className="space-y-0.5">
           {fields.map((f, i) => (
@@ -2152,14 +2171,15 @@ function RecordDetailModal({
   const [urenSamenvatting, setUrenSamenvatting] = useState<{ totaalUren: number; totaalOmzet: number; openstaand: number } | null>(null)
   const [loadingUren, setLoadingUren] = useState(false)
 
-  useEffect(() => {
-    setLoadingFull(true)
-    fetch(`/api/crm/records/${record.id}`)
+  /** Haalt het volledige record op. Ook gebruikt om de AI-uitslag binnen te halen. */
+  const laadFull = useCallback((toonLader = true) => {
+    if (toonLader) setLoadingFull(true)
+    return fetch(`/api/crm/records/${record.id}`)
       .then((r) => r.json())
       .then((d) => {
         const item = d.item || null
         setFull(item)
-        if (item?.raw?.notes) setNotes(item.raw.notes)
+        if (toonLader && item?.raw?.notes) setNotes(item.raw.notes)
         // Verse opvolgwaarden uit de database overnemen
         if (item) {
           setOpvolgRec((prev) => ({
@@ -2177,6 +2197,10 @@ function RecordDetailModal({
       })
       .catch(() => setLoadingFull(false))
   }, [record.id])
+
+  useEffect(() => {
+    laadFull()
+  }, [laadFull])
 
   useEffect(() => {
     setLoadingKlant(true)
@@ -2411,6 +2435,15 @@ function RecordDetailModal({
 
           {/* Left: description + notes */}
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 min-w-0">
+
+            {/* Wat de AI van deze lead vindt. Advies, verandert niets aan het bord. */}
+            {record.entity_type === 'lead' && (
+              <AiKwalificatieBlok
+                recordId={record.id}
+                record={full || record}
+                onVernieuwd={() => laadFull(false)}
+              />
+            )}
 
             {loadingFull ? (
               <div className="text-xs text-gray-400 flex items-center gap-1.5 pt-2">
