@@ -17,6 +17,46 @@ interface Props {
   type: 'factuur' | 'offerte'
 }
 
+/** Een factuur of offerte zoals de Dash hem zelf teruggeeft. */
+interface DashRecord {
+  number: string
+  companyId: string | null
+  client?: { name?: string | null } | null
+  date: string | null
+  dueDate?: string | null
+  validUntil?: string | null
+  subtotal?: number | null
+  btwAmount?: number | null
+  total?: number | null
+  status?: string | null
+}
+
+/**
+ * Gegevens van een bestand dat al in de Dash staat komen uit de Dash zelf,
+ * niet uit de PDF. Dat scheelt een AI-verzoek per bestand, en wat je ziet is
+ * dan hetzelfde als op de factuur- of offertekaart.
+ */
+function alsDoc(r: DashRecord, type: 'factuur' | 'offerte'): ExtractedDoc {
+  return {
+    type,
+    number: r.number,
+    clientName: r.client?.name ?? null,
+    clientContactPerson: null,
+    clientAddress: null,
+    date: r.date ?? null,
+    dueDate: r.dueDate ?? null,
+    validUntil: r.validUntil ?? null,
+    subtotal: r.subtotal ?? null,
+    btwAmount: r.btwAmount ?? null,
+    total: r.total ?? null,
+    btwPercentage: null,
+    companyId: r.companyId ?? null,
+    status: r.status ?? null,
+    paidAt: null,
+    lineItems: [],
+  }
+}
+
 export default function LocaleBestandenSection({ type }: Props) {
   const [open, setOpen] = useState(false)
   const [files, setFiles] = useState<ScannedFile[]>([])
@@ -25,6 +65,10 @@ export default function LocaleBestandenSection({ type }: Props) {
   const [progress, setProgress] = useState(0)
   const [extracting, setExtracting] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  /** Bestanden van vóór 2026, bewust niet in de lijst. */
+  const [oudAantal, setOudAantal] = useState(0)
+  /** Hoeveel onbekende PDF's uitgelezen worden, voor de voortgangsbalk. */
+  const [lezenTotaal, setLezenTotaal] = useState(0)
 
   const [importing, setImporting] = useState<Set<string>>(new Set())
   const [importedSet, setImportedSet] = useState<Set<string>>(new Set())
@@ -35,6 +79,7 @@ export default function LocaleBestandenSection({ type }: Props) {
     setScanning(true)
     setExtracted(new Map())
     setProgress(0)
+    setLezenTotaal(0)
     setImportedSet(new Set())
     setImportErrors(new Map())
 
@@ -43,7 +88,13 @@ export default function LocaleBestandenSection({ type }: Props) {
       const res = await fetch('/api/admin/scan')
       if (!res.ok) { setScanning(false); return }
       const all: ScannedFile[] = await res.json()
-      withNumbers = all.filter(f => f.type === type && f.number !== null)
+      const vanDitType = all.filter(f => f.type === type && f.number !== null)
+      // Administratie van vóór 2026 hoort niet in de Dash, dus staat hij ook
+      // niet in deze lijst. Zou hij er wel staan, dan leest de Dash elke PDF
+      // uit met AI en kan één klik op importeren ze alsnog binnenhalen, met de
+      // verkeerde nummers die in die oude bestanden staan.
+      withNumbers = vanDitType.filter(f => !f.oud)
+      setOudAantal(vanDitType.length - withNumbers.length)
       setFiles(withNumbers)
     } catch {
       setScanning(false)
@@ -52,10 +103,38 @@ export default function LocaleBestandenSection({ type }: Props) {
     setScanning(false)
     setLoaded(true)
 
+    // Wat al in de Dash staat hoeft niet uitgelezen te worden: die gegevens
+    // staan in Supabase. Alleen onbekende bestanden gaan naar de PDF-lezer.
+    const bekend = withNumbers.filter(f => f.matched)
+    if (bekend.length > 0) {
+      try {
+        const res = await fetch(type === 'factuur' ? '/api/facturen' : '/api/offertes')
+        if (res.ok) {
+          const records: DashRecord[] = await res.json()
+          const perNummer = new Map(records.map(r => [r.number.toUpperCase(), r]))
+          setExtracted(prev => {
+            const next = new Map(prev)
+            for (const f of bekend) {
+              const record = perNummer.get(f.number!.toUpperCase())
+              if (record) next.set(f.absolutePath, alsDoc(record, type))
+            }
+            return next
+          })
+        }
+      } catch {
+        // Lukt dit niet, dan blijven die regels leeg. Geen reden om de hele
+        // lijst te laten vallen.
+      }
+    }
+
+    const teLezen = withNumbers.filter(f => !f.matched)
+    setLezenTotaal(teLezen.length)
+    if (teLezen.length === 0) return
+
     setExtracting(true)
     const batchSize = 8
-    for (let i = 0; i < withNumbers.length; i += batchSize) {
-      const batch = withNumbers.slice(i, i + batchSize)
+    for (let i = 0; i < teLezen.length; i += batchSize) {
+      const batch = teLezen.slice(i, i + batchSize)
       const results = await Promise.all(
         batch.map(f =>
           fetch('/api/admin/extract', {
@@ -72,7 +151,7 @@ export default function LocaleBestandenSection({ type }: Props) {
         batch.forEach((f, idx) => { if (results[idx]) next.set(f.absolutePath, results[idx]) })
         return next
       })
-      setProgress(Math.min(i + batch.length, withNumbers.length))
+      setProgress(Math.min(i + batch.length, teLezen.length))
     }
     setExtracting(false)
   }
@@ -160,23 +239,29 @@ export default function LocaleBestandenSection({ type }: Props) {
 
       {open && (
         <>
+          {loaded && oudAantal > 0 && (
+            <p className="mb-3 text-caption text-brand-text-secondary">
+              {oudAantal} {label} van vóór 2026 staan niet in deze lijst. Die administratie is van
+              vóór de Dash en wordt bewust niet ingelezen.
+            </p>
+          )}
           {extracting && (
             <div className="mb-3">
               <div className="flex justify-between text-caption text-brand-text-secondary mb-1">
                 <span>PDF&apos;s uitlezen{process.env.NEXT_PUBLIC_SUPABASE_URL ? '' : ''}...</span>
-                <span>{progress} / {files.length}</span>
+                <span>{progress} / {lezenTotaal}</span>
               </div>
               <div className="h-1 bg-brand-page-medium rounded-full overflow-hidden">
                 <div
                   className="h-full bg-brand-purple transition-all duration-300"
-                  style={{ width: files.length > 0 ? `${(progress / files.length) * 100}%` : '0%' }}
+                  style={{ width: lezenTotaal > 0 ? `${(progress / lezenTotaal) * 100}%` : '0%' }}
                 />
               </div>
             </div>
           )}
 
-          <div className="card p-0 overflow-hidden">
-            <table className="w-full text-body">
+          <div className="card p-0 overflow-x-auto">
+            <table className="w-full min-w-[640px] text-body">
               <thead className="bg-brand-page-light border-b border-brand-page-medium">
                 <tr>
                   <th className="text-left px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide">Nummer</th>
