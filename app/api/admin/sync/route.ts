@@ -50,7 +50,14 @@ function scanDir(dir: string, out: RawFile[]) {
   if (!fs.existsSync(dir)) return
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name)
-    if (entry.isDirectory()) scanDir(full, out)
+    if (entry.isDirectory()) {
+      // Zelfde regel als in /api/admin/scan: mappen met een _ ervoor zijn
+      // werkmappen, geen archief. Zo blijven _Concepten en _Teruggezet buiten
+      // de sync. Tot nu toe liep de sync er wel doorheen en ging het alleen
+      // goed omdat conceptnummers (C-...) toch niet herkend worden.
+      if (entry.name.startsWith('_')) continue
+      scanDir(full, out)
+    }
     else if (entry.isFile() && entry.name.toLowerCase().endsWith('.pdf'))
       out.push({ absolutePath: full, filename: entry.name })
   }
