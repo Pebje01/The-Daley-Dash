@@ -1,10 +1,14 @@
 import fs, { type Dirent } from 'fs'
 import path from 'path'
 import { homedir } from 'os'
+import { IS_TEST } from '@/lib/dashModus'
 
 const HOME = process.env.DALEY_WERK_ROOT ?? `${homedir()}/Documents/DALEY WERK`
 
 function envPaths(value: string | undefined): string[] {
+  // De testversie erft .env.local, en daarin wijzen ADMIN_*_PATH naar de echte
+  // administratie. In test tellen alleen de mappen onder de zandbak (DALEY_WERK_ROOT).
+  if (IS_TEST) return []
   return (value ?? '')
     .split(',')
     .map(p => p.trim())
@@ -35,6 +39,13 @@ export const CONCEPTEN_MAP = '_Concepten'
  */
 export const VERWIJDERD_MAP = '_Teruggezet'
 
+// De twee mappen onder `We Grow Brands/Bedrijf Administratie` staan hier niet
+// meer in: ze zijn leeg en worden nergens meer gevuld. PDF's van WGB-facturen
+// gaan net als die van de andere bedrijven naar Verkoopfacturen, zie
+// `pdfPadVoorFactuur` in lib/pdf/factuurGenerator.ts. Zolang ze wel gescand
+// werden, leverde een kopie daar een dubbel nummer op. Zoeken doen we er nog
+// wel, via getAdminZoekPaths, want een oud bestand kan er nog liggen.
+//
 // Montung (VOF BB-Import, voorheen Bleijenberg) staat bewust NIET in deze lijsten.
 // Dat is een aparte VOF met een eigen BTW-nummer, eigen nummerreeks en een eigen
 // systeem in montung-voorraad. Die facturen horen niet in de omzet van de Dash.
@@ -43,7 +54,6 @@ export function getAdminFacturenPaths(): string[] {
     ...envPaths(process.env.ADMIN_FACTUREN_PATH),
     `${HOME}/Bedrijf Administratie/Verkoopfacturen`,
     `${HOME}/Bedrijf Administratie/Facturen`,
-    `${HOME}/We Grow Brands/Bedrijf Administratie/Facturen`,
     `${HOME}/DALEY PHOTOGRAPHY/Facturen`,
   ])
 }
@@ -52,7 +62,6 @@ export function getAdminOffertesPaths(): string[] {
   return unique([
     ...envPaths(process.env.ADMIN_OFFERTES_PATH),
     `${HOME}/Bedrijf Administratie/Offertes`,
-    `${HOME}/We Grow Brands/Bedrijf Administratie/Offertes`,
   ])
 }
 
