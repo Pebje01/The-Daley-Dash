@@ -86,6 +86,31 @@ function extractNumber(filename: string): { number: string | null; type: 'factuu
  */
 const OUDE_NUMMERREEKS = /^\d{4}F-/
 
+/**
+ * De Dash begint bij 2026. Alles daarvoor is administratie van vóór dit
+ * systeem en hoort er niet meer in.
+ *
+ * Zonder deze grens bood de sync 71 offertes uit 2020 tot 2025 elke keer
+ * opnieuw aan. Ze staan niet in Supabase, dus zag de sync ze als nieuw, stuurde
+ * ze naar Gemini en meldde daarna `failed`. Dat kostte bij elke achtergrondsync
+ * opnieuw AI-verzoeken, en als het wél gelukt was, was het nog erger geweest:
+ * het nummer ín die oude PDF's wijkt bij 71 van de 72 bestanden af van de
+ * bestandsnaam (OF-0011, OF-231027, zelfs de typfout OF-271101), dus er waren
+ * records met verkeerde nummers en dubbelen uit gerold.
+ *
+ * Wil je oude offertes of facturen alsnog in de Dash, doe dat dan niet via de
+ * sync maar met een eenmalig script, met het nummer uit de bestandsnaam als
+ * leidend en een lijst vooraf om te controleren.
+ */
+const EERSTE_DASH_JAAR = 2026
+
+/** OF-231025-01 en F-250713-01 zijn van vóór de Dash, OF-260316-01 niet. */
+function isVanVoorDeDash(number: string): boolean {
+  const m = number.match(/^(?:OF|F)-(\d{2})\d{4}(?:-\d{2})?$/i)
+  if (!m) return false
+  return 2000 + Number(m[1]) < EERSTE_DASH_JAAR
+}
+
 // ── Text extraction ────────────────────────────────────────────────────────
 
 function parseNlDate(s: string): string | null {
@@ -483,8 +508,11 @@ export async function POST() {
           })
 
         // Bewust overgeslagen, en dat melden we ook. Stil laten vallen zou
-        // lezen als "alles is meegenomen" terwijl er 58 stuks buiten blijven.
-        const toProcess = nieuweBestanden.filter(f => !OUDE_NUMMERREEKS.test(f.number!))
+        // lezen als "alles is meegenomen" terwijl er ruim 130 stuks buiten
+        // blijven: de oude factuurreeks plus alles van vóór 2026.
+        const toProcess = nieuweBestanden.filter(
+          f => !OUDE_NUMMERREEKS.test(f.number!) && !isVanVoorDeDash(f.number!)
+        )
         const overgeslagenOud = nieuweBestanden.length - toProcess.length
 
         mergeAdminSyncSeen({
