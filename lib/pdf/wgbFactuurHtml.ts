@@ -55,15 +55,21 @@ function renderBlock(key: string, innerHtml: string, layoutOverrides: Record<str
   return `<div class="dblock" data-key="${key}"${frozenAttr}${styleAttr}>${handle}${innerHtml}</div>`
 }
 
-function editModeAssets(factuurId?: string): { css: string; button: string; script: string } {
+function editModeAssets(factuurId?: string, pdfNogNietGemaakt = false, bijgewerktOp: string | null = null): { css: string; button: string; script: string } {
   const pc = '#03483A'
   const companyNaam = 'We Grow Brands'
+  // Het onderscheid eerste keer/opnieuw is voor de gebruiker niet relevant, de
+  // knop heet altijd gewoon "Factuur opslaan".
+  const saveLabel = '\u{1F4BE} Factuur opslaan'
+  const saveMelding = pdfNogNietGemaakt
+    ? 'Factuur opgeslagen en PDF geopend.'
+    : 'Factuur opgeslagen en PDF opnieuw gegenereerd.'
   const css = `
 .dblock:hover{outline:1px dashed ${pc};outline-offset:2px}
 .drag-handle{position:absolute;left:-28px;top:50%;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;width:22px;height:30px;background:${pc};color:#fff;font-size:13px;border-radius:5px;cursor:ns-resize;user-select:none;z-index:60;box-shadow:0 1px 4px rgba(0,0,0,.3)}
 @media print{.drag-handle{display:none!important}.dblock:hover{outline:none!important}}`
 
-  const button = `<button id="save-layout-btn">Sla indeling op</button><button id="save-default-btn">Maak dit de standaard voor ${companyNaam}</button>`
+  const button = `<button id="save-layout-btn">${saveLabel}</button><button id="save-default-btn">Maak dit de standaard voor ${companyNaam}</button>`
 
   const script = `
 <script>
@@ -114,6 +120,11 @@ function editModeAssets(factuurId?: string): { css: string; button: string; scri
     return overrides
   }
 
+  // Welke versie van de factuur deze editor toont. Is hij intussen via
+  // Bewerken aangepast, dan weigert de server op te slaan en vraagt om herladen.
+  var geladenOp = ${JSON.stringify(bijgewerktOp)}
+  var saveLabel = ${JSON.stringify(saveLabel)}
+  var saveMelding = ${JSON.stringify(saveMelding)}
   var saveBtn = document.getElementById('save-layout-btn')
   if (saveBtn) {
     saveBtn.addEventListener('click', function(){
@@ -122,15 +133,21 @@ function editModeAssets(factuurId?: string): { css: string; button: string; scri
       fetch('/api/facturen/${factuurId}/regenerate-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ layoutOverrides: computeOverrides() }),
+        body: JSON.stringify({ layoutOverrides: computeOverrides(), geladenOp: geladenOp }),
       }).then(function(res){ return res.json() }).then(function(data){
         saveBtn.disabled = false
-        saveBtn.textContent = 'Sla indeling op'
-        if (data && data.ok) { alert('Indeling opgeslagen en PDF opnieuw gegenereerd.') }
-        else { alert('Opslaan mislukt: ' + (data && data.error ? data.error : 'onbekende fout')) }
+        if (data && data.ok) {
+          if (data.bijgewerktOp) geladenOp = data.bijgewerktOp
+          alert(saveMelding)
+          saveMelding = 'Factuur opgeslagen en PDF opnieuw gegenereerd.'
+          saveBtn.textContent = saveLabel
+        } else {
+          saveBtn.textContent = saveLabel
+          alert('Opslaan mislukt: ' + (data && data.error ? data.error : 'onbekende fout'))
+        }
       }).catch(function(err){
         saveBtn.disabled = false
-        saveBtn.textContent = 'Sla indeling op'
+        saveBtn.textContent = saveLabel
         alert('Opslaan mislukt: ' + err)
       })
     })
@@ -182,8 +199,11 @@ export function buildWgbFactuurHtml(opts: {
   layoutOverrides?: Record<string, number> | null
   editMode?: boolean
   factuurId?: string
+  /** Editor-stand: er is nog geen PDF, de opslaanknop maakt hem voor het eerst. */
+  pdfNogNietGemaakt?: boolean
+  bijgewerktOp?: string | null
 }): string {
-  const { factuurnummer, klant, regels, factuurdatum, vervaldatum, betaallink, btwPercentage, layoutOverrides = null, editMode = false, factuurId } = opts
+  const { factuurnummer, klant, regels, factuurdatum, vervaldatum, betaallink, btwPercentage, layoutOverrides = null, editMode = false, factuurId, pdfNogNietGemaakt = false, bijgewerktOp = null } = opts
   const logoSrc = `data:image/png;base64,${wgbLogoHorizontalBase64}`
 
   const subtotaal = regels.reduce((s, r) => s + r.aantal * r.prijsPerStuk, 0)
@@ -207,7 +227,7 @@ export function buildWgbFactuurHtml(opts: {
       </tr>`
   }).join('\n')
 
-  const edit = editMode ? editModeAssets(factuurId) : null
+  const edit = editMode ? editModeAssets(factuurId, pdfNogNietGemaakt, bijgewerktOp) : null
 
   const heroBlock = renderBlock('hero', `
     <div class="hero">

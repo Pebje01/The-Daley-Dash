@@ -7,6 +7,7 @@ import { Abonnement, AbonnementStatus, AbonnementInterval, CompanyId } from '@/l
 import { getCompany, COMPANIES } from '@/lib/companies'
 import { useColumnOrder, useColumnDnD } from '@/lib/columnOrder'
 import { ColumnGrip } from '@/components/ColumnGrip'
+import { useActiveCompany } from '@/components/CompanyContext'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -56,6 +57,7 @@ const intervalLabels: Record<AbonnementInterval, string> = {
 }
 
 export default function AbonnementenPage() {
+  const { scope, scopeGeladen } = useActiveCompany()
   const melding = useMelding()
   const { order, move } = useColumnOrder('abonnementen', ABO_KOLOMMEN.map(c => c.key))
   const dnd = useColumnDnD(move)
@@ -78,10 +80,12 @@ export default function AbonnementenPage() {
   const [saving, setSaving] = useState(false)
 
   const loadAbonnementen = async () => {
+    if (!scopeGeladen) return
     setLoading(true)
     try {
       const params = new URLSearchParams()
       if (statusFilter !== 'alle') params.set('status', statusFilter)
+      if (scope !== 'alle') params.set('company', scope)
       if (search) params.set('search', search)
       const res = await fetch(`/api/abonnementen?${params}`)
       if (res.ok) setAbonnementen(await res.json())
@@ -91,7 +95,7 @@ export default function AbonnementenPage() {
     setLoading(false)
   }
 
-  useEffect(() => { loadAbonnementen() }, [statusFilter, search])
+  useEffect(() => { loadAbonnementen() }, [statusFilter, search, scope, scopeGeladen])
 
   const activeCount = abonnementen.filter(a => a.status === 'actief').length
   const monthlyTotal = abonnementen
@@ -159,8 +163,8 @@ export default function AbonnementenPage() {
   }
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-start justify-between gap-4">
+    <div className="p-4 sm:p-6 lg:p-8 flex flex-col gap-6 lg:h-[calc(100dvh-var(--dash-topbar))] lg:overflow-hidden">
+      <div className="flex items-start justify-between gap-4 shrink-0">
         <div>
           <h1 className="font-uxum text-headline text-brand-text-primary">Abonnementen</h1>
           <p className="text-body text-brand-text-secondary mt-1">
@@ -173,7 +177,7 @@ export default function AbonnementenPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
         <div className="card">
           <p className="text-caption text-brand-text-secondary mb-2">Actieve abonnementen</p>
           <p className="font-uxum text-stat text-brand-text-primary">{activeCount}</p>
@@ -190,7 +194,7 @@ export default function AbonnementenPage() {
 
       {/* Nieuw abonnement formulier */}
       {showForm && (
-        <div className="card space-y-4">
+        <div className="card space-y-4 shrink-0">
           <h2 className="font-semibold text-body">Nieuw abonnement toevoegen</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -250,7 +254,7 @@ export default function AbonnementenPage() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 shrink-0">
         <div className="flex gap-1 bg-brand-page-light rounded-brand-sm p-1">
           {statusTabs.map(tab => (
             <button
@@ -279,7 +283,7 @@ export default function AbonnementenPage() {
       </div>
 
       {/* Tabel */}
-      <div className="card p-0 overflow-hidden">
+      <div className="card p-0 overflow-auto lg:flex-1 lg:min-h-0">
         {loading ? (
           <div className="p-8 text-center text-brand-text-secondary">Laden...</div>
         ) : abonnementen.length === 0 ? (
@@ -291,8 +295,8 @@ export default function AbonnementenPage() {
             </p>
           </div>
         ) : (
-          <table className="w-full text-body">
-            <thead className="bg-brand-page-light border-b border-brand-page-medium">
+          <table className="w-full min-w-[640px] text-body">
+            <thead className="sticky top-0 z-10 bg-brand-page-light border-b border-brand-page-medium">
               <tr>
                 {order.map(key => {
                   const col = ABO_KOLOMMEN.find(c => c.key === key)

@@ -6,9 +6,9 @@ export const dynamic = 'force-dynamic'
 /**
  * GET /api/crm/relations?id=RECORD_UUID
  *
- * Leidt relaties af uit clickup_crm_records (de gesyncde ClickUp-data,
- * single source of truth). Relaties zitten in ClickUp als custom fields
- * van het type tasks of list_relationship; die bevatten gelinkte task-id's.
+ * Leidt relaties af uit clickup_crm_records (single source of truth). Relaties
+ * zitten als custom fields van het type tasks of list_relationship op het
+ * record; die bevatten gelinkte task-id's.
  *
  * We kijken twee kanten op:
  *  1. Vooruit: links in de custom fields van dit record zelf

@@ -2,16 +2,17 @@
 import { Fragment, useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  ArrowLeft, Send, CheckCircle2, XCircle, Trash2,
-  Clock, RefreshCw, Save, Plus, GripVertical, ChevronDown, CreditCard,
-  FileText, FolderOpen, FileCheck
+  ArrowLeft, CheckCircle2, Trash2,
+  Clock, RefreshCw, Save, Plus, GripVertical, ChevronDown,
+  FolderOpen, Pencil
 } from 'lucide-react'
 import { getCompany, COMPANIES } from '@/lib/companies'
-import { Factuur, LineItem, CompanyId, FactuurStatus } from '@/lib/types'
+import { Factuur, LineItem, CompanyId, FactuurStatus, VERSTUURDE_STATUSSEN } from '@/lib/types'
 import { FactuurStatusBadge } from '@/components/StatusBadge'
-import { getFacturenFolder, pickFacturenFolder } from '@/lib/pdf/folderStorage'
 import { dataChanged } from '@/lib/events'
 import { useMelding } from '@/components/MeldingProvider'
+import { verwijderFactuurMetBevestiging } from '@/components/facturen/verwijderFactuur'
+import OfferteKoppeling from '@/components/facturen/OfferteKoppeling'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -54,9 +55,6 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
   const [saving, setSaving] = useState(false)
   const [statusMenuOpen, setStatusMenuOpen] = useState(false)
   const statusMenuRef = useRef<HTMLDivElement>(null)
-  const [pdfSaving, setPdfSaving] = useState(false)
-  const [definitiefBezig, setDefinitiefBezig] = useState(false)
-  const [pdfFolderName, setPdfFolderName] = useState<string | null>(null)
 
   // Navigation helper: use onClose for drawer mode, router for page mode
   const goBack = () => {
@@ -126,61 +124,10 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
     }
   }, [fetchFactuur])
 
-  // Haal facturen mapnaam op voor weergave in knop
-  useEffect(() => {
-    getFacturenFolder().then(h => setPdfFolderName(h?.name ?? null)).catch(() => {})
-  }, [])
-
-  const handleSavePdf = async () => {
-    if (!factuur) return
-    setPdfSaving(true)
-    try {
-      // Regenereer via de gedeelde server-generator: zelfde stijl en map als de
-      // factuur die automatisch vanuit uren is aangemaakt (single source of truth).
-      const res = await fetch(`/api/facturen/${id}/regenerate-pdf`, { method: 'POST' })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        melding.fout(data.error || 'PDF opslaan mislukt')
-      }
-    } catch (err) {
-      console.error('PDF opslaan mislukt:', err)
-      melding.fout('PDF opslaan mislukt')
-    }
-    setPdfSaving(false)
-  }
-
-  const handlePickFolder = async () => {
-    const handle = await pickFacturenFolder()
-    if (handle) setPdfFolderName(handle.name)
-  }
-
-  // Concept omzetten naar een echte factuur: nieuw nummer uit de bedrijfsreeks,
-  // PDF naar de kwartaalmap en de uren worden afgeboekt.
-  const handleDefinitiefMaken = async () => {
-    if (!factuur) return
-    const bevestigd = await melding.bevestig({
-      titel: `${factuur.number} definitief maken?`,
-      tekst: 'De factuur krijgt een nieuw nummer uit de bedrijfsreeks, de PDF verhuist naar de kwartaalmap en de uren worden afgeboekt.',
-      bevestigLabel: 'Definitief maken',
-    })
-    if (!bevestigd) return
-
-    setDefinitiefBezig(true)
-    try {
-      const res = await fetch(`/api/facturen/${id}/definitief`, { method: 'POST' })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        melding.fout(data.error || 'Definitief maken mislukt')
-        return
-      }
-      router.refresh()
-      window.location.reload()
-    } catch (err) {
-      console.error('Definitief maken mislukt:', err)
-      melding.fout('Definitief maken mislukt')
-    } finally {
-      setDefinitiefBezig(false)
-    }
+  // Opent de map met de PDF in Finder, op de Mac waar de Dash draait.
+  const handleToonMap = async () => {
+    const res = await fetch(`/api/facturen/${id}/toon-map`, { method: 'POST' }).catch(() => null)
+    if (!res?.ok) melding.fout('Map openen mislukt')
   }
 
   // Sluit status dropdown bij klik buiten het menu
@@ -206,9 +153,6 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
 
   const company = getCompany(factuur.companyId)
   const isOverdue = factuur.status === 'te-laat' || ((factuur.status === 'verzonden' || factuur.status === 'herinnering-verzonden') && new Date(factuur.dueDate) < new Date())
-  // Een concept draagt een nummer uit de losse C-reeks en heeft dus nog geen
-  // echt factuurnummer geclaimd.
-  const isConcept = factuur.number.toUpperCase().startsWith('C-')
 
   const handleStatusChange = async (status: FactuurStatus) => {
     try {
@@ -229,62 +173,28 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
     }
   }
 
-  const handleMarkAsPaid = async () => {
-    await handleStatusChange('betaald')
-  }
-
   const handleDelete = async () => {
     if (!factuur) return
-    const wilVerwijderen = await melding.bevestig({
-      titel: `${factuur.number} verwijderen?`,
-      tekst: `${euro(factuur.total)} voor ${factuur.client.name}.\n\nEr gaat eerst een kopie naar de prullenbak en de gekoppelde uren komen weer vrij.`,
-      bevestigLabel: 'Verwijderen',
-      gevaarlijk: true,
-    })
-    if (!wilVerwijderen) return
-
-    const verwijder = async (bevestigdVerstuurd: boolean) =>
-      fetch(`/api/facturen/${id}${bevestigdVerstuurd ? '?bevestigdVerstuurd=true' : ''}`, { method: 'DELETE' })
-
-    try {
-      let res = await verwijder(false)
-
-      // Een verstuurde factuur is de deur uit en is een wettelijk document.
-      // Die gaat alleen weg na een tweede, expliciete bevestiging.
-      if (res.status === 409) {
-        const data = await res.json().catch(() => ({}))
-        if (!data?.needsBevestiging) {
-          melding.fout(data?.error ?? 'Verwijderen mislukt')
-          return
-        }
-        const tochWeg = await melding.bevestig({
-          titel: 'Deze factuur is al verstuurd',
-          tekst: `${factuur.number} is de deur uit naar ${factuur.client.name}. Een verstuurde factuur hoort in je administratie te blijven.\n\nWeet je zeker dat je hem toch wilt verwijderen?`,
-          bevestigLabel: 'Toch verwijderen',
-          gevaarlijk: true,
-        })
-        if (!tochWeg) return
-        res = await verwijder(true)
-      }
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        melding.fout(data?.error ?? 'Verwijderen mislukt')
-        return
-      }
-
-      const data = await res.json().catch(() => ({}))
-      if (data?.urenVrijgegeven > 0) {
-        melding.gelukt(`${factuur.number} staat in de prullenbak. ${data.urenVrijgegeven} uur-registratie${data.urenVrijgegeven === 1 ? '' : 's'} staat weer open.`)
-      }
+    if (await verwijderFactuurMetBevestiging(factuur, melding)) {
       dataChanged('facturen')
       goBack()
-    } catch {
-      melding.fout('Verwijderen mislukt')
     }
   }
 
   const handleSaveEdit = async () => {
+    if (!factuur) return
+    // Opslaan maakt ook de PDF opnieuw. Bij een factuur die al de deur uit is,
+    // verandert daarmee een document dat de klant al heeft: dat moet bewust.
+    if (VERSTUURDE_STATUSSEN.includes(factuur.status)) {
+      const doorgaan = await melding.bevestig({
+        titel: `${factuur.number} is al verstuurd`,
+        tekst: `Deze factuur staat op "${factuur.status}". Opslaan past de gegevens aan en overschrijft ook de PDF in je administratie.\n\nDe klant heeft de oude versie al. Weet je zeker dat je hem wilt wijzigen?`,
+        bevestigLabel: 'Toch opslaan',
+        gevaarlijk: true,
+      })
+      if (!doorgaan) return
+    }
+
     setSaving(true)
     const flatItems = sections.flatMap(s =>
       s.items.map(item => ({
@@ -293,6 +203,10 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         sectionTitle: s.title || undefined,
+        // Meesturen, anders verliest een factuur uit uren bij opslaan zijn
+        // werkdatums en de weergave als uurtarief.
+        datum: item.datum,
+        eenheid: item.eenheid,
       }))
     )
     const subtotal = flatItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0)
@@ -335,6 +249,20 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
       })
       if (!patchRes.ok) throw new Error('Opslaan mislukt')
       dataChanged('facturen')
+
+      // De server maakt na het opslaan meteen de PDF opnieuw. Vertel wat daar
+      // uitkwam, want een PDF die achterloopt is precies wat we willen voorkomen.
+      const opgeslagen = await patchRes.json().catch(() => null)
+      const pdf = opgeslagen?.pdf as { ok: boolean; fout?: string; indelingTeruggezet?: boolean; oudePdfNaarPrullenbak?: string | null } | undefined
+      if (pdf?.ok) {
+        const extra = [
+          pdf.indelingTeruggezet ? 'Het aantal regels is veranderd, dus de indeling staat weer op de standaard.' : '',
+          pdf.oudePdfNaarPrullenbak ? 'De oude PDF op de vorige plek staat in de prullenbak.' : '',
+        ].filter(Boolean).join(' ')
+        melding.gelukt(`Opgeslagen en PDF bijgewerkt.${extra ? ` ${extra}` : ''}`)
+      } else if (pdf) {
+        melding.fout(`Opgeslagen, maar de PDF is niet bijgewerkt: ${pdf.fout ?? 'onbekende fout'}`)
+      }
 
       // Haal bijgewerkte factuur op
       const freshRes = await fetch(`/api/facturen/${id}`)
@@ -450,61 +378,35 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
                 </div>
               )}
             </div>
+            <button
+              onClick={handleToonMap}
+              className="text-brand-text-secondary/60 hover:text-brand-text-secondary transition-colors"
+              title="Open de map met de PDF"
+              aria-label="Open de map met de PDF"
+            >
+              <FolderOpen size={16} />
+            </button>
           </div>
           <p className="text-caption text-brand-text-secondary mt-0.5">
             {factuur.client.name} · <span style={{ color: company.color }}>{company.name}</span>
           </p>
         </div>
         <div className="flex gap-2 flex-wrap justify-start sm:justify-end">
-          {/* PDF opslaan */}
-          <button
-            onClick={handlePickFolder}
-            className="btn-secondary px-2.5"
-            title={pdfFolderName ? `Facturen map: ${pdfFolderName}` : 'Selecteer facturen map'}
-          >
-            <FolderOpen size={14} />
-            {pdfFolderName && (
-              <span className="text-caption max-w-[100px] truncate">{pdfFolderName}</span>
-            )}
-          </button>
-          <button
-            onClick={handleSavePdf}
-            disabled={pdfSaving}
-            className="btn-secondary"
-            title="Factuur opslaan als PDF"
-          >
-            <FileText size={14} />
-            {pdfSaving ? 'Opslaan...' : 'PDF opslaan'}
-          </button>
-          <button
-            onClick={() => window.open(`/api/facturen/${factuur.id}/editor`, '_blank')}
-            className="btn-secondary"
-            title="Open de sleepbare editor in een nieuw tabblad"
-          >
-            <GripVertical size={14} />
-            Editor openen
-          </button>
           <button onClick={() => setEditing(!editing)} className="btn-secondary">
+            {!editing && <Pencil size={14} />}
             {editing ? 'Annuleer' : 'Bewerken'}
           </button>
-          {isConcept && (
-            <button onClick={handleDefinitiefMaken} disabled={definitiefBezig} className="btn-primary">
-              <FileCheck size={14} /> {definitiefBezig ? 'Bezig...' : 'Definitief maken'}
-            </button>
-          )}
-          {factuur.status === 'concept' && !isConcept && (
-            <button onClick={() => handleStatusChange('verzonden')} className="btn-primary">
-              <Send size={14} /> Markeer als verzonden
-            </button>
-          )}
-          {(factuur.status === 'verzonden' || factuur.status === 'herinnering-verzonden' || factuur.status === 'te-laat') && (
-            <button onClick={handleMarkAsPaid} className="btn-primary">
-              <CreditCard size={14} /> Markeer als betaald
-            </button>
-          )}
-          {(factuur.status === 'verzonden' || factuur.status === 'te-laat') && (
-            <button onClick={() => handleStatusChange('herinnering-verzonden')} className="btn-secondary text-brand-status-orange">
-              <Send size={14} /> Herinnering verzonden
+          {/* De inhoud pas je aan met Bewerken, hier verschuif je alleen blokken op
+              de PDF. Tijdens het bewerken verborgen: de editor leest uit Supabase
+              en zou de nog niet opgeslagen wijzigingen niet zien. */}
+          {!editing && (
+            <button
+              onClick={() => window.open(`/api/facturen/${factuur.id}/editor`, '_blank')}
+              className="btn-secondary"
+              title="Blokken op de PDF verschuiven. De inhoud pas je aan met Bewerken, de PDF loopt daar vanzelf mee."
+            >
+              <GripVertical size={14} />
+              Indeling aanpassen
             </button>
           )}
           <button onClick={handleDelete} className="btn-secondary text-brand-status-red hover:bg-brand-pink">
@@ -745,73 +647,6 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
       ) : (
         /* -- View mode ---------------------------------------------------- */
         <div className="space-y-5">
-          {/* Status management card */}
-          <div className="card">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div>
-                <h2 className="font-semibold text-body mb-1">Status beheren</h2>
-                <p className="text-caption text-brand-text-secondary">
-                  Pas de status van deze factuur direct hier aan.
-                </p>
-              </div>
-              <FactuurStatusBadge status={isOverdue && factuur.status === 'verzonden' ? 'te-laat' : factuur.status} />
-            </div>
-            {isConcept && (
-              <p className="text-caption text-brand-text-secondary mt-3 p-3 rounded-brand bg-brand-page-light border border-brand-card-border">
-                Dit is een concept met een nummer uit de losse C-reeks. Gebruik <strong>Definitief maken</strong> om er
-                een echte factuur van te maken: dan krijgt hij pas een factuurnummer, verhuist de PDF naar de
-                kwartaalmap en worden de uren afgeboekt. Hem hier zomaar op verzonden zetten laat het C-nummer staan.
-              </p>
-            )}
-            <div className="flex gap-2 flex-wrap mt-4">
-              {factuur.status === 'concept' && !isConcept && (
-                <button onClick={() => handleStatusChange('verzonden')} className="btn-primary">
-                  <Send size={14} /> Markeer als verzonden
-                </button>
-              )}
-              {isConcept && (
-                <button onClick={handleDefinitiefMaken} disabled={definitiefBezig} className="btn-primary">
-                  <FileCheck size={14} /> {definitiefBezig ? 'Bezig...' : 'Definitief maken'}
-                </button>
-              )}
-              {(factuur.status === 'verzonden' || factuur.status === 'herinnering-verzonden' || factuur.status === 'te-laat') && (
-                <button onClick={handleMarkAsPaid} className="btn-primary">
-                  <CreditCard size={14} /> Markeer als betaald
-                </button>
-              )}
-              {factuur.status !== 'concept' && !isConcept && (
-                <button onClick={() => handleStatusChange('concept')} className="btn-secondary">
-                  Concept
-                </button>
-              )}
-              {factuur.status !== 'verzonden' && !isConcept && (
-                <button onClick={() => handleStatusChange('verzonden')} className="btn-secondary">
-                  Verzonden
-                </button>
-              )}
-              {factuur.status !== 'herinnering-verzonden' && !isConcept && (
-                <button onClick={() => handleStatusChange('herinnering-verzonden')} className="btn-secondary text-brand-status-orange">
-                  <Send size={14} /> Herinnering verzonden
-                </button>
-              )}
-              {factuur.status !== 'betaald' && !isConcept && (
-                <button onClick={() => handleStatusChange('betaald')} className="btn-secondary text-brand-lime-accent">
-                  <CheckCircle2 size={14} /> Betaald
-                </button>
-              )}
-              {factuur.status !== 'te-laat' && !isConcept && (
-                <button onClick={() => handleStatusChange('te-laat')} className="btn-secondary text-brand-pink-accent">
-                  <XCircle size={14} /> Te laat
-                </button>
-              )}
-              {factuur.status !== 'geannuleerd' && (
-                <button onClick={() => handleStatusChange('geannuleerd')} className="btn-secondary">
-                  Geannuleerd
-                </button>
-              )}
-            </div>
-          </div>
-
           {/* Overdue warning */}
           {isOverdue && (
             <div className="card bg-brand-pink/30 border-brand-pink-accent/30">
@@ -846,19 +681,12 @@ export default function FactuurDetailContent({ id, onClose, isDrawer }: FactuurD
                       {new Date(factuur.dueDate).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
                     </dd>
                   </div>
-                  {factuur.offerteId && (
-                    <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5 sm:gap-4">
-                      <dt className="text-brand-text-secondary shrink-0">Gekoppelde offerte</dt>
-                      <dd>
-                        <button
-                          onClick={() => router.push(`/offertes/${factuur.offerteId}`)}
-                          className="text-brand-purple font-semibold underline underline-offset-2"
-                        >
-                          Bekijk offerte
-                        </button>
-                      </dd>
-                    </div>
-                  )}
+                  <OfferteKoppeling
+                    factuurId={factuur.id}
+                    offerteId={factuur.offerteId}
+                    klantnaam={factuur.client.name}
+                    onGewijzigd={nieuw => setFactuur(f => f ? { ...f, offerteId: nieuw ?? undefined } : f)}
+                  />
                 </dl>
               </div>
               <div className="min-w-0">

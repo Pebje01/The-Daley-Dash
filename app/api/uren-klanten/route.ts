@@ -5,8 +5,12 @@ import { deriveKlantnummerLetters } from '@/lib/klantnummer'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
-  const klanten = await getUurKlanten()
+export async function GET(request: NextRequest) {
+  const companyId = request.nextUrl.searchParams.get('company') ?? 'alle'
+  // ?archief=1 geeft ook de gearchiveerde klanten terug. Standaard niet: die
+  // horen niet meer tussen de tabs van de urenregistratie.
+  const metGearchiveerd = request.nextUrl.searchParams.get('archief') === '1'
+  const klanten = await getUurKlanten(companyId as any, { metGearchiveerd })
   return NextResponse.json(klanten)
 }
 

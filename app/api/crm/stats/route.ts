@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -26,13 +26,28 @@ function prijsVan(customFields: any[]): number {
   return 0
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const supabase = createClient()
 
-  const { data, error } = await supabase
+  // Alleen leads zijn bedrijfsgericht. Opdrachten en facturen blijven gedeeld,
+  // dus die tellen altijd volledig mee.
+  const bedrijf = (request.nextUrl.searchParams.get('company') || '').trim()
+  const company = bedrijf && bedrijf !== 'alle' ? bedrijf : null
+
+  // Zonder de kolom company_id (migratie 20260909_crm_bedrijf.sql nog niet
+  // gedraaid) valt de teller terug op alle leads samen.
+  let metBedrijf = true
+  let { data, error } = await supabase
     .from('clickup_crm_records')
-    .select('entity_type, status, custom_fields')
+    .select('entity_type, status, custom_fields, company_id')
     .limit(2000)
+  if (error && (error.code === '42703' || /company_id/.test(error.message || ''))) {
+    metBedrijf = false
+    ;({ data, error } = await supabase
+      .from('clickup_crm_records')
+      .select('entity_type, status, custom_fields')
+      .limit(2000) as any)
+  }
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -43,11 +58,12 @@ export async function GET() {
   let verloren = 0
   let openOpdrachten = 0
   let openOpdrachtenWaarde = 0
-  let openClickUpFacturen = 0
+  let openCrmFacturen = 0
 
-  for (const r of data || []) {
+  for (const r of (data || []) as any[]) {
     const status = (r.status || '').toLowerCase()
     if (r.entity_type === 'lead') {
+      if (metBedrijf && company && r.company_id !== company) continue
       if (OPEN_LEAD_STATUSES.has(status)) {
         openLeads++
         openLeadsWaarde += prijsVan(r.custom_fields)
@@ -60,7 +76,7 @@ export async function GET() {
         openOpdrachtenWaarde += prijsVan(r.custom_fields)
       }
     } else if (r.entity_type === 'clickup_invoice') {
-      if (status === 'factuur open') openClickUpFacturen++
+      if (status === 'factuur open') openCrmFacturen++
     }
   }
 
@@ -76,6 +92,6 @@ export async function GET() {
     conversie,
     openOpdrachten,
     openOpdrachtenWaarde,
-    openClickUpFacturen,
+    openCrmFacturen,
   })
 }

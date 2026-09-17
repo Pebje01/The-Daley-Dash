@@ -264,7 +264,7 @@ export default function OffertesPage() {
 function OffertesContent() {
   const melding = useMelding()
   const searchParams = useSearchParams()
-  const { activeCompany } = useActiveCompany()
+  const { activeCompany, scope, scopeGeladen } = useActiveCompany()
   const { openDrawer } = useDrawer()
   const { order, move } = useColumnOrder('offertes', OFFERTE_KOLOMMEN.map(c => c.key))
   const dnd = useColumnDnD(move)
@@ -276,6 +276,9 @@ function OffertesContent() {
   const [companyFilter, setCompanyFilter] = useState<CompanyId | 'alle'>(
     (searchParams.get('bedrijf') as CompanyId) || 'alle'
   )
+  // Buiten The Daley Edit kijk je alleen naar het eigen bedrijf, de tabs
+  // hieronder zijn dan niet zichtbaar.
+  const effectiefBedrijf = scope === 'alle' ? companyFilter : scope
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; number: string; clientName: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [folderName, setFolderName] = useState<string | null>(null)
@@ -331,11 +334,13 @@ function OffertesContent() {
   }, [])
 
   const fetchOffertes = useCallback(async () => {
+    // Wachten tot het opgeslagen bedrijf bekend is, anders haal je eerst alles op
+    if (!scopeGeladen) return
     setLoading(true)
     try {
       const params = new URLSearchParams()
       if (statusFilter !== 'alle') params.set('status', statusFilter)
-      if (companyFilter !== 'alle') params.set('company', companyFilter)
+      if (effectiefBedrijf !== 'alle') params.set('company', effectiefBedrijf)
       if (search) params.set('search', search)
 
       const res = await fetch(`/api/offertes?${params}`)
@@ -344,7 +349,7 @@ function OffertesContent() {
       console.error('Failed to fetch offertes:', e)
     }
     setLoading(false)
-  }, [statusFilter, companyFilter, search])
+  }, [statusFilter, effectiefBedrijf, search, scopeGeladen])
 
   useEffect(() => { fetchOffertes() }, [fetchOffertes])
 
@@ -480,20 +485,20 @@ function OffertesContent() {
 
   const totalOpen = offertes.filter(o => o.status === 'verstuurd').reduce((s, o) => s + (showInclBtw ? o.total : o.subtotal), 0)
 
-  const newOfferteHref = companyFilter !== 'alle'
-    ? `/offertes/nieuw?bedrijf=${companyFilter}`
+  const newOfferteHref = effectiefBedrijf !== 'alle'
+    ? `/offertes/nieuw?bedrijf=${effectiefBedrijf}`
     : `/offertes/nieuw?bedrijf=${activeCompany}`
 
   return (
-    <div className="p-8 flex flex-col min-h-screen">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-6 lg:p-8 flex flex-col min-h-screen lg:min-h-0 lg:h-[calc(100dvh-var(--dash-topbar))] lg:overflow-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 shrink-0">
         <div>
-          <h1 className="font-uxum text-sidebar-t text-brand-text-primary">Offertes</h1>
-          <p className="text-body text-brand-text-secondary mt-0.5">
+          <h1 className="font-uxum text-headline text-brand-text-primary">Offertes</h1>
+          <p className="text-body text-brand-text-secondary mt-1">
             {offertes.length} offertes · <span className="text-brand-blue-accent font-medium">{euro(totalOpen)} uitstaand</span>
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={async () => {
               const handle = await pickOfferteFolder()
@@ -512,8 +517,9 @@ function OffertesContent() {
         </div>
       </div>
 
-      {/* Company tabs */}
-      <div className="flex gap-2 mb-4">
+      {/* Company tabs, alleen onder The Daley Edit: daar zie je alle bedrijven */}
+      {scope === 'alle' && (
+      <div className="flex flex-wrap gap-2 mb-4 shrink-0">
         <button
           onClick={() => setCompanyFilter('alle')}
           className={`px-3 py-1.5 rounded-brand-btn text-caption font-medium transition-colors border ${
@@ -540,10 +546,11 @@ function OffertesContent() {
           </button>
         ))}
       </div>
+      )}
 
       {/* Search + status filters */}
-      <div className="flex gap-3 mb-5">
-        <div className="relative flex-1 max-w-xs">
+      <div className="flex flex-col sm:flex-row gap-3 mb-5 shrink-0">
+        <div className="relative flex-1 sm:max-w-xs">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-text-secondary" />
           <input
             className="input pl-8"
@@ -553,12 +560,12 @@ function OffertesContent() {
             onKeyDown={e => e.key === 'Enter' && fetchOffertes()}
           />
         </div>
-        <div className="flex gap-1 bg-brand-card-bg border-brand border-brand-card-border rounded-brand-btn p-1">
+        <div className="flex gap-1 bg-brand-card-bg border-brand border-brand-card-border rounded-brand-btn p-1 overflow-x-auto max-w-full">
           {STATUS_TABS.map(s => (
             <button
               key={s.key}
               onClick={() => setStatusFilter(s.key)}
-              className={`px-3 py-1 rounded-brand-sm text-pill font-medium transition-colors ${
+              className={`px-3 py-1 rounded-brand-sm text-pill font-medium transition-colors whitespace-nowrap shrink-0 ${
                 statusFilter === s.key
                   ? 'bg-brand-purple text-white'
                   : 'text-brand-text-secondary hover:text-brand-text-primary'
@@ -609,9 +616,9 @@ function OffertesContent() {
       )}
 
       {/* Table */}
-      <div className="card p-0 overflow-hidden">
-        <table className="w-full text-body">
-          <thead className="bg-brand-page-light border-b border-brand-card-border/30">
+      <div className="card p-0 overflow-auto lg:flex-1 lg:min-h-0">
+        <table className="w-full min-w-[760px] text-body">
+          <thead className="sticky top-0 z-10 bg-brand-page-light border-b border-brand-card-border/30">
             <tr>
               {(() => {
                 const headerInner: Record<string, ReactNode> = {
@@ -717,7 +724,7 @@ function OffertesContent() {
               const isExpired = o.status === 'verstuurd' && new Date(o.validUntil) < new Date()
               const cell: Record<string, ReactNode> = {
                 number: (
-                  <td key="number" className="px-5 py-3.5" onClick={e => e.stopPropagation()}>
+                  <td key="number" className="px-5 py-3.5 whitespace-nowrap" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => openDrawer({ type: 'offerte-detail', id: o.id })}
@@ -814,7 +821,10 @@ function OffertesContent() {
         </table>
       </div>
 
-      <LocaleBestandenSection type="offerte" />
+      {/* Onder de tabel: standaard ingeklapt, uitgeklapt scrolt hij in zijn eigen vak zodat de tabel niet verdwijnt */}
+      <div className="shrink-0 lg:max-h-[40vh] lg:overflow-y-auto">
+        <LocaleBestandenSection type="offerte" />
+      </div>
     </div>
   )
 }

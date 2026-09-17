@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Plus, Trash2, UserPlus, UserX, Eraser, X, Check, RefreshCw, FileText, FileEdit, ChevronDown, RotateCcw, GripVertical, Search, ExternalLink } from 'lucide-react'
+import { Plus, Trash2, Copy, UserPlus, UserX, Eraser, X, Check, RefreshCw, FileText, FileEdit, ChevronDown, RotateCcw, GripVertical, Search, ExternalLink, Archive, ArchiveRestore } from 'lucide-react'
 import Link from 'next/link'
 import { Uur, UurKlant, UurProject, CompanyId } from '@/lib/types'
 import type { ArchiefFactuur } from '@/app/api/uren-archief/route'
 import { COMPANIES } from '@/lib/companies'
 import { deriveKlantnummerLetters } from '@/lib/klantnummer'
+import { useActiveCompany } from '@/components/CompanyContext'
 
 // Alleen bedrijven die de factuur-van-uren route ondersteunt
 const FACTUUR_BEDRIJVEN = COMPANIES.filter(c => c.id === 'tde' || c.id === 'daleyphotography' || c.id === 'wgb')
@@ -52,12 +53,14 @@ type FactuurRegel =
   | { id: string; type: 'handmatig'; werkzaamheden: string; omschrijving?: string; aantal: number; prijs: number; bedrag: number; projectId?: string }
 
 export default function UrenPage() {
+  const { scope, scopeGeladen } = useActiveCompany()
   const [uren, setUren] = useState<Uur[]>([])
   const [klanten, setKlanten] = useState<UurKlant[]>([])
   const [loading, setLoading] = useState(true)
   const [activeKlantId, setActiveKlantId] = useState<string | null>(null)
   const [newRow, setNewRow] = useState<NewRow>(emptyRow())
   const [saving, setSaving] = useState(false)
+  const [dupliceerId, setDupliceerId] = useState<string | null>(null)
 
   // Projecten (vaste tarieven)
   const [projecten, setProjecten] = useState<UurProject[]>([])
@@ -86,9 +89,16 @@ export default function UrenPage() {
   const [factuurRegels, setFactuurRegels] = useState<FactuurRegel[]>([])
   const [dragId, setDragId] = useState<string | null>(null)
   const [factuurNummerPreview, setFactuurNummerPreview] = useState<string | null>(null)
-  const [conceptNummerPreview, setConceptNummerPreview] = useState<string | null>(null)
   /** Onthoudt of de laatste klik Concept was, zodat de klantgegevens-stap dat aanhoudt. */
   const [conceptModus, setConceptModus] = useState(false)
+  /**
+   * Onthoudt of de laatste klik "Open in editor" was. Dan wordt de factuur wel
+   * vastgelegd, maar de PDF pas gemaakt zodra je in de editor op "Sla op als PDF"
+   * klikt. Zo kun je eerst nog blokken van boven naar beneden schuiven.
+   */
+  const [editorModus, setEditorModus] = useState(false)
+  /** Editor-URL van de zojuist aangemaakte factuur, als terugvalknop wanneer het tabblad geblokkeerd werd. */
+  const [editorUrl, setEditorUrl] = useState<string | null>(null)
   const [newHandmatigeRegel, setNewHandmatigeRegel] = useState({ werkzaamheden: '', omschrijving: '', aantal: '', prijs: '' })
 
   // Archief
@@ -111,6 +121,10 @@ export default function UrenPage() {
   const [newKlantCrmId, setNewKlantCrmId] = useState<string | undefined>(undefined)
   const [savingKlant, setSavingKlant] = useState(false)
   const [deletingKlant, setDeletingKlant] = useState(false)
+  const [archiverenBezig, setArchiverenBezig] = useState(false)
+  // Het archief staat dichtgeklapt: je wil de tabs schoon houden, maar wel
+  // kunnen zien dat er iets geparkeerd staat.
+  const [toonArchief, setToonArchief] = useState(false)
   const [clearingPage, setClearingPage] = useState(false)
 
   // Bedrijfskeuze voor factuur-van-uren
@@ -134,19 +148,27 @@ export default function UrenPage() {
   }, [])
 
   const load = useCallback(async () => {
+    if (!scopeGeladen) return
     setLoading(true)
     try {
+      // Het CRM is één pijplijn over alle bedrijven heen en blijft ongefilterd.
+      const bedrijf = scope === 'alle' ? '' : `company=${scope}`
       const [urenRes, klantRes, projectenRes, crmRes] = await Promise.all([
-        fetch('/api/uren'),
-        fetch('/api/uren-klanten'),
-        fetch('/api/uren-projecten?status=actief'),
+        fetch(`/api/uren?${bedrijf}`),
+        // Met archief, zodat de knop "Archief" meteen een aantal kan tonen.
+        fetch(`/api/uren-klanten?archief=1&${bedrijf}`),
+        fetch(`/api/uren-projecten?status=actief&${bedrijf}`),
         fetch('/api/crm/bedrijven?lite=true'),
       ])
       if (urenRes.ok) setUren(await urenRes.json())
       if (klantRes.ok) {
         const kl: UurKlant[] = await klantRes.json()
         setKlanten(kl)
-        setActiveKlantId(prev => prev ?? (kl[0]?.id ?? null))
+        // Bij het wisselen van bedrijf staat de vorige klant er niet meer bij,
+        // dan pakken we de eerste actieve uit de nieuwe lijst. Een gearchiveerde
+        // klant openen doe je zelf, die rolt er nooit vanzelf uit.
+        const actief = kl.filter(k => !k.gearchiveerdOp)
+        setActiveKlantId(prev => (prev && kl.some(k => k.id === prev) ? prev : (actief[0]?.id ?? null)))
       }
       if (projectenRes.ok) setProjecten(await projectenRes.json())
       if (crmRes.ok) setCrmBedrijven(await crmRes.json())
@@ -154,11 +176,13 @@ export default function UrenPage() {
       console.error('uren/load fout:', e)
     }
     setLoading(false)
-  }, [])
+  }, [scope, scopeGeladen])
 
   useEffect(() => { load() }, [load])
 
   const activeKlant = klanten.find(k => k.id === activeKlantId) ?? null
+  const actieveKlanten = klanten.filter(k => !k.gearchiveerdOp)
+  const gearchiveerdeKlanten = klanten.filter(k => k.gearchiveerdOp)
 
   useEffect(() => {
     if (activeKlant) {
@@ -245,13 +269,11 @@ export default function UrenPage() {
     if (!showFactuurModal) return
     let geannuleerd = false
     setFactuurNummerPreview(null)
-    setConceptNummerPreview(null)
     fetch(`/api/factuur-van-uren?date=${gekozenFactuurdatum}&company=${factuurCompanyId}`)
       .then(r => (r.ok ? r.json() : null))
       .then(d => {
         if (geannuleerd || !d) return
         if (d.factuurnummer) setFactuurNummerPreview(d.factuurnummer)
-        if (d.conceptnummer) setConceptNummerPreview(d.conceptnummer)
       })
       .catch(() => {})
     return () => { geannuleerd = true }
@@ -327,6 +349,38 @@ export default function UrenPage() {
       console.error('deleteUur fout, refetching:', e)
       load()
     }
+  }
+
+  // Dupliceer een urenregel: zelfde datum, uren, tarief en omschrijving, als nieuwe regel.
+  const handleDuplicate = async (id: string) => {
+    const bron = uren.find(u => u.id === id)
+    if (!bron) return
+    setDupliceerId(id)
+    try {
+      const res = await fetch('/api/uren', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyId: bron.companyId,
+          datum: bron.datum,
+          klant: bron.klant,
+          project: bron.project,
+          uren: bron.uren,
+          uurtarief: bron.uurtarief,
+          omschrijving: bron.omschrijving,
+        }),
+      })
+      if (res.ok) {
+        const created = await res.json()
+        setUren(prev => [created, ...prev])
+      } else {
+        alert('Dupliceren is niet gelukt.')
+      }
+    } catch (e) {
+      console.error('dupliceerUur fout:', e)
+      alert('Dupliceren is niet gelukt.')
+    }
+    setDupliceerId(null)
   }
 
   const handleVastTariefBlur = async () => {
@@ -427,6 +481,41 @@ export default function UrenPage() {
     setClearingPage(false)
   }
 
+  /**
+   * Archiveren en terughalen. Bewust iets anders dan verwijderen: hier blijft
+   * alles staan, de klant valt alleen uit de rij tabs. Geen bevestiging nodig,
+   * want de knop ernaast draait het zo weer terug.
+   */
+  const handleArchiveerKlant = async (klant: UurKlant, archiveren: boolean) => {
+    setArchiverenBezig(true)
+    try {
+      const res = await fetch(`/api/uren-klanten/${klant.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gearchiveerd: archiveren }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Onbekende fout' }))
+        alert(err.error || (archiveren ? 'Archiveren mislukt' : 'Terughalen mislukt'))
+        return
+      }
+      const bijgewerkt: UurKlant = await res.json()
+      setKlanten(prev => prev.map(k => (k.id === klant.id ? bijgewerkt : k)))
+      if (archiveren) {
+        // Op een gearchiveerde klant blijven staan is verwarrend: je kunt er
+        // wel uren bij schrijven en dat is precies niet de bedoeling.
+        setActiveKlantId(klanten.find(k => k.id !== klant.id && !k.gearchiveerdOp)?.id ?? null)
+      } else {
+        setActiveKlantId(klant.id)
+      }
+    } catch (e) {
+      console.error('archiveerKlant fout:', e)
+      alert('Fout bij archiveren, zie console.')
+    } finally {
+      setArchiverenBezig(false)
+    }
+  }
+
   // Verwijder de actieve klant volledig, inclusief eventuele resterende regels.
   const handleDeleteKlant = async () => {
     if (!activeKlant) return
@@ -449,7 +538,7 @@ export default function UrenPage() {
       setProjecten(prev => prev.filter(p => p.klant !== teVerwijderen.naam))
       setKlanten(prev => {
         const rest = prev.filter(k => k.id !== teVerwijderen.id)
-        setActiveKlantId(rest[0]?.id ?? null)
+        setActiveKlantId(rest.find(k => !k.gearchiveerdOp)?.id ?? null)
         return rest
       })
       setSelectedIds(new Set())
@@ -565,10 +654,57 @@ export default function UrenPage() {
     }
   }
 
-  const roepFactuurAan = async (alsConcept = false) => {
+  // Dupliceer een projectregel. De kopie start altijd als 'actief': je dupliceert
+  // een project om er opnieuw werk op te schrijven, niet om de oude status te erven.
+  const handleProjectDuplicate = async (id: string) => {
+    const bron = projecten.find(p => p.id === id)
+    if (!bron) return
+    setDupliceerId(id)
+    try {
+      const res = await fetch('/api/uren-projecten', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyId: bron.companyId,
+          klant: bron.klant,
+          naam: bron.naam,
+          aantal: bron.aantal,
+          prijs: bron.prijs,
+          bedrag: bron.bedrag,
+          datum: bron.datum,
+          omschrijving: bron.omschrijving,
+          status: 'actief',
+        }),
+      })
+      if (res.ok) {
+        const created = await res.json()
+        setProjecten(prev => [created, ...prev])
+      } else {
+        alert('Dupliceren is niet gelukt.')
+      }
+    } catch (e) {
+      console.error('dupliceerProject fout:', e)
+      alert('Dupliceren is niet gelukt.')
+    }
+    setDupliceerId(null)
+  }
+
+  const roepFactuurAan = async (alsConcept = false, inEditor = false) => {
     if (!activeKlant || !factuurRegels.length) return
     setConceptModus(alsConcept)
+    setEditorModus(inEditor)
     setGeneratingFactuur(true)
+    // Het editor-tabblad meteen bij de klik openen (binnen de gebruikersactie),
+    // anders blokkeert de browser een window.open() die pas na de fetch komt.
+    // Blijft leeg tot de factuur er is; bij een fout gaat hij weer dicht.
+    let editorTab: Window | null = null
+    if (inEditor) {
+      editorTab = window.open('', '_blank')
+      if (editorTab) {
+        editorTab.document.title = 'Factuur wordt aangemaakt...'
+        editorTab.document.body.innerHTML = '<p style="font-family:sans-serif;padding:24px;color:#555">Factuur wordt aangemaakt, de editor opent zo...</p>'
+      }
+    }
     const gebruikteProjectIds = factuurRegels.flatMap(r => r.type === 'handmatig' && r.projectId ? [r.projectId] : [])
     const urenUitRegels = factuurRegels
       .flatMap(r => r.type === 'uur' ? [r.uur] : [])
@@ -589,17 +725,20 @@ export default function UrenPage() {
           betaallink: factuurBetaallink.trim() || null,
           handmatigeRegels: handmatigeUitRegels,
           concept: alsConcept,
+          inEditor,
         }),
       })
 
       const data = await res.json()
 
       if (!res.ok) {
+        editorTab?.close()
         alert(`Fout: ${data.error}`)
         return
       }
 
       if (data.needsKlantDetails) {
+        editorTab?.close()
         // Vul form voor met bekende data
         setKlantDetailsForm({
           contactpersoon: data.klant?.contactpersoon ?? '',
@@ -638,7 +777,15 @@ export default function UrenPage() {
       }
       setFactuurNummer(data.factuurnummer)
       loadArchiefFacturen(activeKlant.naam)
+
+      // Open in editor: de PDF bestaat nog niet, die maak je in de editor zelf.
+      if (inEditor && data.editorUrl) {
+        setEditorUrl(data.editorUrl)
+        if (editorTab) editorTab.location.href = data.editorUrl
+        else window.open(data.editorUrl, '_blank')
+      }
     } catch (err: any) {
+      editorTab?.close()
       alert(`Fout: ${err.message}`)
     } finally {
       setGeneratingFactuur(false)
@@ -662,8 +809,8 @@ export default function UrenPage() {
       }
       setNeedsKlantDetails(false)
       // Genereer factuur nu klantgegevens compleet zijn, in dezelfde modus als
-      // waarop geklikt was (factuur of concept)
-      await roepFactuurAan(conceptModus)
+      // waarop geklikt was (factuur, concept of open in editor)
+      await roepFactuurAan(conceptModus, editorModus)
     } catch (err: any) {
       alert(`Fout bij opslaan: ${err.message}`)
     }
@@ -674,6 +821,8 @@ export default function UrenPage() {
     setFactuurNummer(null)
     setNeedsKlantDetails(false)
     setConceptModus(false)
+    setEditorModus(false)
+    setEditorUrl(null)
     setFactuurDatumKeuze('vandaag')
     setFactuurCustomDatum(today())
     setFactuurBtwPercentage(21)
@@ -718,6 +867,7 @@ export default function UrenPage() {
     setShowFactuurModal(false)
     setFactuurNummer(null)
     setNeedsKlantDetails(false)
+    setEditorUrl(null)
   }
 
   // Versleep een rij in de factuur-samenvatting naar een nieuwe positie
@@ -805,10 +955,10 @@ export default function UrenPage() {
   const cellRight = cellBase + ' text-right'
 
   return (
-    <div className="p-8 space-y-5">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
+    <div className="p-4 sm:p-6 lg:p-8 space-y-5">
+      {/* Header: op smal scherm vallen de knoppen onder de titel */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="font-uxum text-headline text-brand-text-primary">Uren</h1>
           <p className="text-body text-brand-text-secondary mt-1">
             Kies een klant en vul direct je uren in.
@@ -834,9 +984,9 @@ export default function UrenPage() {
         </div>
       </div>
 
-      {/* Klant selector */}
+      {/* Klant selector: alleen wat actief is, plus een lade met het archief. */}
       <div className="flex flex-wrap gap-2">
-        {klanten.map(k => {
+        {actieveKlanten.map(k => {
           const isActive = k.id === activeKlantId
           const bedrijf = FACTUUR_BEDRIJVEN.find(c => c.id === k.companyId)
           return (
@@ -866,7 +1016,53 @@ export default function UrenPage() {
         >
           <UserPlus size={14} /> Nieuwe klant
         </button>
+        {gearchiveerdeKlanten.length > 0 && (
+          <button
+            onClick={() => setToonArchief(v => !v)}
+            title={toonArchief ? 'Archief verbergen' : 'Gearchiveerde klanten tonen'}
+            className={`px-3 py-2 rounded-brand-sm text-body transition-all flex items-center gap-2 border ${
+              toonArchief
+                ? 'bg-brand-page-light border-brand-text-secondary/40 text-brand-text-primary'
+                : 'bg-transparent border-transparent text-brand-text-secondary hover:text-brand-text-primary'
+            }`}
+          >
+            <Archive size={14} /> {gearchiveerdeKlanten.length}
+          </button>
+        )}
       </div>
+
+      {/* Het archief: dezelfde tabs, maar gedempt en met een knop om terug te
+          halen. De uren staan er nog precies zo bij als toen je hem parkeerde. */}
+      {toonArchief && gearchiveerdeKlanten.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 -mt-2">
+          <span className="text-caption text-brand-text-secondary uppercase tracking-wide">Archief</span>
+          {gearchiveerdeKlanten.map(k => {
+            const isActive = k.id === activeKlantId
+            return (
+              <span
+                key={k.id}
+                className={`pl-3 pr-1 py-1 rounded-brand-sm text-body border border-dashed flex items-center gap-1 transition-all ${
+                  isActive
+                    ? 'border-brand-text-secondary text-brand-text-primary bg-brand-page-light'
+                    : 'border-brand-card-border text-brand-text-secondary/70'
+                }`}
+              >
+                <button onClick={() => setActiveKlantId(k.id)} className="hover:text-brand-text-primary transition-colors">
+                  {k.naam}
+                </button>
+                <button
+                  onClick={() => handleArchiveerKlant(k, false)}
+                  disabled={archiverenBezig}
+                  title="Terughalen naar de urenregistratie"
+                  className="p-1 rounded hover:bg-white text-brand-text-secondary hover:text-brand-text-primary transition-colors disabled:opacity-40"
+                >
+                  <ArchiveRestore size={13} />
+                </button>
+              </span>
+            )
+          })}
+        </div>
+      )}
 
       {!activeKlant ? (
         <div className="card p-8 text-center text-brand-text-secondary">
@@ -874,10 +1070,15 @@ export default function UrenPage() {
         </div>
       ) : (
         <>
-          {/* Klant header */}
-          <div className="flex items-center justify-between gap-4 px-1">
-            <div className="flex items-center gap-3 min-w-0">
+          {/* Klant header: gestapeld op telefoon, naast elkaar vanaf sm. De badge mag onder de naam wrappen. */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-1">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
               <h2 className="font-uxum text-xl text-brand-text-primary truncate">{activeKlant.naam}</h2>
+              {activeKlant.gearchiveerdOp && (
+                <span className="text-[10px] px-2 py-0.5 rounded font-semibold uppercase tracking-wide shrink-0 bg-brand-page-medium text-brand-text-secondary flex items-center gap-1">
+                  <Archive size={10} /> Gearchiveerd
+                </span>
+              )}
               {(() => {
                 const crmBedrijf = activeKlant.crmBedrijfId ? crmBedrijven.find(cb => cb.id === activeKlant.crmBedrijfId) : null
                 const status = crmBedrijf?.status?.toLowerCase().trim()
@@ -897,7 +1098,7 @@ export default function UrenPage() {
                 )
               })()}
             </div>
-            <div className="flex items-center gap-4 shrink-0">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 shrink-0">
               {activeKlant.klantnummer && (
                 <span className="text-sm font-mono font-semibold text-brand-text-secondary tracking-widest">
                   {activeKlant.klantnummer}
@@ -911,16 +1112,41 @@ export default function UrenPage() {
                   <ExternalLink size={11} /> CRM
                 </Link>
               )}
+              {/* Twee losse dingen, met opzet naast elkaar: archiveren parkeert
+                  de klant en laat alles staan, verwijderen haalt hem er echt
+                  uit. Alleen iconen, de tooltip zegt wat het doet. */}
+              {activeKlant.gearchiveerdOp ? (
+                <button
+                  onClick={() => handleArchiveerKlant(activeKlant, false)}
+                  disabled={archiverenBezig}
+                  className="p-1.5 rounded hover:bg-brand-page-light text-brand-text-secondary hover:text-brand-text-primary transition-colors disabled:opacity-40"
+                  title="Terughalen naar de urenregistratie"
+                >
+                  {archiverenBezig
+                    ? <RefreshCw size={13} className="animate-spin" />
+                    : <ArchiveRestore size={13} />}
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleArchiveerKlant(activeKlant, true)}
+                  disabled={archiverenBezig}
+                  className="p-1.5 rounded hover:bg-brand-page-light text-brand-text-secondary hover:text-brand-text-primary transition-colors disabled:opacity-40"
+                  title="Archiveren: uit de lijst, uren blijven staan"
+                >
+                  {archiverenBezig
+                    ? <RefreshCw size={13} className="animate-spin" />
+                    : <Archive size={13} />}
+                </button>
+              )}
               <button
                 onClick={handleDeleteKlant}
                 disabled={deletingKlant}
-                className="inline-flex items-center gap-1 text-xs text-brand-text-secondary hover:text-brand-status-red transition-colors disabled:opacity-40"
-                title="Klant verwijderen"
+                className="p-1.5 rounded hover:bg-red-50 text-brand-text-secondary hover:text-brand-status-red transition-colors disabled:opacity-40"
+                title="Klant uit de urenregistratie halen (verwijdert ook de regels)"
               >
                 {deletingKlant
-                  ? <RefreshCw size={11} className="animate-spin" />
-                  : <UserX size={12} />}
-                Verwijder klant
+                  ? <RefreshCw size={13} className="animate-spin" />
+                  : <UserX size={13} />}
               </button>
             </div>
           </div>
@@ -982,10 +1208,10 @@ export default function UrenPage() {
             )}
           </div>
 
-          {/* Spreadsheet */}
+          {/* Spreadsheet: min-breedte zodat de cellen op telefoon niet in elkaar gedrukt worden, de wrapper scrollt horizontaal */}
           <div className="bg-white rounded-brand border border-brand-card-border overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-body border-collapse">
+              <table className="w-full min-w-[640px] text-body border-collapse">
                 <thead>
                   <tr className="bg-brand-page-light">
                     <th className="border border-brand-page-medium px-2 py-2 w-8">
@@ -1005,7 +1231,7 @@ export default function UrenPage() {
                       <th className="text-right text-caption text-brand-text-secondary uppercase tracking-wide font-medium border border-brand-page-medium px-2 py-2 w-28">Tarief</th>
                     )}
                     <th className="text-right text-caption text-brand-text-secondary uppercase tracking-wide font-medium border border-brand-page-medium px-2 py-2 w-28">Totaal</th>
-                    <th className="border border-brand-page-medium w-10"></th>
+                    <th className="border border-brand-page-medium w-16"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1064,14 +1290,26 @@ export default function UrenPage() {
                         <td className="border border-brand-page-medium px-2 py-2 text-right font-semibold whitespace-nowrap bg-brand-page-light/30">
                           {euro(entry.uren * effectiefTarief)}
                         </td>
-                        <td className="border border-brand-page-medium px-1 py-1 text-center">
-                          <button
-                            onClick={() => handleDelete(entry.id)}
-                            className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-50 text-brand-text-secondary hover:text-red-500 transition-all"
-                            title="Verwijderen"
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                        <td className="border border-brand-page-medium px-1 py-1">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <button
+                              onClick={() => handleDuplicate(entry.id)}
+                              disabled={dupliceerId === entry.id}
+                              className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-brand-lavender-light/60 text-brand-text-secondary hover:text-brand-text-primary transition-all disabled:opacity-40"
+                              title="Regel dupliceren"
+                            >
+                              {dupliceerId === entry.id
+                                ? <RefreshCw size={13} className="animate-spin" />
+                                : <Copy size={13} />}
+                            </button>
+                            <button
+                              onClick={() => handleDelete(entry.id)}
+                              className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-50 text-brand-text-secondary hover:text-red-500 transition-all"
+                              title="Verwijderen"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -1154,7 +1392,7 @@ export default function UrenPage() {
           {/* Totalen uren + genereer factuur knop */}
           {klantUren.length > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-6 card py-3">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-3 card py-3">
                 <div className="text-right">
                   <p className="text-caption text-brand-text-secondary">Registraties</p>
                   <p className="font-semibold text-body">{klantUren.length}</p>
@@ -1204,7 +1442,7 @@ export default function UrenPage() {
 
           <div className="bg-white rounded-brand border border-brand-card-border overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-body border-collapse">
+              <table className="w-full min-w-[720px] text-body border-collapse">
                 <thead>
                   <tr className="bg-brand-page-light">
                     <th className="border border-brand-page-medium px-2 py-2 w-8"></th>
@@ -1214,7 +1452,7 @@ export default function UrenPage() {
                     <th className="text-right text-caption text-brand-text-secondary uppercase tracking-wide font-medium border border-brand-page-medium px-2 py-2 w-20">Aantal</th>
                     <th className="text-right text-caption text-brand-text-secondary uppercase tracking-wide font-medium border border-brand-page-medium px-2 py-2 w-24">Prijs</th>
                     <th className="text-right text-caption text-brand-text-secondary uppercase tracking-wide font-medium border border-brand-page-medium px-2 py-2 w-28">Totaal ex. btw</th>
-                    <th className="border border-brand-page-medium w-10"></th>
+                    <th className="border border-brand-page-medium w-16"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1283,14 +1521,26 @@ export default function UrenPage() {
                       <td className="border border-brand-page-medium px-2 py-1 text-right font-semibold text-brand-text-primary whitespace-nowrap">
                         {euro(project.bedrag)}
                       </td>
-                      <td className="border border-brand-page-medium px-1 py-1 text-center">
-                        <button
-                          onClick={() => handleProjectDelete(project.id)}
-                          className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-50 text-brand-text-secondary hover:text-red-500 transition-all"
-                          title="Verwijderen"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                      <td className="border border-brand-page-medium px-1 py-1">
+                        <div className="flex items-center justify-center gap-0.5">
+                          <button
+                            onClick={() => handleProjectDuplicate(project.id)}
+                            disabled={dupliceerId === project.id}
+                            className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-brand-lavender-light/60 text-brand-text-secondary hover:text-brand-text-primary transition-all disabled:opacity-40"
+                            title="Regel dupliceren"
+                          >
+                            {dupliceerId === project.id
+                              ? <RefreshCw size={13} className="animate-spin" />
+                              : <Copy size={13} />}
+                          </button>
+                          <button
+                            onClick={() => handleProjectDelete(project.id)}
+                            className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-50 text-brand-text-secondary hover:text-red-500 transition-all"
+                            title="Verwijderen"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -1376,7 +1626,7 @@ export default function UrenPage() {
           </div>
 
           {klantProjecten.length > 0 && (
-            <div className="flex items-center gap-6 card py-3 w-fit ml-auto">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 card py-3 w-fit ml-auto">
               <div className="text-right">
                 <p className="text-caption text-brand-text-secondary">Projecten</p>
                 <p className="font-semibold text-body">{klantProjecten.length}</p>
@@ -1437,7 +1687,7 @@ export default function UrenPage() {
         <div className="space-y-3 pt-2">
           <button
             onClick={() => setArchiefOpen(o => !o)}
-            className="flex items-center gap-2 text-caption text-brand-text-secondary hover:text-brand-text-primary transition-colors"
+            className="flex flex-wrap items-center gap-2 text-left text-caption text-brand-text-secondary hover:text-brand-text-primary transition-colors"
           >
             <ChevronDown size={14} className={`transition-transform ${archiefOpen ? 'rotate-180' : ''}`} />
             Factuur archief ({archiefFacturen.length} {archiefFacturen.length === 1 ? 'factuur' : 'facturen'})
@@ -1455,8 +1705,8 @@ export default function UrenPage() {
 
             return (
               <div key={f.factuurnummer} className="bg-white rounded-brand border border-brand-card-border overflow-hidden opacity-70 hover:opacity-100 transition-opacity">
-                <div className="flex items-center justify-between px-4 py-2.5 bg-brand-page-light/60 border-b border-brand-page-medium">
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-2.5 bg-brand-page-light/60 border-b border-brand-page-medium">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
                     {f.factuurId ? (
                       <Link
                         href={`/facturen/${f.factuurId}`}
@@ -1491,14 +1741,16 @@ export default function UrenPage() {
                     title={f.status === 'betaald'
                       ? 'Deze factuur is betaald. Corrigeren doe je met een creditnota, niet door hem weg te gooien.'
                       : 'Verwijdert de factuur en zet de uren en losse regels terug'}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-brand-sm text-caption border border-brand-card-border text-brand-text-secondary hover:text-brand-text-primary hover:border-brand-text-secondary transition-all disabled:opacity-40 disabled:cursor-not-allowed ml-4 shrink-0"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-brand-sm text-caption border border-brand-card-border text-brand-text-secondary hover:text-brand-text-primary hover:border-brand-text-secondary transition-all disabled:opacity-40 disabled:cursor-not-allowed ml-auto shrink-0"
                   >
                     {isRestoring
                       ? <><RefreshCw size={12} className="animate-spin" /> Bezig...</>
                       : <><RotateCcw size={12} /> Zet terug</>}
                   </button>
                 </div>
-                <table className="w-full text-body border-collapse">
+                {/* Regels van een gearchiveerde factuur: scrollt horizontaal op smal scherm */}
+                <div className="overflow-x-auto">
+                <table className="w-full min-w-[520px] text-body border-collapse">
                   <tbody>
                     {f.regels.map((r, idx) => (
                       <tr key={idx} className="border-b border-brand-page-medium last:border-0">
@@ -1519,6 +1771,7 @@ export default function UrenPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             )
           })}
@@ -1584,8 +1837,14 @@ export default function UrenPage() {
                           type="button"
                           onClick={() => {
                             if (gekoppeldeKlant) {
-                              // Al actief als uren-klant: direct activeren
-                              setActiveKlantId(gekoppeldeKlant.id)
+                              // Al bekend als uren-klant: direct activeren. Stond
+                              // hij in het archief, dan is hem er hier weer bij
+                              // zetten precies wat je bedoelt met terughalen.
+                              if (gekoppeldeKlant.gearchiveerdOp) {
+                                handleArchiveerKlant(gekoppeldeKlant, false)
+                              } else {
+                                setActiveKlantId(gekoppeldeKlant.id)
+                              }
                               closeKlantModal()
                             } else {
                               // Nieuw koppelen: ga naar aanmaak-stap met CRM data
@@ -1643,7 +1902,7 @@ export default function UrenPage() {
               <form onSubmit={handleAddKlant} className="space-y-4">
                 <div>
                   <label className="label">Factuur vanuit</label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     {FACTUUR_BEDRIJVEN.map(c => (
                       <button
                         key={c.id}
@@ -1714,7 +1973,7 @@ export default function UrenPage() {
                     className="input w-full"
                   />
                 </div>
-                <div className="flex gap-2 pt-2">
+                <div className="flex flex-wrap gap-2 pt-2">
                   <button type="submit" disabled={savingKlant} className="btn-primary">
                     {savingKlant ? 'Opslaan...' : <><Check size={15} /> Toevoegen</>}
                   </button>
@@ -1736,13 +1995,13 @@ export default function UrenPage() {
         >
           <div
             onClick={e => e.stopPropagation()}
-            className="bg-white rounded-brand border border-brand-card-border shadow-xl p-6 w-full max-w-xl space-y-5 max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-brand border border-brand-card-border shadow-xl p-4 sm:p-6 w-full max-w-xl space-y-5 max-h-[90dvh] overflow-y-auto"
           >
-            <div className="flex items-center justify-between">
-              <h2 className="font-uxum text-body text-brand-text-primary">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="font-uxum text-body text-brand-text-primary min-w-0">
                 {needsKlantDetails ? `Klantgegevens ${activeKlant?.naam}` : 'Factuur genereren'}
               </h2>
-              <button type="button" onClick={closeFactuurModal} className="text-brand-text-secondary hover:text-brand-text-primary">
+              <button type="button" onClick={closeFactuurModal} className="text-brand-text-secondary hover:text-brand-text-primary shrink-0">
                 <X size={16} />
               </button>
             </div>
@@ -1751,16 +2010,29 @@ export default function UrenPage() {
             {factuurNummer && (
               <div className="p-5 rounded-brand bg-green-50 border border-green-200 text-green-800 space-y-2">
                 <p className="font-uxum text-body font-semibold">
-                  {conceptModus ? 'Concept opgeslagen.' : 'Factuur gegenereerd.'}
+                  {editorModus ? 'Factuur aangemaakt, editor geopend.' : conceptModus ? 'Concept opgeslagen.' : 'Factuur gegenereerd.'}
                 </p>
-                <p className="text-body">
-                  <strong>{factuurNummer}</strong> is aangemaakt en automatisch opgeslagen als PDF
-                  {conceptModus ? ' in de map _Concepten.' : '.'}
-                </p>
+                {editorModus ? (
+                  <>
+                    <p className="text-body">
+                      <strong>{factuurNummer}</strong> staat in de Dash en de uren zijn afgeboekt. De PDF is er nog niet:
+                      schuif de blokken in de editor op hun plek en klik daar op <strong>Factuur opslaan</strong>.
+                    </p>
+                    {editorUrl && (
+                      <a href={editorUrl} target="_blank" rel="noreferrer" className="btn-secondary inline-flex items-center gap-2">
+                        <ExternalLink size={14} /> Editor opnieuw openen
+                      </a>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-body">
+                    <strong>{factuurNummer}</strong> is aangemaakt en automatisch opgeslagen als PDF.
+                  </p>
+                )}
                 {conceptModus && (
                   <p className="text-body">
-                    Je uren blijven openstaan. Maak het concept definitief bij Facturen, dan krijgt hij een echt
-                    factuurnummer en worden de uren afgeboekt.
+                    Je uren blijven openstaan. Zet de factuur bij Facturen op &quot;Verzonden&quot; zodra je &apos;m verstuurt,
+                    dan worden de uren afgeboekt.
                   </p>
                 )}
                 <button onClick={closeFactuurModal} className="btn-primary mt-2">Sluiten</button>
@@ -1795,7 +2067,7 @@ export default function UrenPage() {
                     <input type="text" value={klantDetailsForm.klantnummer} onChange={e => setKlantDetailsForm(f => ({ ...f, klantnummer: e.target.value }))} placeholder="Optioneel" className="input w-full" />
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button type="submit" disabled={savingKlantDetails || generatingFactuur} className="btn-primary flex items-center gap-2">
                     {(savingKlantDetails || generatingFactuur)
                       ? <><RefreshCw size={15} className="animate-spin" /> Bezig...</>
@@ -1809,8 +2081,10 @@ export default function UrenPage() {
             {/* Standaard: preview + genereer knop */}
             {!factuurNummer && !needsKlantDetails && (
               <>
+                {/* Factuurpreview: op telefoon scrollt de tabel binnen de popup horizontaal */}
                 <div className="rounded-brand border border-brand-card-border overflow-hidden text-body">
-                  <table className="w-full border-collapse">
+                  <div className="overflow-x-auto">
+                  <table className="w-full min-w-[480px] border-collapse">
                     <thead>
                       <tr className="bg-brand-page-light text-caption text-brand-text-secondary uppercase tracking-wide">
                         <th className="text-left px-3 py-1.5 border-b border-brand-page-medium font-medium">Datum</th>
@@ -1883,13 +2157,15 @@ export default function UrenPage() {
                       </tr>
                     </tfoot>
                   </table>
+                  </div>
                 </div>
 
                 {/* Handmatige regel toevoegen */}
                 <div className="flex flex-col gap-2">
                   <label className="label">Handmatige regel toevoegen</label>
-                  <div className="flex items-start gap-2">
-                    <div className="flex-1 flex flex-col gap-1.5">
+                  {/* Op smal scherm gaan de tekstvelden op een eigen rij, aantal/prijs/knop eronder */}
+                  <div className="flex flex-wrap items-start gap-2">
+                    <div className="flex-1 min-w-[10rem] flex flex-col gap-1.5">
                       <input
                         type="text"
                         value={newHandmatigeRegel.werkzaamheden}
@@ -1959,7 +2235,7 @@ export default function UrenPage() {
                 {/* Bedrijfskeuze */}
                 <div>
                   <label className="label">Factuur vanuit</label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     {FACTUUR_BEDRIJVEN.map(c => (
                       <button
                         key={c.id}
@@ -2007,7 +2283,7 @@ export default function UrenPage() {
                 </div>
 
                 {/* Verwacht factuurnummer */}
-                <div className="flex items-center gap-2 text-body">
+                <div className="flex flex-wrap items-center gap-2 text-body">
                   <span className="text-brand-text-secondary">Wordt factuurnummer:</span>
                   <span className="font-uxum font-semibold text-brand-text-primary">{factuurNummerPreview ?? '…'}</span>
                 </div>
@@ -2054,16 +2330,27 @@ export default function UrenPage() {
                     disabled={generatingFactuur || (factuurDatumKeuze === 'custom' && !factuurCustomDatum)}
                     className="btn-primary flex items-center gap-2"
                   >
-                    {generatingFactuur && !conceptModus
+                    {generatingFactuur && !conceptModus && !editorModus
                       ? <><RefreshCw size={15} className="animate-spin" /> Genereren...</>
                       : <><FileText size={15} /> Genereer factuur</>}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => roepFactuurAan(false, true)}
+                    disabled={generatingFactuur || (factuurDatumKeuze === 'custom' && !factuurCustomDatum)}
+                    className="btn-secondary flex items-center gap-2"
+                    title="Maakt de factuur aan (echt nummer, uren afgeboekt) maar slaat de PDF nog niet op. Je schuift eerst in de editor en slaat daar op."
+                  >
+                    {generatingFactuur && editorModus
+                      ? <><RefreshCw size={15} className="animate-spin" /> Bezig...</>
+                      : <><GripVertical size={15} /> Open in editor</>}
                   </button>
                   <button
                     type="button"
                     onClick={() => roepFactuurAan(true)}
                     disabled={generatingFactuur || (factuurDatumKeuze === 'custom' && !factuurCustomDatum)}
                     className="btn-secondary flex items-center gap-2"
-                    title="Maakt een concept met een eigen C-nummer. Claimt geen factuurnummer en boekt je uren nog niet af."
+                    title="Maakt de factuur aan met een echt nummer, maar status 'concept'. Boekt je uren nog niet af."
                   >
                     {generatingFactuur && conceptModus
                       ? <><RefreshCw size={15} className="animate-spin" /> Bezig...</>
@@ -2071,8 +2358,9 @@ export default function UrenPage() {
                   </button>
                   <button type="button" onClick={closeFactuurModal} className="btn-secondary">Annuleren</button>
                   <p className="w-full text-caption text-brand-text-secondary">
-                    Een concept krijgt {conceptNummerPreview ?? 'een C-nummer'} en gaat naar de map _Concepten. Je uren
-                    blijven openstaan tot je hem definitief maakt.
+                    Alle knoppen geven meteen {factuurNummerPreview ?? 'een echt nummer'}. <strong>Open in editor</strong> slaat
+                    de PDF pas op als jij in de editor klaar bent met schuiven. <strong>Concept</strong> zet de status op
+                    concept en laat je uren openstaan tot je de factuur op &quot;Verzonden&quot; zet.
                   </p>
                 </div>
               </>

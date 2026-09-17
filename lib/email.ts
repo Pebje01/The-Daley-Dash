@@ -1,5 +1,6 @@
 import { Offerte } from './types'
 import { getCompany } from './companies'
+import { IS_TEST } from './dashModus'
 
 const AHASEND_BASE = 'https://api.ahasend.com/v2/accounts'
 
@@ -36,6 +37,12 @@ async function sendViaAhasend({
   subject: string
   html: string
 }) {
+  // De testversie mailt nooit echte mensen: nepklanten kunnen best een echt adres hebben
+  if (IS_TEST) {
+    console.log(`[testversie] e-mail niet verstuurd: "${subject}" aan ${toEmail}`)
+    return
+  }
+
   const config = AHASEND_CONFIG[companyId] ?? AHASEND_CONFIG['tde']!
   const company = getCompany(companyId as any)
 

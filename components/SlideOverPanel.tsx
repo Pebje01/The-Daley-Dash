@@ -46,8 +46,9 @@ export default function SlideOverPanel({ open, onClose, title, children }: Slide
 
   if (!visible) return null
 
+  // Op telefoon een bottom sheet over de volle breedte, vanaf sm een gecentreerde modal.
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true">
       {/* Overlay */}
       <div
         className={`absolute inset-0 bg-black/40 backdrop-blur-sm ${closing ? 'overlay-exit' : 'overlay-enter'}`}
@@ -56,10 +57,10 @@ export default function SlideOverPanel({ open, onClose, title, children }: Slide
 
       {/* Modal */}
       <div
-        className={`relative w-full max-w-4xl max-h-[90vh] bg-brand-card-bg border border-brand-card-border rounded-2xl shadow-2xl flex flex-col ${closing ? 'modal-exit' : 'modal-enter'}`}
+        className={`relative w-full max-w-4xl max-h-[94dvh] sm:max-h-[90dvh] bg-brand-card-bg border border-brand-card-border rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col ${closing ? 'modal-exit' : 'modal-enter'}`}
       >
         {/* Sticky header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-brand-card-border/20 shrink-0 rounded-t-2xl">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-brand-card-border/20 shrink-0 rounded-t-2xl">
           <h2 className="font-uxum text-lg text-brand-text-primary truncate">
             {title || ''}
           </h2>

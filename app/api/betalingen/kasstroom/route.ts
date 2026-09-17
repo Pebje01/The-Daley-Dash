@@ -4,7 +4,7 @@
 // De echte betaalinformatie staat op de facturen zelf: `paid_at` plus het bedrag.
 // Deze route leidt daar het kasoverzicht uit af, zodat naast je omzet (wat je
 // verdiend hebt) ook zichtbaar is wat er daadwerkelijk is ontvangen.
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { EIGEN_BEDRIJVEN } from '@/lib/btw'
 
@@ -24,12 +24,17 @@ interface FactuurRij {
   exclude_from_revenue: boolean | null
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const supabase = createClient()
+  // Zonder bedrijf zie je alle eigen bedrijven bij elkaar, dat is de weergave
+  // onder The Daley Edit.
+  const gekozen = request.nextUrl.searchParams.get('company') ?? 'alle'
+  const bedrijven = gekozen !== 'alle' && EIGEN_BEDRIJVEN.includes(gekozen) ? [gekozen] : EIGEN_BEDRIJVEN
+
   const { data, error } = await supabase
     .from('facturen')
     .select('id, number, client_name, company_id, date, due_date, paid_at, total, subtotal, status, exclude_from_revenue')
-    .in('company_id', EIGEN_BEDRIJVEN)
+    .in('company_id', bedrijven)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

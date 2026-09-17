@@ -1,10 +1,14 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Building2, Mail, Phone, MapPin, Hash, CreditCard } from 'lucide-react'
 import { COMPANIES } from '@/lib/companies'
 import { useTheme, Palette } from '@/components/ThemeProvider'
-import { Sun, Moon, Monitor } from 'lucide-react'
+import { Sun, Moon, Monitor, FlaskConical, RotateCcw, Loader2 } from 'lucide-react'
+import { IS_TEST } from '@/lib/dashModus'
+import { wachtTotTestversieDraait, wisselVersieUrl, zetTestversieAan } from '@/lib/dashModusClient'
+import { useMelding } from '@/components/MeldingProvider'
 
 const themeOptions = [
   { value: 'light' as const, icon: Sun, label: 'Licht' },
@@ -19,6 +23,51 @@ export default function SettingsModal({ open, onClose, userEmail }: {
 }) {
   const { theme, setTheme, palette, setPalette } = useTheme()
   const overlayRef = useRef<HTMLDivElement>(null)
+  const melding = useMelding()
+  const [bezigMetVullen, setBezigMetVullen] = useState(false)
+  const [bezigMetTest, setBezigMetTest] = useState(false)
+
+  /**
+   * Het schuifje zet de testversie echt aan en uit, hij springt niet alleen
+   * naar de andere poort. Uitzetten kan alleen vanuit de live Dash: de
+   * testversie kan niet de server zijn die zichzelf afsluit, want dan komt er
+   * nooit een antwoord terug. Daarom eerst overschakelen met testUit=1, en
+   * doet TestmodusOvergang daar de rest.
+   */
+  async function wisselTestmodus() {
+    if (IS_TEST) {
+      window.location.href = wisselVersieUrl(false, 'testUit')
+      return
+    }
+    setBezigMetTest(true)
+    try {
+      await zetTestversieAan()
+      await wachtTotTestversieDraait()
+      window.location.href = wisselVersieUrl(true)
+    } catch (e) {
+      setBezigMetTest(false)
+      melding.fout(e instanceof Error ? e.message : 'Testversie starten mislukt')
+    }
+  }
+
+  async function vulTestdataOpnieuw() {
+    const ok = await melding.bevestig({
+      titel: 'Testdata opnieuw vullen?',
+      tekst: 'Alles wat je in de testversie hebt aangemaakt of veranderd verdwijnt, en de nepdata komt terug zoals hij begon. Je echte Dash blijft onaangeroerd.',
+      bevestigLabel: 'Opnieuw vullen',
+    })
+    if (!ok) return
+    setBezigMetVullen(true)
+    const res = await fetch('/api/test/reset', { method: 'POST' }).catch(() => null)
+    const data = await res?.json().catch(() => ({}))
+    setBezigMetVullen(false)
+    if (!res?.ok) {
+      melding.fout(data?.error || 'Vullen mislukt')
+      return
+    }
+    // Volledig herladen: elke pagina heeft nog de oude data in zijn state
+    window.location.reload()
+  }
 
   useEffect(() => {
     if (!open) return
@@ -29,7 +78,10 @@ export default function SettingsModal({ open, onClose, userEmail }: {
 
   if (!open) return null
 
-  return (
+  // Via een portal naar body: de sidebar maakt een eigen stapelcontext
+  // (backdrop/transform), waardoor `fixed inset-0` anders binnen de sidebar
+  // van 220px bleef hangen in plaats van over het hele scherm.
+  return createPortal(
     <div
       ref={overlayRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
@@ -60,6 +112,49 @@ export default function SettingsModal({ open, onClose, userEmail }: {
               </div>
             </div>
           )}
+
+          {/* Testversie: een losse Dash op poort 3004 met nepdata, zie lib/dashModus.ts */}
+          <div>
+            <p className="text-[10px] font-semibold text-brand-text-secondary/50 uppercase tracking-widest mb-3">Testmodus</p>
+            <div className={`p-3 rounded-brand-sm ${IS_TEST ? 'bg-brand-status-orange/10' : 'bg-brand-page-light'}`}>
+              <div className="flex items-center gap-3">
+                <FlaskConical size={16} className={IS_TEST ? 'text-brand-status-orange' : 'text-brand-text-secondary'} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-body font-medium text-brand-text-primary">Testversie met nepdata</p>
+                  <p className="text-caption text-brand-text-secondary">
+                    {bezigMetTest
+                      ? 'Testdatabase en tweede server komen op gang, even geduld.'
+                      : IS_TEST
+                        ? 'Staat aan. Alles wat je hier doet komt niet in je echte administratie. Na een kwartier zonder gebruik gaat hij vanzelf uit.'
+                        : 'Om iets te laten zien of uit te proberen zonder je echte administratie te raken.'}
+                  </p>
+                </div>
+                {bezigMetTest ? (
+                  <Loader2 size={18} className="animate-spin text-brand-status-orange shrink-0" />
+                ) : (
+                  <button
+                    role="switch"
+                    aria-checked={IS_TEST}
+                    aria-label="Testmodus"
+                    onClick={wisselTestmodus}
+                    className={`relative w-10 h-6 rounded-full shrink-0 transition-colors ${IS_TEST ? 'bg-brand-status-orange' : 'bg-brand-card-border/40'}`}
+                  >
+                    <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${IS_TEST ? 'left-5' : 'left-1'}`} />
+                  </button>
+                )}
+              </div>
+              {IS_TEST && (
+                <button
+                  onClick={vulTestdataOpnieuw}
+                  disabled={bezigMetVullen}
+                  className="btn-secondary mt-3 text-caption disabled:opacity-50"
+                >
+                  <RotateCcw size={13} className={bezigMetVullen ? 'animate-spin' : ''} />
+                  {bezigMetVullen ? 'Bezig met vullen...' : 'Testdata opnieuw vullen'}
+                </button>
+              )}
+            </div>
+          </div>
 
           {/* Thema */}
           <div>
@@ -156,10 +251,6 @@ export default function SettingsModal({ open, onClose, userEmail }: {
                 <p className="text-caption text-brand-status-green">Verbonden</p>
               </div>
               <div className="p-3 rounded-brand-sm bg-brand-page-light">
-                <p className="text-body font-medium text-brand-text-primary">ClickUp</p>
-                <p className="text-caption text-brand-text-secondary">CRM Sync actief</p>
-              </div>
-              <div className="p-3 rounded-brand-sm bg-brand-page-light">
                 <p className="text-body font-medium text-brand-text-primary">Mollie</p>
                 <p className="text-caption text-brand-text-secondary">Nog niet gekoppeld</p>
               </div>
@@ -171,6 +262,7 @@ export default function SettingsModal({ open, onClose, userEmail }: {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

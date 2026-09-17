@@ -38,7 +38,17 @@ export async function PATCH(
       volgende_actie, volgende_actie_notitie,
       contact_status, contact_status_tot, contact_status_reden,
       entity_type,
+      ruwe_contact_email, ruwe_website, ruwe_bron, ruwe_fit_reden, ruwe_prioriteit,
+      ruwe_contactpersoon, ruwe_telefoon, company_id,
     } = body
+
+    if (
+      ruwe_prioriteit !== undefined &&
+      ruwe_prioriteit !== null &&
+      !['ster', 'normaal', 'laag'].includes(ruwe_prioriteit)
+    ) {
+      return NextResponse.json({ error: 'Onbekende prioriteit' }, { status: 400 })
+    }
 
     if (contact_status !== undefined && !['open', 'pauze', 'blokkade'].includes(contact_status)) {
       return NextResponse.json({ error: 'Onbekende contactstatus' }, { status: 400 })
@@ -62,6 +72,14 @@ export async function PATCH(
       contact_status_tot,
       contact_status_reden,
       entity_type,
+      ruwe_contact_email,
+      ruwe_website,
+      ruwe_bron,
+      ruwe_fit_reden,
+      ruwe_prioriteit,
+      ruwe_contactpersoon,
+      ruwe_telefoon,
+      company_id,
     })
 
     return NextResponse.json({ item: record })

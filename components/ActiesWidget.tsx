@@ -10,7 +10,7 @@ function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
 }
 
-function ActieRij({ actie, onUpdate }: { actie: Actie; onUpdate: () => void }) {
+export function ActieRij({ actie, onUpdate }: { actie: Actie; onUpdate: () => void }) {
   const melding = useMelding()
   const [bezig, setBezig] = useState(false)
 

@@ -1,24 +1,16 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { supabaseDataConfig } from '@/lib/dashModus'
 
 /**
  * LET OP: deze client gebruikt de service-role key en omzeilt daarmee RLS op
- * ALLE tabellen. Dat hoort bij de keuze om auth uit te laten, zie de toelichting
- * in `lib/supabase/middleware.ts`. Het werkt alleen veilig zolang de Dash puur
- * lokaal draait en op 127.0.0.1 luistert.
- *
- * Gaat de Dash ooit de deur uit, dan moet deze client terug naar een
- * sessiegebonden client, samen met de middleware. Alleen de middleware
- * terugzetten laat dit gat open.
+ * ALLE tabellen. Dat is verantwoord omdat `lib/supabase/middleware.ts` sinds
+ * 8 september 2026 elke route afschermt (login verplicht, korte allowlist).
+ * De middleware is dus de enige toegangscontrole: haal die nooit weg of
+ * versoepel de allowlist niet zonder deze client ook sessiegebonden te maken.
  */
 export function createClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key =
-    process.env.SUPABASE_SECRET_KEY ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!url || !key) {
-    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL and/or SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY)')
-  }
+  // In de testversie komt de data uit het testproject, zie lib/dashModus.ts
+  const { url, key } = supabaseDataConfig()
 
   return createSupabaseClient(
     url,

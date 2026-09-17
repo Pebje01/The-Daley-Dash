@@ -51,6 +51,12 @@ export const LEAD_FASES: FaseDef[] = [
     uitleg: 'Interesse, maar niet nu. Komt terug op de ingestelde datum.',
   },
   {
+    // Zelfde als de contactstatus "pauze": in deze kolom zetten IS pauzeren.
+    status: 'on hold', label: 'On hold', kleur: '#f59e0b', groep: 'Active',
+    opBord: true, opvolgDagen: null,
+    uitleg: 'Voorlopig niet benaderen. Met een einddatum komt hij op die dag vanzelf terug.',
+  },
+  {
     status: 'gewonnen', label: 'Gewonnen', kleur: '#22c55e', groep: 'Done',
     opBord: true, opvolgDagen: null,
   },
@@ -64,13 +70,31 @@ export const LEAD_FASES: FaseDef[] = [
     opBord: true, opvolgDagen: null,
     uitleg: 'Bewust afgevallen, bijvoorbeeld nee gekregen of naar een ander gegaan.',
   },
+  {
+    // Zelfde als de contactstatus "blokkade": in deze kolom zetten IS blokkeren.
+    // De opgeslagen waarde heet nog "blacklist", het label volgt de Blocklist-pagina.
+    status: 'blacklist', label: 'Blocklist', kleur: '#4b5563', groep: 'Closed',
+    opBord: true, opvolgDagen: null,
+    uitleg: 'Nooit meer benaderen. Staat ook op de Blocklist-pagina.',
+  },
+  {
+    // Zodra je van een gewonnen lead een opdracht maakt, sluit de lead zichzelf
+    // af: het werk loopt verder op het opdrachtenbord. Zo blijft de kolom
+    // Gewonnen een werklijstje van wat nog een opdracht moet worden.
+    status: 'omgezet', label: 'Omgezet naar opdracht', kleur: '#14b8a6', groep: 'Done',
+    opBord: false, opvolgDagen: null,
+    uitleg: 'Gewonnen en er is een opdracht van gemaakt. Je vindt het werk bij Opdrachten.',
+  },
   // Onderstaande statussen bestaan nog in de data, maar krijgen geen eigen kolom.
   // Ze zijn zichtbaar via "Toon afgesloten" en in de lijstweergave.
-  { status: 'on hold', label: 'On hold', kleur: '#f59e0b', groep: 'Active', opBord: false, opvolgDagen: null },
   { status: 'klant on hold', label: 'Klant on hold', kleur: '#f59e0b', groep: 'Active', opBord: false, opvolgDagen: null },
-  { status: 'blacklist', label: 'Blacklist', kleur: '#4b5563', groep: 'Closed', opBord: false, opvolgDagen: null },
   { status: 'archief', label: 'Archief', kleur: '#9ca3af', groep: 'Closed', opBord: false, opvolgDagen: null },
 ]
+
+export const FASE_ON_HOLD = 'on hold'
+/** Fase van een lead waar een opdracht van gemaakt is */
+export const FASE_OMGEZET = 'omgezet'
+export const FASE_BLOCKLIST = 'blacklist'
 
 const FASE_BY_STATUS: Record<string, FaseDef> = Object.fromEntries(
   LEAD_FASES.map((f) => [f.status, f])
@@ -163,8 +187,9 @@ export function opvolgLabel(volgendeActie?: string | null): string | null {
 }
 
 // ── Contactstatus: mag ik deze relatie benaderen ────────────────────
-// Los van de fase. Een lead in "Niets uitgekomen" is niet geblokkeerd, en een
-// geblokkeerde relatie kan in elke fase staan.
+// Bij contacten en bedrijven een losse keuze. Bij leads is het geen aparte as
+// meer (september 2026): daar volgt hij de fase. "On hold" is pauze,
+// "Blocklist" is blokkade, elke andere fase is open. Zie contactVeldenBijFase.
 
 export type ContactStatus = 'open' | 'pauze' | 'blokkade'
 
@@ -226,6 +251,75 @@ export function contactStatusLabel(record: ContactStatusRecord): string | null {
   return null
 }
 
+// ── Fase en contactstatus van een lead: één knop ────────────────────
+
+function faseNorm(status?: string | null): string {
+  return (status || '').toLowerCase().trim()
+}
+
+/** De contactstatus die bij een leadfase hoort. */
+export function contactStatusVoorFase(status?: string | null): ContactStatus {
+  const fase = faseNorm(status)
+  if (fase === FASE_BLOCKLIST) return 'blokkade'
+  if (fase === FASE_ON_HOLD) return 'pauze'
+  return 'open'
+}
+
+export type ContactVelden = {
+  contact_status: ContactStatus
+  contact_status_tot: string | null
+  contact_status_reden: string | null
+  volgende_actie?: string | null
+}
+
+/**
+ * Wat een lead met zijn contactvelden doet als hij naar een andere fase gaat.
+ * null = niets te veranderen. Draait op de server (bron van waarheid) en in
+ * het scherm, zodat een versleepte kaart meteen goed staat.
+ */
+export function contactVeldenBijFase(
+  nieuweFase: string | null | undefined,
+  record: ContactStatusRecord,
+): ContactVelden | null {
+  const hoort = contactStatusVoorFase(nieuweFase)
+  const nu = (record.contact_status || 'open') as ContactStatus
+  if (hoort === nu) return null
+  if (hoort === 'open') {
+    return { contact_status: 'open', contact_status_tot: null, contact_status_reden: null }
+  }
+  if (hoort === 'blokkade') {
+    return {
+      contact_status: 'blokkade',
+      contact_status_tot: null,
+      contact_status_reden: record.contact_status_reden ?? null,
+      volgende_actie: null,
+    }
+  }
+  const tot = nu === 'pauze' ? record.contact_status_tot?.slice(0, 10) || null : null
+  return {
+    contact_status: 'pauze',
+    contact_status_tot: tot,
+    contact_status_reden: record.contact_status_reden ?? null,
+    volgende_actie: tot,
+  }
+}
+
+/**
+ * De omgekeerde weg: iemand zet de contactstatus van een lead rechtstreeks,
+ * bijvoorbeeld via Deblokkeren op de Blocklist-pagina. null = fase blijft.
+ * Wie weer benaderbaar wordt, landt in "Later opvolgen": je mag weer, maar
+ * het is geen nieuwe kans.
+ */
+export function faseVoorContactStatus(
+  contactStatus: ContactStatus,
+  huidigeFase?: string | null,
+): string | null {
+  const fase = faseNorm(huidigeFase)
+  if (contactStatus === 'blokkade') return fase === FASE_BLOCKLIST ? null : FASE_BLOCKLIST
+  if (contactStatus === 'pauze') return fase === FASE_ON_HOLD ? null : FASE_ON_HOLD
+  return fase === FASE_BLOCKLIST || fase === FASE_ON_HOLD ? 'later opvolgen' : null
+}
+
 // ── Contactmomenten ─────────────────────────────────────────────────
 
 export type ContactSoort = 'mail' | 'telefoon' | 'whatsapp' | 'meeting' | 'notitie'
@@ -242,9 +336,11 @@ export const CONTACT_SOORTEN: Array<{ soort: ContactSoort; label: string; werkwo
  * Waar een lead heen schuift zodra je contact logt. Alleen de eerste stap is
  * automatisch: van "Nieuwe kans" naar "Benaderd". Daarna bepaal jij de fase,
  * want een tweede belletje maakt een lead niet automatisch verder.
+ * Uitzondering: wie een lead in "On hold" toch benadert, haalt hem uit de
+ * pauze, en dan hoort hij ook niet meer in die kolom.
  */
 export function faseNaContact(status?: string | null): string | null {
   const huidig = (status || '').toLowerCase().trim()
-  if (huidig === 'nieuwe kans' || huidig === '' || huidig === 'open') return 'benaderd'
+  if (huidig === 'nieuwe kans' || huidig === '' || huidig === 'open' || huidig === FASE_ON_HOLD) return 'benaderd'
   return null
 }

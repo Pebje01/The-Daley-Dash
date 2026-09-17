@@ -13,8 +13,20 @@ interface DbUurKlant {
   stad: string | null
   klantnummer: string | null
   email: string | null
+  gearchiveerd_op?: string | null
   created_at: string
   updated_at: string
+}
+
+/** True als de fout komt doordat gearchiveerd_op nog niet in de tabel staat. */
+function ontbrekendeArchiefKolom(error: any) {
+  return error?.code === '42703' || /gearchiveerd_op/.test(error?.message || '')
+}
+
+function archiefKolomFout() {
+  return new Error(
+    'Archiveren kan nog niet: draai eerst de migratie 20260911_uren_klanten_archief.sql in Supabase.'
+  )
 }
 
 function mapDbToUurKlant(row: DbUurKlant): UurKlant {
@@ -30,17 +42,46 @@ function mapDbToUurKlant(row: DbUurKlant): UurKlant {
     stad: row.stad ?? undefined,
     klantnummer: row.klantnummer ?? undefined,
     email: row.email ?? undefined,
+    gearchiveerdOp: row.gearchiveerd_op ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
 }
 
-export async function getUurKlanten(): Promise<UurKlant[]> {
+/**
+ * Standaard alleen de actieve klanten: gearchiveerde horen niet meer tussen de
+ * tabs van de urenregistratie te staan. Met metGearchiveerd krijg je ze er weer
+ * bij, voor het archiefoverzicht en de klantenpagina.
+ *
+ * Zolang de migratie 20260911_uren_klanten_archief.sql niet gedraaid is, valt
+ * dit terug op het gedrag zonder kolom. Lezen mag nooit stuk op een kolom die
+ * er nog niet is; schrijven geeft wel een duidelijke fout.
+ */
+export async function getUurKlanten(
+  companyId?: CompanyId | 'alle',
+  opties?: { metGearchiveerd?: boolean }
+): Promise<UurKlant[]> {
   const supabase = createClient()
-  const { data, error } = await supabase
-    .from('uren_klanten')
-    .select('*')
-    .order('naam', { ascending: true })
+
+  const haalOp = async (metArchiefKolom: boolean) => {
+    let query = supabase
+      .from('uren_klanten')
+      .select('*')
+      .order('naam', { ascending: true })
+
+    if (companyId && companyId !== 'alle') {
+      query = query.eq('company_id', companyId)
+    }
+    if (metArchiefKolom && !opties?.metGearchiveerd) {
+      query = query.is('gearchiveerd_op', null)
+    }
+    return query
+  }
+
+  let { data, error } = await haalOp(true)
+  if (error && ontbrekendeArchiefKolom(error)) {
+    ;({ data, error } = await haalOp(false))
+  }
 
   if (error) throw error
   return (data as DbUurKlant[]).map(mapDbToUurKlant)
@@ -88,6 +129,8 @@ export async function updateUurKlant(
     stad: string
     klantnummer: string
     email: string
+    /** true archiveert, false haalt hem terug. */
+    gearchiveerd: boolean
   }>
 ): Promise<UurKlant> {
   const supabase = createClient()
@@ -102,6 +145,9 @@ export async function updateUurKlant(
   if (data.stad !== undefined) update.stad = data.stad
   if (data.klantnummer !== undefined) update.klantnummer = data.klantnummer
   if (data.email !== undefined) update.email = data.email
+  if (data.gearchiveerd !== undefined) {
+    update.gearchiveerd_op = data.gearchiveerd ? new Date().toISOString() : null
+  }
 
   const { data: row, error } = await supabase
     .from('uren_klanten')
@@ -110,6 +156,11 @@ export async function updateUurKlant(
     .select()
     .single()
 
+  // Archiveren zonder kolom stilletjes laten lopen zou betekenen dat je denkt
+  // dat het gelukt is terwijl de klant gewoon blijft staan.
+  if (error && ontbrekendeArchiefKolom(error) && data.gearchiveerd !== undefined) {
+    throw archiefKolomFout()
+  }
   if (error) throw error
   return mapDbToUurKlant(row as DbUurKlant)
 }

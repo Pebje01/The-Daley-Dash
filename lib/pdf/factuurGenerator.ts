@@ -8,12 +8,13 @@
  * bedrijven het generieke sjabloon hieronder.
  */
 import { exec } from 'child_process'
+import { IS_TEST } from '@/lib/dashModus'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { homedir } from 'os'
+import { dirname } from 'path'
 import { wgbLogoBase64 } from '@/lib/pdf/wgbLogo'
 import { GENERIC_COMPANY_CONFIG, buildFactuurHtml } from '@/lib/pdf/factuurTemplate.mjs'
 import { buildWgbFactuurHtml } from '@/lib/pdf/wgbFactuurHtml'
-import { CONCEPTEN_MAP } from '@/lib/admin/documentPaths'
 
 export type CompanyKey = 'tde' | 'daleyphotography' | 'wgb'
 
@@ -77,7 +78,8 @@ export const COMPANY_CONFIG: Record<CompanyKey, CompanyCfg> = {
 
 function facturenBaseVoor(company: CompanyKey): string {
   const daleyWerkRoot = process.env.DALEY_WERK_ROOT ?? `${homedir()}/Documents/DALEY WERK`
-  const defaultFacturenBase = process.env.ADMIN_FACTUREN_PATH ?? `${daleyWerkRoot}/Bedrijf Administratie/Facturen`
+  // In de testversie nooit ADMIN_FACTUREN_PATH: die komt uit .env.local en wijst naar de echte map
+  const defaultFacturenBase = (IS_TEST ? undefined : process.env.ADMIN_FACTUREN_PATH) ?? `${daleyWerkRoot}/Bedrijf Administratie/Facturen`
   const wgbFacturenBase = `${daleyWerkRoot}/We Grow Brands/Bedrijf Administratie/Facturen`
   return company === 'wgb' ? wgbFacturenBase : defaultFacturenBase
 }
@@ -101,15 +103,19 @@ export async function bouwFactuurHtml(params: {
   layoutOverrides?: Record<string, number> | null
   editMode?: boolean
   factuurId?: string
+  /** Editor-stand: er is nog geen PDF, de opslaanknop maakt hem voor het eerst. */
+  pdfNogNietGemaakt?: boolean
+  /** Editor-stand: updated_at van de factuur, gaat mee bij opslaan tegen overschrijven van een nieuwere versie. */
+  bijgewerktOp?: string | null
 }): Promise<string> {
-  const { company, factuurnummer, klant, regels, factuurdatum, vervaldatum, betaallink, btwPercentage, layoutOverrides, editMode = false, factuurId } = params
+  const { company, factuurnummer, klant, regels, factuurdatum, vervaldatum, betaallink, btwPercentage, layoutOverrides, editMode = false, factuurId, pdfNogNietGemaakt = false, bijgewerktOp = null } = params
   const facturenBase = facturenBaseVoor(company)
   const cfg = COMPANY_CONFIG[company]
 
   if (company === 'wgb') {
     return buildWgbFactuurHtml({
       factuurnummer, klant, regels, factuurdatum, vervaldatum, betaallink, btwPercentage,
-      layoutOverrides, editMode, factuurId,
+      layoutOverrides, editMode, factuurId, pdfNogNietGemaakt, bijgewerktOp,
     })
   }
 
@@ -127,8 +133,21 @@ export async function bouwFactuurHtml(params: {
   }
   return buildFactuurHtml({
     cfg, factuurnummer, klant, regels, factuurdatum, vervaldatum, betaallink, btwPercentage, logoSrc,
-    layoutOverrides, editMode, factuurId,
+    layoutOverrides, editMode, factuurId, pdfNogNietGemaakt, bijgewerktOp,
   })
+}
+
+/**
+ * Waar de PDF van een factuur in het archief staat: kwartaalmap op basis van de
+ * factuurdatum, bestandsnaam uit nummer plus korte klantnaam. Los uitgeschreven
+ * zodat je ook kunt uitrekenen waar de PDF stond vóór een wijziging.
+ */
+export function pdfPadVoorFactuur(p: { factuurnummer: string; klantNaamVoorBestand: string; factuurdatum: string }): string {
+  const daleyWerkRoot = process.env.DALEY_WERK_ROOT ?? `${homedir()}/Documents/DALEY WERK`
+  const datumDate = new Date(`${p.factuurdatum}T12:00:00`)
+  const year = datumDate.getFullYear()
+  const quarter = Math.ceil((datumDate.getMonth() + 1) / 3)
+  return `${daleyWerkRoot}/Bedrijf Administratie/Verkoopfacturen/${year}-Q${quarter}/${p.factuurnummer} ${p.klantNaamVoorBestand}.pdf`
 }
 
 /**
@@ -148,13 +167,10 @@ export async function genereerFactuurPdf(params: {
   btwPercentage: number
   /** Bewaarde blok-posities (mm) uit de sleepbare editor, of null/undefined voor standaard-layout. */
   layoutOverrides?: Record<string, number> | null
-  /** Concept: PDF gaat naar _Concepten in plaats van de kwartaalmap. */
-  concept?: boolean
 }): Promise<{ pdfPath: string }> {
-  const { company, factuurnummer, klant, klantNaamVoorBestand, regels, factuurdatum, vervaldatum, betaallink, btwPercentage, layoutOverrides, concept } = params
+  const { company, factuurnummer, klant, klantNaamVoorBestand, regels, factuurdatum, vervaldatum, betaallink, btwPercentage, layoutOverrides } = params
 
   const cfg = COMPANY_CONFIG[company]
-  const daleyWerkRoot = process.env.DALEY_WERK_ROOT ?? `${homedir()}/Documents/DALEY WERK`
 
   // Chrome print vanaf een bestand, dus we moeten de HTML ergens neerzetten. Dat
   // gebeurt in een cachemap en niet meer in het factuurarchief: daar horen alleen
@@ -169,17 +185,8 @@ export async function genereerFactuurPdf(params: {
 
   await writeFile(previewPath, html, 'utf-8')
 
-  const datumDate = new Date(`${factuurdatum}T12:00:00`)
-  const year = datumDate.getFullYear()
-  const quarter = Math.ceil((datumDate.getMonth() + 1) / 3)
-  const verkoopfacturenBase = `${daleyWerkRoot}/Bedrijf Administratie/Verkoopfacturen`
-  // Concepten staan apart, in een map die de sync overslaat. Zo kan een concept
-  // nooit als echte factuur worden ingelezen.
-  const pdfDir = concept
-    ? `${verkoopfacturenBase}/${CONCEPTEN_MAP}`
-    : `${verkoopfacturenBase}/${year}-Q${quarter}`
-  const pdfPath = `${pdfDir}/${factuurnummer} ${klantNaamVoorBestand}.pdf`
-  await mkdir(pdfDir, { recursive: true })
+  const pdfPath = pdfPadVoorFactuur({ factuurnummer, klantNaamVoorBestand, factuurdatum })
+  await mkdir(dirname(pdfPath), { recursive: true })
 
   const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
   await new Promise<void>((resolve) => {

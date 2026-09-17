@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Ban, RefreshCw, Undo2, BadgeDollarSign, Building2, ContactRound, Inbox } from 'lucide-react'
+import { Ban, RefreshCw, Undo2, Trash2, BadgeDollarSign, Building2, ContactRound, Inbox } from 'lucide-react'
 import { useMelding } from '@/components/MeldingProvider'
 
 interface BlockRecord {
@@ -17,7 +17,7 @@ interface BlockRecord {
 
 const ENTITY_META: Record<BlockRecord['entity_type'], { label: string; href: string; icon: typeof Ban }> = {
   lead: { label: 'Lead', href: '/crm/leads', icon: BadgeDollarSign },
-  ruwe_lead: { label: 'Ruwe lead', href: '/crm/ruwe-leads', icon: Inbox },
+  ruwe_lead: { label: 'Prospect', href: '/crm/prospects', icon: Inbox },
   contact: { label: 'Contact', href: '/crm/contacten', icon: ContactRound },
   company: { label: 'Bedrijf', href: '/crm/bedrijven', icon: Building2 },
 }
@@ -33,8 +33,9 @@ export default function BlocklistPage() {
   const [state, setState] = useState<'loading' | 'error' | 'done'>('loading')
   const [bezig, setBezig] = useState<string | null>(null)
 
-  const load = useCallback(() => {
-    setState('loading')
+  const load = useCallback((stil = false) => {
+    // Zie ProspectsPage: stil verversen houdt je op je plek in de lijst
+    if (!stil) setState('loading')
     fetch('/api/crm/blocklist', { cache: 'no-store' })
       .then((r) => { if (!r.ok) throw new Error(); return r.json() })
       .then((d) => { setItems(Array.isArray(d.items) ? d.items : []); setState('done') })
@@ -46,7 +47,9 @@ export default function BlocklistPage() {
   const deblokkeer = async (rec: BlockRecord) => {
     const akkoord = await melding.bevestig({
       titel: `${rec.name} weer benaderbaar maken?`,
-      tekst: 'De blokkade gaat eraf en de relatie komt weer terug in de opvolging.',
+      tekst: rec.entity_type === 'lead'
+        ? 'De blokkade gaat eraf en de lead gaat op het bord naar "Later opvolgen".'
+        : 'De blokkade gaat eraf en de relatie komt weer terug in de opvolging.',
       bevestigLabel: 'Deblokkeren',
     })
     if (!akkoord) return
@@ -66,23 +69,47 @@ export default function BlocklistPage() {
     }
   }
 
+  // Definitief weg uit het CRM. Bewust met een extra vraag en een rode knop:
+  // de dubbelcheck leunt op geblokkeerde records, dus wie dit weggooit haalt
+  // ook de rem eraf waarmee dezelfde partij later opnieuw binnenkomt.
+  const verwijder = async (rec: BlockRecord) => {
+    const akkoord = await melding.bevestig({
+      titel: `${rec.name} definitief verwijderen?`,
+      tekst: 'Het record verdwijnt uit het CRM en dat kan niet ongedaan worden gemaakt. Let op: de dubbelcheck houdt nieuwe leads en prospects voor deze partij dan niet meer tegen. Wil je die rem houden, laat hem dan gewoon op de blocklist staan.',
+      bevestigLabel: 'Verwijderen',
+      gevaarlijk: true,
+    })
+    if (!akkoord) return
+    setBezig(rec.id)
+    try {
+      const res = await fetch(`/api/crm/records/${rec.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      // Eerst lokaal weg, dan pas stil verversen: zo blijf je op je plek staan.
+      setItems((prev) => prev.filter((i) => i.id !== rec.id))
+      melding.gelukt(`${rec.name} verwijderd.`)
+      load(true)
+    } catch {
+      melding.fout('Verwijderen mislukt, probeer opnieuw.')
+    } finally {
+      setBezig(null)
+    }
+  }
+
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+    <div className="p-4 sm:p-6 lg:p-8 flex flex-col gap-6 lg:h-[calc(100dvh-var(--dash-topbar))] lg:overflow-hidden">
+      <div className="flex items-start justify-between gap-4 flex-wrap shrink-0">
         <div>
-          <h1 className="font-uxum text-headline text-brand-text-primary flex items-center gap-2">
-            <Ban size={22} className="text-gray-700" /> Blocklist
-          </h1>
-          <p className="text-sm text-brand-text-secondary mt-0.5">
-            {items.length} {items.length === 1 ? 'relatie wil' : 'relaties willen'} niet meer benaderd worden
+          <h1 className="font-uxum text-headline text-brand-text-primary">Blocklist</h1>
+          <p className="text-body text-brand-text-secondary mt-1">
+            {items.length} {items.length === 1 ? 'bedrijf of contact dat je' : 'bedrijven en contacten die je'} niet meer benadert. Leads staan op het bord, in de kolom Blocklist.
           </p>
         </div>
-        <button onClick={load} className="btn-secondary text-sm" disabled={state === 'loading'}>
+        <button onClick={() => load()} className="btn-secondary text-sm" disabled={state === 'loading'}>
           <RefreshCw size={13} className={state === 'loading' ? 'animate-spin' : ''} /> Ververs
         </button>
       </div>
 
-      <div className="card p-0 overflow-hidden">
+      <div className="card p-0 overflow-hidden lg:flex-1 lg:min-h-0 lg:overflow-auto">
         {state === 'loading' ? (
           <div className="text-center py-16 text-brand-text-secondary text-sm">
             <RefreshCw size={16} className="animate-spin inline mr-2" /> Laden…
@@ -90,7 +117,7 @@ export default function BlocklistPage() {
         ) : state === 'error' ? (
           <div className="text-center py-16">
             <p className="text-sm text-red-500 mb-3">Blocklist laden mislukt.</p>
-            <button onClick={load} className="btn-secondary text-sm">
+            <button onClick={() => load()} className="btn-secondary text-sm">
               <RefreshCw size={13} /> Opnieuw proberen
             </button>
           </div>
@@ -99,7 +126,7 @@ export default function BlocklistPage() {
             <Ban size={28} className="text-gray-300 mx-auto mb-3" />
             <p className="text-sm text-brand-text-secondary">Niemand op de blocklist.</p>
             <p className="text-xs text-brand-text-secondary mt-1 opacity-70">
-              Zet een relatie op &quot;Nooit meer benaderen&quot; via de contactstatus op haar kaart.
+              Zet een bedrijf of contact op &quot;Nooit meer benaderen&quot;, dan staat het hier.
             </p>
           </div>
         ) : (
@@ -130,15 +157,26 @@ export default function BlocklistPage() {
                       {laatste && <span className="opacity-60"> · laatste contact {laatste}</span>}
                     </p>
                   </div>
-                  <button
-                    onClick={() => deblokkeer(rec)}
-                    disabled={bezig === rec.id}
-                    className="btn-secondary text-xs shrink-0 disabled:opacity-50"
-                    title="Weer benaderbaar maken"
-                  >
-                    {bezig === rec.id ? <RefreshCw size={12} className="animate-spin" /> : <Undo2 size={12} />}
-                    Deblokkeren
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => deblokkeer(rec)}
+                      disabled={bezig === rec.id}
+                      className="btn-secondary text-xs disabled:opacity-50"
+                      title="Weer benaderbaar maken"
+                    >
+                      {bezig === rec.id ? <RefreshCw size={12} className="animate-spin" /> : <Undo2 size={12} />}
+                      Deblokkeren
+                    </button>
+                    <button
+                      onClick={() => verwijder(rec)}
+                      disabled={bezig === rec.id}
+                      className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+                      title="Definitief verwijderen"
+                      aria-label={`${rec.name} definitief verwijderen`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               )
             })}

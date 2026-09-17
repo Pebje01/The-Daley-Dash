@@ -37,6 +37,8 @@ interface FactuurRij {
   client_name: string
   date: string
   due_date: string
+  revenue_date: string | null
+  omzet_datum: string
   subtotal: number
   total: number
   status: string
@@ -330,7 +332,7 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
   // ─── Berekeningen ─────────────────────────────────────────────────────────
 
   const kwartalen = useMemo(() => aggregeerPerKwartaal(
-    facturen.map(f => ({ subtotal: f.subtotal, total: f.total, date: f.date }))
+    facturen.map(f => ({ subtotal: f.subtotal, total: f.total, date: f.omzet_datum ?? f.date }))
   ), [facturen])
 
   const omzetStats = useMemo(() => ({
@@ -422,10 +424,10 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
 
   if (loading && !aangifte) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-brand-page-medium rounded w-72" />
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[1, 2, 3, 4].map(i => <div key={i} className="h-28 bg-brand-page-medium rounded-brand" />)}
           </div>
         </div>
@@ -435,11 +437,11 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
 
   if (error) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <h1 className="font-uxum text-headline text-brand-text-primary mb-4">Aangifte {jaar}</h1>
-        <div className="card border-red-200 bg-red-50 flex items-center justify-between">
+        <div className="card border-red-200 bg-red-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <p className="text-body text-red-600">{error}</p>
-          <button onClick={loadData} className="btn-secondary"><RefreshCw size={14} /> Opnieuw</button>
+          <button onClick={loadData} className="btn-secondary self-start sm:self-auto"><RefreshCw size={14} /> Opnieuw</button>
         </div>
       </div>
     )
@@ -450,11 +452,11 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
   const btwQ4 = kwartalen[3]?.btwBedrag ?? 0
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl">
 
       {/* ═══ Toast ══════════════════════════════════════════════════════════ */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-brand shadow-lg text-body flex items-center gap-2 ${
+        <div className={`fixed top-4 left-4 right-4 sm:left-auto z-50 px-4 py-3 rounded-brand shadow-lg text-body flex items-center gap-2 ${
           toast.type === 'succes' ? 'bg-brand-status-green text-white' : 'bg-red-600 text-white'
         }`}>
           {toast.type === 'succes' ? <Check size={14} /> : <X size={14} />}
@@ -463,7 +465,8 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
       )}
 
       {/* ═══ Header ═════════════════════════════════════════════════════════ */}
-      <div className="flex items-start justify-between mb-6">
+      {/* Kopregel: op telefoon staan de knoppen onder de titel, vanaf sm ernaast */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
         <div>
           <h1 className="font-uxum text-headline text-brand-text-primary">
             Aangifte inkomstenbelasting {jaar}
@@ -479,7 +482,7 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {/* Jaarkiezer */}
           <select
             value={jaar}
@@ -525,8 +528,8 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
               <KPICard label="Aantal facturen" waarde={String(omzetStats.aantalFacturen)} onderschrift={`in ${jaar}`} />
             </div>
 
-            {/* Kwartaaloverzicht */}
-            <div className="grid grid-cols-4 gap-3 overflow-x-auto">
+            {/* Kwartaaloverzicht: twee kwartalen per rij op smal scherm, vier op desktop */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {kwartalen.map(kw => (
                 <div key={kw.kwartaal} className="rounded-brand-sm border border-brand-card-border bg-brand-card-bg p-4">
                   <p className="font-semibold text-body text-brand-text-primary mb-1">{kw.label}</p>
@@ -566,7 +569,7 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
           ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full text-body">
+                <table className="w-full min-w-[640px] text-body">
                   <thead>
                     <tr className="border-b border-brand-card-border">
                       <th className="text-left text-caption text-brand-text-secondary font-medium py-2 pr-3">Factuur</th>
@@ -636,8 +639,9 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
 
       {/* ═══ Oninbaar modal ════════════════════════════════════════════════ */}
       {oninbaarModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="card max-w-md w-full mx-4 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          {/* p-4 op de overlay houdt de modal van de schermrand af op telefoon */}
+          <div className="card max-w-md w-full shadow-xl">
             <div className="flex items-start gap-3 mb-4">
               <AlertTriangle size={20} className="text-red-500 flex-shrink-0 mt-0.5" />
               <div>
@@ -682,7 +686,8 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
         {sectiesOpen.kosten && (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full">
+              {/* Invoervelden per cel: zonder minimumbreedte worden ze op telefoon onbruikbaar smal */}
+              <table className="w-full min-w-[720px]">
                 <thead>
                   <tr className="border-b border-brand-card-border">
                     <th className="text-left text-caption text-brand-text-secondary font-medium py-2 pr-3 w-2/5">Omschrijving</th>
@@ -745,8 +750,8 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
               </table>
             </div>
 
-            <div className="flex items-center justify-between mt-4 pt-4 border-t border-brand-card-border">
-              <div className="flex gap-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t border-brand-card-border">
+              <div className="flex flex-wrap gap-3 sm:gap-6">
                 <button onClick={voegKostToe} className="btn-secondary">
                   <Plus size={14} /> Kostenpost toevoegen
                 </button>
@@ -757,7 +762,7 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
                   Importeer uit bonnetjes
                 </button>
               </div>
-              <div className="text-right">
+              <div className="text-left sm:text-right">
                 <p className="text-caption text-brand-text-secondary">
                   Bruto: {euro(kostenTotaalBruto)}
                   {kostenTotaalBruto !== kostenTotaalAftrekbaar && (
@@ -771,7 +776,7 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
 
             {/* Subtotalen per categorie */}
             {Object.keys(kostenPerCategorie).length > 0 && (
-              <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {Object.entries(kostenPerCategorie).map(([cat, bedrag]) => (
                   <div key={cat} className="rounded-brand-sm bg-brand-page-light px-3 py-2 flex justify-between text-caption">
                     <span className="text-brand-text-secondary">{KOSTENCATEGORIEN[cat] ?? cat}</span>
@@ -795,7 +800,7 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
         {sectiesOpen.investeringen && (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full min-w-[800px]">
                 <thead>
                   <tr className="border-b border-brand-card-border">
                     <th className="text-left text-caption text-brand-text-secondary font-medium py-2 pr-3 w-1/3">Omschrijving</th>
@@ -883,7 +888,7 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
 
             {/* KIA samenvatting */}
             <div className="mt-4 p-4 rounded-brand-sm bg-brand-page-light">
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <p className="text-caption text-brand-text-secondary">Totaal investeringen</p>
                   <p className="font-semibold text-body text-brand-text-primary">
@@ -972,7 +977,7 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
                   Startersaftrek {euro(constanten.startersaftrek)}
                 </span>
                 {aangifte.claim_startersaftrek && (
-                  <div className="mt-2 flex items-center gap-3">
+                  <div className="mt-2 flex flex-wrap items-center gap-3">
                     <label className="text-caption text-brand-text-secondary">Al gebruikt (max 3x):</label>
                     <input
                       type="number"
@@ -1014,7 +1019,8 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
                   <strong>Oudedagsreserve (FOR)</strong> is afgeschaft per 1 januari 2023. Bestaand FOR-saldo kan alleen nog worden afgebouwd.
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              {/* Lange labels boven de velden: op telefoon onder elkaar */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="text-caption text-brand-text-secondary block mb-1">FOR-saldo per 1-1-{jaar} (historisch)</label>
                   <input
@@ -1111,7 +1117,7 @@ export default function AangiftePage({ params }: { params: { jaar: string } }) {
           icoon={<Landmark size={16} className="text-brand-text-secondary" />}
         />
         {sectiesOpen.balans && (
-          <div className="grid grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
             {/* Activa */}
             <div>
               <h3 className="font-semibold text-body text-brand-text-primary mb-3">Activa</h3>

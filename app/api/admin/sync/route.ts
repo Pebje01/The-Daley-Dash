@@ -1,4 +1,4 @@
-
+import { NextRequest } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import { execSync } from 'child_process'
@@ -6,6 +6,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createClient } from '@/lib/supabase/server'
 import { getAdminFacturenPaths, getAdminOffertesPaths, zoekDocumentBestand } from '@/lib/admin/documentPaths'
 import { forgetAdminSyncNumbers, mergeAdminSyncSeen, readAdminSyncState } from '@/lib/admin/syncState'
+import { valtBuitenDeDash } from '@/lib/admin/dashJaar'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,7 +51,14 @@ function scanDir(dir: string, out: RawFile[]) {
   if (!fs.existsSync(dir)) return
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name)
-    if (entry.isDirectory()) scanDir(full, out)
+    if (entry.isDirectory()) {
+      // Zelfde regel als in /api/admin/scan: mappen met een _ ervoor zijn
+      // werkmappen, geen archief. Zo blijven _Concepten en _Teruggezet buiten
+      // de sync. Tot nu toe liep de sync er wel doorheen en ging het alleen
+      // goed omdat conceptnummers (C-...) toch niet herkend worden.
+      if (entry.name.startsWith('_')) continue
+      scanDir(full, out)
+    }
     else if (entry.isFile() && entry.name.toLowerCase().endsWith('.pdf'))
       out.push({ absolutePath: full, filename: entry.name })
   }
@@ -70,21 +78,6 @@ function extractNumber(filename: string): { number: string | null; type: 'factuu
   if (fOldShort) return { number: fOldShort[1].toUpperCase(), type: 'factuur' }
   return { number: null, type: 'factuur' }
 }
-
-/**
- * De nummerreeks van vóór de Dash: 2020F-0010, 2024F-1011-01, 2026F-0306-01.
- * Daar liggen 58 PDF's van in de administratie. Die horen niet in de Dash:
- * ze zijn van vóór dit systeem en zouden de omzetcijfers vervuilen.
- *
- * De sync probeerde ze tot nu toe elke keer opnieuw te importeren. Dat mislukte
- * telkens (Gemini komt er niet uit, en de terugval `pdftotext` staat niet op
- * deze Mac), wat honderden regels `pdftotext: command not found` in de log
- * opleverde en bij elke achtergrondsync opnieuw AI-verzoeken kostte.
- *
- * Wil je ze toch importeren, haal dan deze filter weg. Dan komen ze er in één
- * keer bij, mét hun bedragen in de omzet.
- */
-const OUDE_NUMMERREEKS = /^\d{4}F-/
 
 // ── Text extraction ────────────────────────────────────────────────────────
 
@@ -431,7 +424,11 @@ async function withConcurrency<T, R>(
 
 // ── Route handler ──────────────────────────────────────────────────────────
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  // ?alleenControle=1: alleen melden welke PDF's ontbreken, niets importeren.
+  // Die draait bij het openen van de facturenpagina, en een volledige sync
+  // stuurt elke keer alle nog niet geïmporteerde PDF's naar Gemini.
+  const alleenControle = req.nextUrl.searchParams.get('alleenControle') === '1'
   const facturenBases = getAdminFacturenPaths()
   const offertesBases = getAdminOffertesPaths()
 
@@ -483,8 +480,9 @@ export async function POST() {
           })
 
         // Bewust overgeslagen, en dat melden we ook. Stil laten vallen zou
-        // lezen als "alles is meegenomen" terwijl er 58 stuks buiten blijven.
-        const toProcess = nieuweBestanden.filter(f => !OUDE_NUMMERREEKS.test(f.number!))
+        // lezen als "alles is meegenomen" terwijl er ruim 130 stuks buiten
+        // blijven: de oude factuurreeks plus alles van vóór 2026.
+        const toProcess = nieuweBestanden.filter(f => !valtBuitenDeDash(f.number!))
         const overgeslagenOud = nieuweBestanden.length - toProcess.length
 
         mergeAdminSyncSeen({
@@ -492,11 +490,12 @@ export async function POST() {
           offertes: currentOfferteNumbers,
         })
 
-        send({ type: 'scan', total: toProcess.length, scanned: rawFiles.length, ontbrekend, overgeslagenOud })
+        send({ type: 'scan', total: alleenControle ? 0 : toProcess.length, scanned: rawFiles.length, ontbrekend, overgeslagenOud })
 
-        if (toProcess.length === 0) {
+        if (alleenControle || toProcess.length === 0) {
           send({ type: 'done', imported: 0, skipped: 0, failed: 0, ontbrekend, overgeslagenOud })
-          controller.close()
+          // Niet hier sluiten: dat doet finally al, en twee keer sluiten gooit
+          // een fout waardoor het bericht hierboven nooit aankomt.
           return
         }
 

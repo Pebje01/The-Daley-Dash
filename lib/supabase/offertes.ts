@@ -1,4 +1,5 @@
 import { createClient } from './server'
+import { haalFacturatie, selecteerOffertesMetRestant } from '@/lib/offertes/facturatie'
 import { Offerte, LineItem, CompanyId, OfferteStatus } from '../types'
 import { alleenDatum, jaarPeriode, maandPeriode, valtBinnen } from '../periode'
 
@@ -395,8 +396,11 @@ export async function getTodayOfferteCount(companyId?: CompanyId): Promise<numbe
   return count ?? 0
 }
 
-export async function getOfferteStats() {
+export async function getOfferteStats(companyId?: CompanyId | 'alle') {
   const supabase = createClient()
+  // Zonder bedrijf tellen alle bedrijven mee. Dat is de weergave onder The
+  // Daley Edit: die is overkoepelend en laat WGB en Daley Photography meelopen.
+  const eigenBedrijf = companyId && companyId !== 'alle' ? companyId : null
   const now = new Date()
   // Met alleen een ondergrens telde een offerte met een datum verderop in het
   // jaar al mee in "deze maand". Zelfde fout als in getFactuurStats.
@@ -406,12 +410,11 @@ export async function getOfferteStats() {
   const inMaand = (d: string) => valtBinnen(d, dezeMaand)
   const datumVan = (o: any): string => alleenDatum(o.date)
 
-  const { data: all, error } = await supabase
-    .from('offertes')
-    .select('id, status, total, subtotal, date, created_at')
-  if (error) throw error
-
-  const offertes = all ?? []
+  const offertes = await selecteerOffertesMetRestant<any>((kolommen) => {
+    let statsQuery = supabase.from('offertes').select(kolommen)
+    if (eigenBedrijf) statsQuery = statsQuery.eq('company_id', eigenBedrijf)
+    return statsQuery
+  }, 'id, status, total, subtotal, date, created_at')
   const conceptOffertes = offertes.filter((o: any) => o.status === 'concept').length
   const openOffertes = offertes.filter((o: any) => o.status === 'verstuurd').length
   const totalOpenAmount = offertes
@@ -421,6 +424,14 @@ export async function getOfferteStats() {
   const akkoordAmount = offertes
     .filter((o: any) => o.status === 'akkoord')
     .reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
+  // Wat er van de akkoord-offertes nog gefactureerd moet worden. Het volle
+  // akkoordbedrag hierboven telt ook offertes mee die allang gefactureerd zijn.
+  const facturatie = await haalFacturatie(offertes.filter((o: any) => o.status === 'akkoord'))
+  const metRestant = Array.from(facturatie.values()).filter(f => f.restant > 0)
+  const nogTeFacturerenAantal = metRestant.length
+  const nogTeFactureren = metRestant.reduce((sum, f) => sum + f.restant, 0)
+  const nogTeFacturerenExcl = metRestant.reduce((sum, f) => sum + f.restantExcl, 0)
+
   const acceptedThisMonth = offertes
     .filter((o: any) => o.status === 'akkoord' && inMaand(alleenDatum(o.created_at)))
     .reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
@@ -440,7 +451,7 @@ export async function getOfferteStats() {
   const revenueMonthIncl = monthOffertes.reduce((sum: number, o: any) => sum + (o.total ?? 0), 0)
 
   // Recent offertes (full data for dashboard)
-  const recent = await getOffertes()
+  const recent = await getOffertes({ companyId: companyId ?? 'alle' })
   const recentOffertes = recent.slice(0, 5)
 
   return {
@@ -450,6 +461,9 @@ export async function getOfferteStats() {
     totalOpenAmount,
     akkoordOffertes,
     akkoordAmount,
+    nogTeFacturerenAantal,
+    nogTeFactureren,
+    nogTeFacturerenExcl,
     acceptedThisMonth,
     openMonthCount,
     openMonthAmount,

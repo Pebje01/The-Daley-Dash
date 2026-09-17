@@ -1,10 +1,10 @@
 import { Suspense } from 'react'
-import ClickUpCrmRecordsPage from '@/components/ClickUpCrmRecordsPage'
+import CrmRecordsPage from '@/components/CrmRecordsPage'
 
 export default function CrmFacturatiePage() {
   return (
     <Suspense>
-      <ClickUpCrmRecordsPage entity="clickup_invoice" />
+      <CrmRecordsPage entity="clickup_invoice" />
     </Suspense>
   )
 }

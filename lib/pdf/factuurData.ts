@@ -17,8 +17,10 @@ export interface FactuurBouwData {
   betaallink?: string
   btwPercentage: number
   layoutOverrides: Record<string, number> | null
-  /** Concept (C-reeks): PDF hoort in _Concepten, buiten de sync. */
+  /** Status 'concept': stuurt alleen nog editor-UI-teksten, niet meer de PDF-map. */
   concept: boolean
+  /** updated_at uit Supabase. De editor stuurt dit terug, zodat hij niet over een nieuwere versie heen opslaat. */
+  bijgewerktOp: string | null
 }
 
 /**
@@ -87,7 +89,8 @@ export async function laadFactuurBouwData(
       betaallink: f.mollie_payment_url ?? undefined,
       btwPercentage: f.btw_percentage ?? 21,
       layoutOverrides: f.layout_overrides ?? null,
-      concept: String(f.number ?? '').toUpperCase().startsWith('C-'),
+      concept: f.status === 'concept',
+      bijgewerktOp: f.updated_at ?? null,
     },
   }
 }

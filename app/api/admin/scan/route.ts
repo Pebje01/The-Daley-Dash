@@ -4,6 +4,7 @@ import path from 'path'
 import { createClient } from '@/lib/supabase/server'
 import { getAdminFacturenPaths, getAdminOffertesPaths } from '@/lib/admin/documentPaths'
 import { mergeAdminSyncSeen } from '@/lib/admin/syncState'
+import { valtBuitenDeDash } from '@/lib/admin/dashJaar'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,6 +17,8 @@ export interface ScannedFile {
   matchedId: string | null
   /** Waar wanneer meerdere bestanden hetzelfde nummer dragen. */
   duplicaat?: boolean
+  /** Administratie van vóór 2026: de Dash leest die niet meer in. */
+  oud?: boolean
 }
 
 function extractNumber(filename: string): { number: string | null; type: 'factuur' | 'offerte' } {
@@ -97,6 +100,7 @@ export async function GET() {
       number,
       matched: matchedId !== null,
       matchedId,
+      oud: number ? valtBuitenDeDash(number) : false,
       duplicaat: number ? (nummerTeller.get(`${type}:${number}`) ?? 0) > 1 : false,
     }
   })

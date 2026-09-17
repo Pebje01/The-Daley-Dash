@@ -32,7 +32,7 @@ const SCORE_KLEUR: Record<string, string> = {
 export function AiScoreBadge({ record }: { record: AiVelden }) {
   if (record.ai_status === 'bezig' || record.ai_status === 'wachtend') {
     return (
-      <span className="text-xs px-1.5 py-0.5 rounded border bg-brand-lavender-light/40 border-brand-card-border text-brand-text-secondary animate-pulse">
+      <span className="text-xs px-1.5 py-0.5 rounded border bg-brand-lavender-light/40 border-brand-card-border/15 text-brand-text-secondary animate-pulse">
         AI kijkt...
       </span>
     )
@@ -117,7 +117,7 @@ export function AiKwalificatieBlok({
   const beoordeeld = record.ai_score != null
 
   return (
-    <div className="rounded-brand border border-brand-card-border bg-brand-page-light/50 p-4 space-y-3">
+    <div className="rounded-brand border border-brand-card-border/15 bg-brand-lavender-light/40 p-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <h4 className="text-sm font-medium text-brand-text-primary">AI-kwalificatie</h4>
@@ -127,7 +127,7 @@ export function AiKwalificatieBlok({
             </span>
           )}
           {record.ai_branche && (
-            <span className="text-xs px-2 py-0.5 rounded bg-white border border-brand-card-border text-brand-text-secondary">
+            <span className="text-xs px-2 py-0.5 rounded bg-white dark:bg-brand-card-bg border border-brand-card-border/15 text-brand-text-secondary">
               {record.ai_branche}
             </span>
           )}
@@ -136,7 +136,7 @@ export function AiKwalificatieBlok({
           type="button"
           onClick={beoordeel}
           disabled={bezig}
-          className="text-xs px-2.5 py-1 rounded border border-brand-card-border bg-white hover:bg-brand-page-light disabled:opacity-50 text-brand-text-secondary shrink-0"
+          className="text-xs px-2.5 py-1 rounded border border-brand-card-border/20 bg-white dark:bg-brand-card-bg hover:bg-brand-page-light disabled:opacity-50 text-brand-text-secondary shrink-0"
         >
           {bezig ? 'Bezig...' : beoordeeld ? 'Opnieuw beoordelen' : 'Beoordelen'}
         </button>
@@ -204,7 +204,7 @@ export function AiKwalificatieBlok({
           )}
 
           {record.ai_volgende_stap && (
-            <div className="rounded border border-brand-card-border bg-white p-3">
+            <div className="rounded border border-brand-card-border/15 bg-white dark:bg-brand-card-bg p-3">
               <p className="text-xs font-medium text-brand-text-primary mb-1">Voorgestelde eerste stap</p>
               <p className="text-sm text-brand-text-secondary leading-relaxed">{record.ai_volgende_stap}</p>
             </div>

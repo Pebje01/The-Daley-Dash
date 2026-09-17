@@ -355,7 +355,7 @@ export default function NieuweOfferteContent({
             else goBack()
           }} className="btn-secondary px-2.5"><ArrowLeft size={15} /></button>
         )}
-        <div>
+        <div className="min-w-0">
           <h1 className="font-uxum text-sidebar-t text-brand-text-primary">Nieuwe offerte</h1>
           <p className="text-caption text-brand-text-secondary mt-0.5">
             {mode === 'ai-preview' && 'Controleer de gegenereerde offerte, pas aan indien nodig'}
@@ -377,7 +377,8 @@ export default function NieuweOfferteContent({
         {mode !== 'ai-preview' && mode !== 'preview' && (
           <div className="card">
             <h2 className="font-semibold text-body mb-4">Vanuit welk bedrijf?</h2>
-            <div className="flex gap-3">
+            {/* Drie keuzeknoppen naast elkaar passen niet op een telefoon, daar stapelen ze */}
+            <div className="flex flex-col sm:flex-row gap-3">
               {COMPANIES.map(c => (
                 <button key={c.id} onClick={() => setCompanyId(c.id as CompanyId)}
                   className={`flex-1 border-2 rounded-brand p-3 text-left transition-all ${companyId === c.id ? 'border-brand-card-border' : 'border-brand-page-medium hover:border-brand-lavender-dark'}`}>
@@ -396,7 +397,7 @@ export default function NieuweOfferteContent({
         {mode !== 'ai-preview' && mode !== 'preview' && (
           <div className="card">
             <h2 className="font-semibold text-body mb-4">Klantgegevens</h2>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="label">Bedrijfsnaam *</label>
                 <input className="input" value={client.name} onChange={e => setClient(p => ({...p, name: e.target.value}))}
@@ -425,10 +426,10 @@ export default function NieuweOfferteContent({
         {mode === 'keuze' && (
           <div className="card border-2 border-brand-lavender">
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 rounded-brand-sm bg-brand-lavender-light flex items-center justify-center">
+              <div className="w-8 h-8 rounded-brand-sm bg-brand-lavender-light flex items-center justify-center shrink-0">
                 <Sparkles size={16} className="text-brand-text-primary" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <h2 className="font-semibold text-body">Vul offerte in met AI</h2>
                 <p className="text-caption text-brand-text-secondary">Beschrijf alles in één tekst, AI herkent automatisch de klantgegevens, diensten en prijzen</p>
               </div>
@@ -443,7 +444,7 @@ export default function NieuweOfferteContent({
             <p className="text-caption text-brand-text-secondary/60 mb-4">
               Vermeld: bedrijfsnaam klant, contactpersoon, e-mail, telefoon en gewenste diensten. AI vult alle velden automatisch in.
             </p>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <button
                 onClick={() => setMode('handmatig')}
                 className="flex items-center gap-1.5 text-caption text-brand-text-secondary hover:text-brand-text-primary transition-colors"
@@ -475,14 +476,14 @@ export default function NieuweOfferteContent({
             {/* Preview card styled like public offerte */}
             <div className="bg-white rounded-brand shadow-sm overflow-hidden border border-brand-page-medium">
               {/* Company header bar */}
-              <div className="px-6 py-4" style={{ backgroundColor: company.color }}>
+              <div className="px-4 sm:px-6 py-4" style={{ backgroundColor: company.color }}>
                 <h2 className="text-base font-bold text-white">{company.name}</h2>
-                <p className="text-white/80 text-caption mt-0.5">{company.address} · {company.email}</p>
+                <p className="text-white/80 text-caption mt-0.5 break-words">{company.address} · {company.email}</p>
               </div>
 
-              <div className="px-6 py-5">
-                {/* Client info, uit AI geëxtraheerd */}
-                <div className="grid grid-cols-2 gap-6 mb-5">
+              <div className="px-4 sm:px-6 py-5">
+                {/* Client info, uit AI geëxtraheerd. Op telefoon onder elkaar, vanaf sm twee kolommen */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 mb-5">
                   <div>
                     <h3 className="text-caption uppercase tracking-wide text-brand-text-secondary mb-1">Aan</h3>
                     <p className="font-semibold text-body">{aiResult.client?.name || client.name || '–'}</p>
@@ -490,7 +491,7 @@ export default function NieuweOfferteContent({
                     {(aiResult.client?.email || client.email) && <p className="text-caption text-brand-text-secondary">{aiResult.client?.email || client.email}</p>}
                     {(aiResult.client?.phone || client.phone) && <p className="text-caption text-brand-text-secondary">{aiResult.client?.phone || client.phone}</p>}
                   </div>
-                  <div className="text-right">
+                  <div className="sm:text-right">
                     <p className="text-caption text-brand-text-secondary">
                       Datum: <span className="text-brand-text-primary">{new Date(offerteDate + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                     </p>
@@ -511,7 +512,9 @@ export default function NieuweOfferteContent({
                         {section.title}
                       </h3>
                     )}
-                    <table className="w-full text-caption">
+                    {/* De tabel scrolt horizontaal op een telefoon; de vaste kolommen passen anders niet */}
+                    <div className="overflow-x-auto">
+                    <table className="w-full min-w-[440px] text-caption">
                       <thead>
                         <tr className="border-b border-brand-page-medium">
                           <th className="text-left py-2 text-brand-text-secondary font-medium">Omschrijving</th>
@@ -534,11 +537,12 @@ export default function NieuweOfferteContent({
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   </div>
                 ))}
 
                 {/* Totals */}
-                <div className="ml-auto max-w-xs space-y-1.5 text-caption mt-4">
+                <div className="sm:ml-auto sm:max-w-xs space-y-1.5 text-caption mt-4">
                   <div className="flex justify-between">
                     <span className="text-brand-text-secondary">Subtotaal</span>
                     <span className="font-medium">{euro(aiPreviewTotals.subtotal)}</span>
@@ -565,7 +569,7 @@ export default function NieuweOfferteContent({
 
             {/* Action buttons */}
             <div className="card">
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   onClick={handleApproveAI}
                   className="btn-primary"
@@ -583,9 +587,9 @@ export default function NieuweOfferteContent({
               {/* Regenerate with extra instructions */}
               <div className="mt-4 pt-4 border-t border-brand-page-medium">
                 <p className="text-caption text-brand-text-secondary mb-2">Niet helemaal goed? Geef extra instructies en genereer opnieuw:</p>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <input
-                    className="input flex-1"
+                    className="input flex-1 min-w-0"
                     placeholder="Bijv. 'Maak de prijzen 10% lager' of 'Voeg een sectie toe voor hosting'"
                     value={aiExtraInstructions}
                     onChange={e => setAiExtraInstructions(e.target.value)}
@@ -599,7 +603,7 @@ export default function NieuweOfferteContent({
                   <button
                     onClick={() => handleGenerateAI(aiExtraInstructions)}
                     disabled={!aiExtraInstructions.trim() || aiGenerating || aiCooldown > 0}
-                    className="btn-secondary disabled:opacity-50 shrink-0"
+                    className="btn-secondary disabled:opacity-50 shrink-0 self-start sm:self-auto"
                   >
                     {aiGenerating ? (
                       <Loader2 size={14} className="animate-spin" />
@@ -658,7 +662,7 @@ export default function NieuweOfferteContent({
 
             {/* Secties met diensten */}
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="font-semibold text-body">Diensten / producten</h2>
                 <button onClick={addSection} className="btn-secondary py-1.5 text-caption">
                   <Plus size={13} /> Nieuwe sectie
@@ -669,7 +673,7 @@ export default function NieuweOfferteContent({
                 <div key={section.id} className="card border-2 border-brand-page-medium">
                   {/* Section header */}
                   <div className="flex items-center gap-2 mb-4">
-                    <div className="flex flex-col gap-0.5">
+                    <div className="flex flex-col gap-0.5 shrink-0">
                       <button onClick={() => moveSectionUp(sIdx)} disabled={sIdx === 0}
                         className="p-0.5 text-brand-text-secondary hover:text-brand-text-primary disabled:opacity-30 transition-colors">
                         <GripVertical size={12} className="rotate-180" />
@@ -679,7 +683,7 @@ export default function NieuweOfferteContent({
                         <GripVertical size={12} />
                       </button>
                     </div>
-                    <input className="input flex-1 font-semibold" placeholder={`Sectie titel (bijv. Website & Design)`}
+                    <input className="input flex-1 min-w-0 font-semibold" placeholder={`Sectie titel (bijv. Website & Design)`}
                       value={section.title} onChange={e => updateSectionTitle(section.id, e.target.value)} />
                     {sections.length > 1 && (
                       <button onClick={() => removeSection(section.id)}
@@ -690,8 +694,11 @@ export default function NieuweOfferteContent({
                     )}
                   </div>
 
-                  {/* Items within section */}
-                  <div className="space-y-3">
+                  {/* Items within section. De vaste kolommen (120+100+100+36px) passen niet op een telefoon,
+                      daarom scrollen de regels horizontaal en houdt de binnenkant een minimale breedte.
+                      De -mx-1 px-1 zorgt dat de focus-ring van de inputs niet wordt afgeknipt door de scroll-container. */}
+                  <div className="overflow-x-auto -mx-1 px-1 py-1">
+                   <div className="space-y-3 min-w-[560px]">
                     {section.items.map((item, idx) => (
                       <div key={item.id} className="grid grid-cols-[1fr_120px_100px_100px_36px] gap-2 items-start">
                         <div>
@@ -723,6 +730,7 @@ export default function NieuweOfferteContent({
                         </div>
                       </div>
                     ))}
+                   </div>
                   </div>
 
                   <button onClick={() => addItem(section.id)} className="mt-3 text-caption text-brand-text-secondary hover:text-brand-text-primary flex items-center gap-1 transition-colors">
@@ -734,7 +742,8 @@ export default function NieuweOfferteContent({
 
             {/* Totalen */}
             <div className="card">
-              <div className="border-t border-brand-page-medium pt-4 ml-auto max-w-xs space-y-2">
+              {/* Op telefoon volle breedte, vanaf sm rechts uitgelijnd blok */}
+              <div className="border-t border-brand-page-medium pt-4 sm:ml-auto sm:max-w-xs space-y-2">
                 <div className="flex justify-between text-body">
                   <span className="text-brand-text-secondary">Subtotaal</span>
                   <span className="font-semibold text-brand-text-primary">{euro(subtotal)}</span>
@@ -764,9 +773,9 @@ export default function NieuweOfferteContent({
                 value={termsText} onChange={e => setTermsText(e.target.value)} />
             </div>
 
-            {/* Save bar */}
-            <div className="bg-brand-page-light border-brand border-brand-card-border rounded-brand px-4 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            {/* Save bar: knoppen wrappen op een smal scherm */}
+            <div className="bg-brand-page-light border-brand border-brand-card-border rounded-brand px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
                 <button onClick={handleShowPreview} disabled={!client.name || allItems.length === 0} className="btn-secondary disabled:opacity-50">
                   <FileText size={15} /> Bekijk PDF voorbeeld
                 </button>
@@ -790,7 +799,7 @@ export default function NieuweOfferteContent({
               />
             </div>
 
-            <div className="bg-brand-page-light border-brand border-brand-card-border rounded-brand px-4 py-3 flex items-center justify-between">
+            <div className="bg-brand-page-light border-brand border-brand-card-border rounded-brand px-4 py-3 flex flex-wrap items-center justify-between gap-3">
               <button
                 onClick={() => setMode('handmatig')}
                 className="btn-secondary"

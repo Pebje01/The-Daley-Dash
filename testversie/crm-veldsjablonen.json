@@ -1,0 +1,994 @@
+{
+ "lead": [
+  {
+   "id": "8a006e77-d18c-4fc0-a6c6-0b84bb52b2e0",
+   "name": "(Verwachte) beslissingsdatum",
+   "type": "date",
+   "type_config": {}
+  },
+  {
+   "id": "fb3e499a-13b3-4b8c-bb57-a2e3320f2ac4",
+   "name": "Bedrijf",
+   "type": "tasks",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517516955"
+   }
+  },
+  {
+   "id": "fb628e24-f932-405f-a30b-5b529f485cc9",
+   "name": "Bedrijf",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517516955",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Bedrijven"
+   }
+  },
+  {
+   "id": "338f882c-a947-404f-bdb9-97041a2628ff",
+   "name": "Beroep",
+   "type": "short_text",
+   "type_config": {}
+  },
+  {
+   "id": "439f9f24-9a74-42f6-a7cb-70cecd224780",
+   "name": "Bron",
+   "type": "drop_down",
+   "type_config": {
+    "options": [
+     {
+      "id": "579ab9c3-9243-4058-8a38-91ec3cd82cba",
+      "name": "Kennisen / Vrienden",
+      "color": "#f900ea",
+      "orderindex": 0
+     },
+     {
+      "id": "c345be10-d6b2-4233-99de-342ea125c03d",
+      "name": "Linkedin",
+      "color": "#0091ff",
+      "orderindex": 1
+     },
+     {
+      "id": "c11397e1-fd9d-4d41-83eb-05aadec119a0",
+      "name": "Referral (via via)",
+      "color": "#f76808",
+      "orderindex": 2
+     },
+     {
+      "id": "c097df2e-e9dc-43a5-93b7-617b669ae07a",
+      "name": "Netwerk(evenement)",
+      "color": "#f9d900",
+      "orderindex": 3
+     },
+     {
+      "id": "2b2e74d0-f6fa-4190-8c69-67050636bd1b",
+      "name": "Via zoekmachine",
+      "color": "#bbbbbb",
+      "orderindex": 4
+     },
+     {
+      "id": "85b9c59a-8006-416d-b386-fff317afd793",
+      "name": "Instagram",
+      "color": "#6647f0",
+      "orderindex": 5
+     },
+     {
+      "id": "187146c7-532e-4494-8a47-f968e6a2b665",
+      "name": "Doorlopende opdracht",
+      "color": "#30a46c",
+      "orderindex": 6
+     }
+    ],
+    "sorting": "manual",
+    "new_drop_down": true
+   }
+  },
+  {
+   "id": "4c3b25c5-7260-4e58-a67e-26d89fe71131",
+   "name": "Contactpersoon",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517516200",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Contacten"
+   }
+  },
+  {
+   "id": "00506327-dc13-43a4-a1c2-09395c221824",
+   "name": "Details opdracht",
+   "type": "text",
+   "type_config": {}
+  },
+  {
+   "id": "873d8435-aefd-49ab-b891-2a0b5ae35a80",
+   "name": "Opdrachten",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517514537",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Opdrachten"
+   }
+  },
+  {
+   "id": "4fe3b021-835a-4eba-8064-925d104cf54b",
+   "name": "Opdrachten",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517514537",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Opdrachten"
+   }
+  },
+  {
+   "id": "1e7abf63-7ef2-4a45-8699-2e4bba58f713",
+   "name": "Contacten",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517516200",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Contacten"
+   }
+  },
+  {
+   "id": "4f51628e-9532-4051-ac15-172b69206f9a",
+   "name": "Bedrijven",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517516955",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Bedrijven"
+   }
+  },
+  {
+   "id": "7d7b4687-56c7-4513-9fc4-b2ad1e9b10e6",
+   "name": "Op initiatief van",
+   "type": "drop_down",
+   "type_config": {
+    "options": [
+     {
+      "id": "ad9f7561-adea-451b-8c66-12ac6897ab33",
+      "name": "Initiatief van de klant (inbound)",
+      "color": null,
+      "orderindex": 0
+     },
+     {
+      "id": "38dae49d-aa13-4f92-9a42-b8e90421c75a",
+      "name": "Mijn initiatief (outbound)",
+      "color": null,
+      "orderindex": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "8af0534c-7fe9-4b0f-9c30-5bcf6ccbdd62",
+   "name": "Prijs incl. BTW",
+   "type": "currency",
+   "type_config": {
+    "precision": 2,
+    "currency_type": "EUR"
+   }
+  },
+  {
+   "id": "1779bd17-3a93-4225-957a-4207ed3c7a0b",
+   "name": "Producten",
+   "type": "labels",
+   "type_config": {
+    "options": [
+     {
+      "id": "66e2cee8-ed56-488c-ace4-8728bb65ccd3",
+      "color": "#0091ff",
+      "label": "Fotografie",
+      "orderindex": 0
+     },
+     {
+      "id": "3b58b914-1c4b-42f1-b640-4416fa6873e4",
+      "color": "#6647f0",
+      "label": "Branding",
+      "orderindex": 1
+     },
+     {
+      "id": "5733f6b9-0ec4-4f2e-bb3b-d98d0ca3db18",
+      "color": "#bbbbbb",
+      "label": "Video",
+      "orderindex": 2
+     },
+     {
+      "id": "8da2e6aa-73a2-4033-bed6-8c10e47f5b28",
+      "color": "#e93d82",
+      "label": "Marketing / Communicatie ",
+      "orderindex": 3
+     },
+     {
+      "id": "88ce56c0-432e-46f6-b045-77367235b4b5",
+      "color": "#12a594",
+      "label": "Webdesign ",
+      "orderindex": 4
+     },
+     {
+      "id": "c3f4c9f7-02d2-460f-bec2-f5ba315e0ff0",
+      "color": "#ffc53d",
+      "label": "Grafische vormgeving",
+      "orderindex": 5
+     },
+     {
+      "id": "7218cecd-e7df-47d3-8a80-a38f14294139",
+      "color": "#b6b6ff",
+      "label": "Tech/AI",
+      "orderindex": 6
+     }
+    ],
+    "sorting": "manual"
+   }
+  },
+  {
+   "id": "11259631-1fe4-43a1-a62f-141ab0c0e8f6",
+   "name": "Reden (gewonnen/verloren/niets uitgekomen)",
+   "type": "text",
+   "type_config": {}
+  },
+  {
+   "id": "b1f8c0ba-c1b5-4c9e-9da8-7e22c40ff6cf",
+   "name": "Type kans",
+   "type": "drop_down",
+   "type_config": {
+    "options": [
+     {
+      "id": "06185bd9-eb44-43dc-be86-2ca575d6821e",
+      "name": "Nieuwe klant",
+      "color": "#30a46c",
+      "orderindex": 0
+     },
+     {
+      "id": "a18c322b-2b8d-4e2d-b5ba-e3620151c422",
+      "name": "Upsell/cross-sell",
+      "color": "#ffc53d",
+      "orderindex": 1
+     }
+    ],
+    "sorting": "manual"
+   }
+  }
+ ],
+ "ruwe_lead": [],
+ "company": [
+  {
+   "id": "007f2c55-dfa2-4847-981e-4e0aa19cddc0",
+   "name": "Contactpersoon",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517516200",
+    "field_inverted_name": "Contactpersoon",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Contacten"
+   }
+  },
+  {
+   "id": "91fe47fd-f9d6-44ce-a55c-54a886653e00",
+   "name": "Opdrachten",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517514537",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Opdrachten"
+   }
+  },
+  {
+   "id": "fb628e24-f932-405f-a30b-5b529f485cc9",
+   "name": "Leads (kansen)",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517514509",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Leads (kansen)"
+   }
+  },
+  {
+   "id": "4f51628e-9532-4051-ac15-172b69206f9a",
+   "name": "Gerelateerde kansen",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517514509",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Leads (kansen)"
+   }
+  },
+  {
+   "id": "917ed743-0d96-4839-af4b-52e428c35de7",
+   "name": "Kansen 1",
+   "type": "text",
+   "type_config": {}
+  },
+  {
+   "id": "2fb7a4d9-8027-4859-9b76-e23887eeaf0a",
+   "name": "Klantnummer",
+   "type": "short_text",
+   "type_config": {}
+  },
+  {
+   "id": "e918a570-adab-46eb-abae-2cab33730c41",
+   "name": "Website",
+   "type": "url",
+   "type_config": {}
+  }
+ ],
+ "contact": [
+  {
+   "id": "007f2c55-dfa2-4847-981e-4e0aa19cddc0",
+   "name": "Bedrijf",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517516955",
+    "field_inverted_name": "Contactpersoon",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Bedrijven"
+   }
+  },
+  {
+   "id": "0244bd83-96bb-4130-908c-22cdde05a8fd",
+   "name": "Beroep",
+   "type": "labels",
+   "type_config": {
+    "options": [
+     {
+      "id": "03c1ddee-4325-43d3-a188-544e6a3aa7f8",
+      "color": "#b6b6ff",
+      "label": "Auteur",
+      "orderindex": 0
+     },
+     {
+      "id": "7db3d678-1938-4bd4-bfbd-69bf1590dcfe",
+      "color": "#3e63dd",
+      "label": "Marketeer",
+      "orderindex": 1
+     },
+     {
+      "id": "6878782d-1ae6-4a5b-8398-d936bf2ee8e2",
+      "color": "#12a594",
+      "label": "Fotograaf",
+      "orderindex": 2
+     },
+     {
+      "id": "7177bb88-6003-492d-8726-c349901bcc74",
+      "color": "#d1b9b0",
+      "label": "Coach",
+      "orderindex": 3
+     },
+     {
+      "id": "9d856d89-ece1-4a30-998b-f8de68c29176",
+      "color": "#e93d82",
+      "label": "Tekstschrijver",
+      "orderindex": 4
+     },
+     {
+      "id": "4bbbbf74-ae08-4843-b9bd-cebce03d76c6",
+      "color": "#2ecd6f",
+      "label": "UX Designer",
+      "orderindex": 5
+     },
+     {
+      "id": "6a12228a-da6b-4ffd-8a10-646c9736d55f",
+      "color": "#ffc53d",
+      "label": "Webdesigner / Developer",
+      "orderindex": 6
+     },
+     {
+      "id": "ebb16a8b-d102-48b6-8b2e-10a9ce2b0543",
+      "color": "#96c7f2",
+      "label": "HR",
+      "orderindex": 7
+     },
+     {
+      "id": "050dd96f-20ed-47a4-bd8a-3a7ca12132b9",
+      "color": "#e5484d",
+      "label": "Vastgoedbeheerder",
+      "orderindex": 8
+     },
+     {
+      "id": "4ca26d1a-ce45-4b48-b907-2821cbe91532",
+      "color": "#f9d900",
+      "label": "Designer",
+      "orderindex": 9
+     },
+     {
+      "id": "8af8925f-a788-40f1-bb2b-f11f5ae60016",
+      "color": "#f76808",
+      "label": "Sales",
+      "orderindex": 10
+     }
+    ],
+    "sorting": "manual"
+   }
+  },
+  {
+   "id": "9d3a421f-0b7a-4a41-85ba-cc37e677fd7f",
+   "name": "Bron",
+   "type": "drop_down",
+   "type_config": {
+    "options": [
+     {
+      "id": "e5d1d01a-45a5-4f72-83fc-657697187dc3",
+      "name": "LinkedIn",
+      "color": "#04A9F4",
+      "orderindex": 0
+     },
+     {
+      "id": "b5768da4-70ee-4aa8-9ea8-e435e059ef23",
+      "name": "Vrienden / kennissen",
+      "color": "#b5bcc2",
+      "orderindex": 1
+     },
+     {
+      "id": "4d6c1581-ae5f-45ae-bda8-49fb92edcf1c",
+      "name": "Referral (via via)",
+      "color": "#f9d900",
+      "orderindex": 2
+     },
+     {
+      "id": "ed584647-a502-4cb5-af35-5d26577c7465",
+      "name": "Netwerk of netwerkevenementen",
+      "color": "#EA80FC",
+      "orderindex": 3
+     },
+     {
+      "id": "9997e1b9-5060-41ab-8f13-5ca209cc2a32",
+      "name": "Website",
+      "color": "#02BCD4",
+      "orderindex": 4
+     },
+     {
+      "id": "b8086174-79eb-46ca-97a5-fa9d112666b4",
+      "name": "Externe bronnen (gelezen/gevonden)",
+      "color": "#14811C",
+      "orderindex": 5
+     },
+     {
+      "id": "c16dea4b-f7e5-4589-bfd4-cda0e1e80182",
+      "name": "Eigen bedrijf",
+      "color": "#49B4A6",
+      "orderindex": 6
+     }
+    ],
+    "sorting": "manual",
+    "new_drop_down": true
+   }
+  },
+  {
+   "id": "4c3b25c5-7260-4e58-a67e-26d89fe71131",
+   "name": "Leads (kansen)",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517514509",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Leads (kansen)"
+   }
+  },
+  {
+   "id": "97cddafc-5fd5-4749-b04b-3175ca72e978",
+   "name": "Opdrachten",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517514537",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Opdrachten"
+   }
+  },
+  {
+   "id": "9dbfa9ce-51c3-4747-a38d-06eaebff1688",
+   "name": "E-mail",
+   "type": "email",
+   "type_config": {}
+  },
+  {
+   "id": "1e7abf63-7ef2-4a45-8699-2e4bba58f713",
+   "name": "Gerelateerde kans",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517514509",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Leads (kansen)"
+   }
+  },
+  {
+   "id": "6e802836-b895-4110-8af6-c87ca8e709d5",
+   "name": "Telefoon",
+   "type": "phone",
+   "type_config": {}
+  },
+  {
+   "id": "e918a570-adab-46eb-abae-2cab33730c41",
+   "name": "Website",
+   "type": "url",
+   "type_config": {}
+  }
+ ],
+ "assignment": [
+  {
+   "id": "8a006e77-d18c-4fc0-a6c6-0b84bb52b2e0",
+   "name": "(Verwachte) beslissingsdatum",
+   "type": "date",
+   "type_config": {}
+  },
+  {
+   "id": "fb3e499a-13b3-4b8c-bb57-a2e3320f2ac4",
+   "name": "Bedrijf",
+   "type": "tasks",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517516955"
+   }
+  },
+  {
+   "id": "91fe47fd-f9d6-44ce-a55c-54a886653e00",
+   "name": "Bedrijf",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517516955",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Bedrijven"
+   }
+  },
+  {
+   "id": "439f9f24-9a74-42f6-a7cb-70cecd224780",
+   "name": "Bron",
+   "type": "drop_down",
+   "type_config": {
+    "options": [
+     {
+      "id": "579ab9c3-9243-4058-8a38-91ec3cd82cba",
+      "name": "Kennisen / Vrienden",
+      "color": "#f900ea",
+      "orderindex": 0
+     },
+     {
+      "id": "c345be10-d6b2-4233-99de-342ea125c03d",
+      "name": "Linkedin",
+      "color": "#0091ff",
+      "orderindex": 1
+     },
+     {
+      "id": "c11397e1-fd9d-4d41-83eb-05aadec119a0",
+      "name": "Referral (via via)",
+      "color": "#f76808",
+      "orderindex": 2
+     },
+     {
+      "id": "c097df2e-e9dc-43a5-93b7-617b669ae07a",
+      "name": "Netwerk(evenement)",
+      "color": "#f9d900",
+      "orderindex": 3
+     },
+     {
+      "id": "2b2e74d0-f6fa-4190-8c69-67050636bd1b",
+      "name": "Via zoekmachine",
+      "color": "#bbbbbb",
+      "orderindex": 4
+     },
+     {
+      "id": "85b9c59a-8006-416d-b386-fff317afd793",
+      "name": "Instagram",
+      "color": "#6647f0",
+      "orderindex": 5
+     },
+     {
+      "id": "187146c7-532e-4494-8a47-f968e6a2b665",
+      "name": "Doorlopende opdracht",
+      "color": "#30a46c",
+      "orderindex": 6
+     }
+    ],
+    "sorting": "manual",
+    "new_drop_down": true
+   }
+  },
+  {
+   "id": "b73a826d-65f1-4a9e-8704-30a72c895a22",
+   "name": "Contactpersoon",
+   "type": "tasks",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517516200"
+   }
+  },
+  {
+   "id": "97cddafc-5fd5-4749-b04b-3175ca72e978",
+   "name": "Contactpersoon (DE JUISTE)",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517516200",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Contacten"
+   }
+  },
+  {
+   "id": "a6281ff5-1d20-4b44-8ceb-480f1e455a6e",
+   "name": "Datum afgerond",
+   "type": "date",
+   "type_config": {}
+  },
+  {
+   "id": "00506327-dc13-43a4-a1c2-09395c221824",
+   "name": "Details opdracht",
+   "type": "text",
+   "type_config": {}
+  },
+  {
+   "id": "11db60d1-00a6-4252-b7cd-7277bd7dbb57",
+   "name": "Factuur gestuurd",
+   "type": "manual_progress",
+   "type_config": {
+    "end": 100,
+    "start": 0
+   }
+  },
+  {
+   "id": "873d8435-aefd-49ab-b891-2a0b5ae35a80",
+   "name": "Gekoppelde lead",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517514509",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Leads (kansen)"
+   }
+  },
+  {
+   "id": "4fe3b021-835a-4eba-8064-925d104cf54b",
+   "name": "Gerelateerde kans",
+   "type": "list_relationship",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517514509",
+    "linked_subcategory_access": true,
+    "subcategory_inverted_name": "Leads (kansen)"
+   }
+  },
+  {
+   "id": "7d7b4687-56c7-4513-9fc4-b2ad1e9b10e6",
+   "name": "Op initiatief van",
+   "type": "drop_down",
+   "type_config": {
+    "options": [
+     {
+      "id": "ad9f7561-adea-451b-8c66-12ac6897ab33",
+      "name": "Initiatief van de klant (inbound)",
+      "color": null,
+      "orderindex": 0
+     },
+     {
+      "id": "38dae49d-aa13-4f92-9a42-b8e90421c75a",
+      "name": "Mijn initiatief (outbound)",
+      "color": null,
+      "orderindex": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "8af0534c-7fe9-4b0f-9c30-5bcf6ccbdd62",
+   "name": "Prijs incl. BTW",
+   "type": "currency",
+   "type_config": {
+    "precision": 2,
+    "currency_type": "EUR"
+   }
+  },
+  {
+   "id": "1779bd17-3a93-4225-957a-4207ed3c7a0b",
+   "name": "Producten",
+   "type": "labels",
+   "type_config": {
+    "options": [
+     {
+      "id": "66e2cee8-ed56-488c-ace4-8728bb65ccd3",
+      "color": "#0091ff",
+      "label": "Fotografie",
+      "orderindex": 0
+     },
+     {
+      "id": "3b58b914-1c4b-42f1-b640-4416fa6873e4",
+      "color": "#6647f0",
+      "label": "Branding",
+      "orderindex": 1
+     },
+     {
+      "id": "5733f6b9-0ec4-4f2e-bb3b-d98d0ca3db18",
+      "color": "#bbbbbb",
+      "label": "Video",
+      "orderindex": 2
+     },
+     {
+      "id": "8da2e6aa-73a2-4033-bed6-8c10e47f5b28",
+      "color": "#e93d82",
+      "label": "Marketing / Communicatie ",
+      "orderindex": 3
+     },
+     {
+      "id": "88ce56c0-432e-46f6-b045-77367235b4b5",
+      "color": "#12a594",
+      "label": "Webdesign ",
+      "orderindex": 4
+     },
+     {
+      "id": "c3f4c9f7-02d2-460f-bec2-f5ba315e0ff0",
+      "color": "#ffc53d",
+      "label": "Grafische vormgeving",
+      "orderindex": 5
+     },
+     {
+      "id": "7218cecd-e7df-47d3-8a80-a38f14294139",
+      "color": "#b6b6ff",
+      "label": "Tech/AI",
+      "orderindex": 6
+     }
+    ],
+    "sorting": "manual"
+   }
+  },
+  {
+   "id": "b1f8c0ba-c1b5-4c9e-9da8-7e22c40ff6cf",
+   "name": "Type kans",
+   "type": "drop_down",
+   "type_config": {
+    "options": [
+     {
+      "id": "06185bd9-eb44-43dc-be86-2ca575d6821e",
+      "name": "Nieuwe klant",
+      "color": "#30a46c",
+      "orderindex": 0
+     },
+     {
+      "id": "a18c322b-2b8d-4e2d-b5ba-e3620151c422",
+      "name": "Upsell/cross-sell",
+      "color": "#ffc53d",
+      "orderindex": 1
+     }
+    ],
+    "sorting": "manual"
+   }
+  }
+ ],
+ "clickup_invoice": [
+  {
+   "id": "8a006e77-d18c-4fc0-a6c6-0b84bb52b2e0",
+   "name": "(Verwachte) beslissingsdatum",
+   "type": "date",
+   "type_config": {}
+  },
+  {
+   "id": "fb3e499a-13b3-4b8c-bb57-a2e3320f2ac4",
+   "name": "Bedrijf",
+   "type": "tasks",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517516955"
+   }
+  },
+  {
+   "id": "0253c37e-5e44-4265-9daf-001d993f1eda",
+   "name": "Bron",
+   "type": "drop_down",
+   "type_config": {
+    "options": [
+     {
+      "id": "9f5987bc-7a3f-45f5-863e-1eaa8e10ac7e",
+      "name": "Kennisen / Vrienden",
+      "color": "#7B61FF",
+      "orderindex": 0
+     },
+     {
+      "id": "90f26aad-79ae-4d2d-8da2-fbe5565258cb",
+      "name": "Linkedin",
+      "color": "#0077B5",
+      "orderindex": 1
+     },
+     {
+      "id": "b726875e-787f-4c91-8d42-e94abde9d06d",
+      "name": "Referral (via via)",
+      "color": "#00C49A",
+      "orderindex": 2
+     },
+     {
+      "id": "032ee958-b31c-420b-bf55-2a726817d359",
+      "name": "Netwerk(evenement)",
+      "color": "#FF9900",
+      "orderindex": 3
+     },
+     {
+      "id": "8e777b21-f01f-48a1-bc18-6c414c2dbe8f",
+      "name": "Via zoekmachine",
+      "color": "#FF4B4B",
+      "orderindex": 4
+     },
+     {
+      "id": "120b067d-0167-453b-af13-26a53b5bf395",
+      "name": "Instagram",
+      "color": "#C13584",
+      "orderindex": 5
+     }
+    ],
+    "sorting": "manual"
+   }
+  },
+  {
+   "id": "b73a826d-65f1-4a9e-8704-30a72c895a22",
+   "name": "Contactpersoon",
+   "type": "tasks",
+   "type_config": {
+    "fields": [],
+    "subcategory_id": "901517516200"
+   }
+  },
+  {
+   "id": "00506327-dc13-43a4-a1c2-09395c221824",
+   "name": "Details opdracht",
+   "type": "text",
+   "type_config": {}
+  },
+  {
+   "id": "7822d90b-2dc8-4029-ba49-a89e847317c3",
+   "name": "Factuurdatum",
+   "type": "date",
+   "type_config": {}
+  },
+  {
+   "id": "c0b61bff-bbc3-4f19-aba5-b1acdfc903e6",
+   "name": "Invoice Category",
+   "type": "drop_down",
+   "type_config": {
+    "ai": {
+     "prompt": "Categorize the invoice based on the type of service or product.",
+     "source": "categorize"
+    },
+    "options": [
+     {
+      "id": "1c8becb8-4b04-4f7e-a071-f8d856a58838",
+      "name": "Consulting",
+      "color": "#1bbc9c",
+      "orderindex": 0
+     },
+     {
+      "id": "838d10ad-ff55-4bf1-9b95-201e1dfc1323",
+      "name": "Product Sales",
+      "color": "#f9d900",
+      "orderindex": 1
+     },
+     {
+      "id": "34825b1c-711b-4d2a-a30e-a82afd620ef5",
+      "name": "Subscription",
+      "color": "#FF4081",
+      "orderindex": 2
+     },
+     {
+      "id": "cb12dc37-fab5-41e6-8d1f-b885541c6995",
+      "name": "Training Services",
+      "color": "#7C4DFF",
+      "orderindex": 3
+     },
+     {
+      "id": "d509ebad-1ba1-4603-ae90-932341276254",
+      "name": "Maintenance",
+      "color": "#02BCD4",
+      "orderindex": 4
+     }
+    ]
+   }
+  },
+  {
+   "id": "7669e555-144f-471d-b47b-350a58d0430e",
+   "name": "Op initiatief van",
+   "type": "drop_down",
+   "type_config": {
+    "options": [
+     {
+      "id": "cd6f8b71-3b14-4943-9a0b-57fc7dea652c",
+      "name": "Initiatief van de klant (inbound)",
+      "color": "#3178C6",
+      "orderindex": 0
+     },
+     {
+      "id": "09583855-3b27-451e-96ca-607379370bcb",
+      "name": "Mijn initiatief (outbound)",
+      "color": "#F4A300",
+      "orderindex": 1
+     }
+    ],
+    "sorting": "manual"
+   }
+  },
+  {
+   "id": "8af0534c-7fe9-4b0f-9c30-5bcf6ccbdd62",
+   "name": "Prijs incl. BTW",
+   "type": "currency",
+   "type_config": {
+    "precision": 2,
+    "currency_type": "EUR"
+   }
+  },
+  {
+   "id": "35da1674-afb9-4d7d-bace-ab09c8e77dd3",
+   "name": "Producten",
+   "type": "labels",
+   "type_config": {
+    "options": [
+     {
+      "id": "4dfc7d72-c849-4c73-9f42-280a388d58c7",
+      "color": "#4A90E2",
+      "label": "Fotografie",
+      "orderindex": 0
+     },
+     {
+      "id": "fb559516-5b68-4025-a536-b75f63d5ca10",
+      "color": "#F5A623",
+      "label": "Branding",
+      "orderindex": 1
+     },
+     {
+      "id": "be1210f4-68bb-4a89-9bec-d46bff967148",
+      "color": "#7ED321",
+      "label": "Video",
+      "orderindex": 2
+     },
+     {
+      "id": "fdc0e917-57ec-4baf-8b94-a7c28dbfb214",
+      "color": "#D0021B",
+      "label": "Marketing / Communicatie",
+      "orderindex": 3
+     },
+     {
+      "id": "f88284dc-dfd1-4231-aa87-87f24aa8bd1e",
+      "color": "#9013FE",
+      "label": "Webdesign",
+      "orderindex": 4
+     },
+     {
+      "id": "dba68d8e-2f51-4541-a6d3-09a27a03a0a8",
+      "color": "#50E3C2",
+      "label": "Grafische vormgeving",
+      "orderindex": 5
+     }
+    ],
+    "sorting": "manual"
+   }
+  },
+  {
+   "id": "cc3db09f-29cb-4920-ba3d-b55d9d8f65b0",
+   "name": "Type kans",
+   "type": "drop_down",
+   "type_config": {
+    "options": [
+     {
+      "id": "c4f90776-f89f-464f-b4d4-e6c55e5f46eb",
+      "name": "Nieuwe klant",
+      "color": "#0052CC",
+      "orderindex": 0
+     },
+     {
+      "id": "4b314052-c1a7-4ec3-a8e2-529b41d1e921",
+      "name": "Upsell/cross-sell",
+      "color": "#36B37E",
+      "orderindex": 1
+     }
+    ],
+    "sorting": "manual"
+   }
+  }
+ ]
+}

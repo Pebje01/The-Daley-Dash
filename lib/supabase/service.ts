@@ -1,12 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
+import { supabaseDataConfig } from '@/lib/dashModus'
 
 export function createServiceClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!url || !key) {
-    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SECRET_KEY')
-  }
+  // In de testversie komt de data uit het testproject, zie lib/dashModus.ts
+  const { url, key } = supabaseDataConfig()
 
   return createClient(url, key, {
     auth: {

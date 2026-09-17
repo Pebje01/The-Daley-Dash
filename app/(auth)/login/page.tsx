@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2 } from 'lucide-react'
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
+  const zoekParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -29,7 +30,10 @@ export default function LoginPage() {
       return
     }
 
-    router.push('/')
+    // Terug naar de pagina waar je heen wilde, alleen interne paden toegestaan.
+    const next = zoekParams.get('next')
+    const doel = next && next.startsWith('/') && !next.startsWith('//') ? next : '/'
+    router.push(doel)
     router.refresh()
   }
 
@@ -103,5 +107,15 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+// useSearchParams vereist een Suspense-grens, anders weigert Next de pagina
+// statisch te bouwen.
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   )
 }

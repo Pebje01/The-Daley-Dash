@@ -13,11 +13,12 @@ import {
 } from 'lucide-react'
 import {
   CONTACT_SOORTEN, CONTACT_STATUSSEN, OPVOLG_PRESETS, PAUZE_PRESETS,
-  contactStand, contactStatusLabel, datumISO, datumPlusDagen,
+  contactStand, contactStatusLabel, contactStatusVoorFase, datumISO, datumPlusDagen,
   faseDef, faseNaContact, isGeblokkeerd, opvolgLabel, opvolgStand,
   pauzeAfgelopen, standaardOpvolgdatum,
   type ContactSoort, type ContactStatus, type OpvolgStand,
 } from '@/lib/crm/pipeline'
+import { VELD_INPUT } from '@/lib/crm/stijl'
 
 export interface OpvolgRecord {
   id: string
@@ -263,12 +264,12 @@ export function OpvolgPicker({
 
           <input
             type="date"
-            className="input text-sm py-1.5"
+            className={VELD_INPUT}
             value={datum}
             onChange={(e) => setDatum(e.target.value)}
           />
           <input
-            className="input text-sm py-1.5"
+            className={VELD_INPUT}
             placeholder="Waarover? (optioneel)"
             value={notitie}
             onChange={(e) => setNotitie(e.target.value)}
@@ -419,11 +420,20 @@ const STATUS_ICOON: Record<ContactStatus, typeof Ban> = {
 export function ContactStatusBlok({
   record,
   onSaved,
+  volgtFase = false,
 }: {
   record: OpvolgRecord
   onSaved: (patch: OpvolgPatch) => void
+  /**
+   * Leads: de fase bepaalt de contactstatus (On hold = pauze, Blocklist =
+   * blokkade). Dan geen eigen keuzeknoppen, alleen einddatum en reden, en
+   * helemaal niets zolang de lead gewoon benaderbaar is.
+   */
+  volgtFase?: boolean
 }) {
-  const opgeslagen = ((record.contact_status || 'open') as ContactStatus)
+  const opgeslagen = volgtFase
+    ? contactStatusVoorFase(record.status)
+    : ((record.contact_status || 'open') as ContactStatus)
   const [reden, setReden] = useState(record.contact_status_reden || '')
   const [tot, setTot] = useState(record.contact_status_tot?.slice(0, 10) || '')
   const [bezig, setBezig] = useState(false)
@@ -459,11 +469,15 @@ export function ContactStatusBlok({
     ? 'border-gray-800 bg-gray-50'
     : opgeslagen === 'pauze' ? 'border-gray-300 bg-gray-50/60' : 'border-gray-200'
 
+  if (volgtFase && opgeslagen === 'open') return null
+
   return (
     <div className={`rounded-xl border p-3 ${randKleur}`}>
-      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Contactstatus</p>
+      <p className={`text-[11px] font-semibold text-gray-400 uppercase tracking-wider ${volgtFase ? 'mb-1' : 'mb-2'}`}>
+        {volgtFase ? (opgeslagen === 'blokkade' ? 'Blocklist' : 'On hold') : 'Contactstatus'}
+      </p>
 
-      <div className="flex flex-wrap gap-1.5">
+      <div className={volgtFase ? 'hidden' : 'flex flex-wrap gap-1.5'}>
         {CONTACT_STATUSSEN.map(({ status, label, korteUitleg }) => {
           const Icoon = STATUS_ICOON[status]
           const actief = opgeslagen === status
@@ -515,7 +529,7 @@ export function ContactStatusBlok({
           </div>
           <input
             type="date"
-            className="input text-sm py-1.5"
+            className="w-full text-sm text-brand-text-primary bg-white dark:bg-brand-card-bg border border-brand-card-border/15 rounded-brand-btn px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-lavender-dark/60 focus:border-brand-lav-accent"
             value={tot}
             onChange={(e) => zet('pauze', e.target.value || null)}
             disabled={bezig}
@@ -531,12 +545,13 @@ export function ContactStatusBlok({
       {opgeslagen === 'blokkade' && (
         <p className="text-[11px] text-gray-500 mt-2">
           Deze relatie wordt niet meer benaderd: geen opvolging, contact loggen is geblokkeerd.
+          {volgtFase && ' Zet de lead in een andere fase om de blokkade op te heffen.'}
         </p>
       )}
 
       {opgeslagen !== 'open' ? (
         <input
-          className="input text-sm py-1.5 mt-2"
+          className="w-full text-sm text-brand-text-primary bg-white dark:bg-brand-card-bg border border-brand-card-border/15 rounded-brand-btn px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-lavender-dark/60 focus:border-brand-lav-accent mt-2"
           placeholder="Reden (optioneel), bijv. reageert nergens op"
           value={reden}
           onChange={(e) => setReden(e.target.value)}

@@ -3,12 +3,14 @@
   "configurations": [
     {
       "name": "daley-dash",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": [
-        "-c",
-        "cd \"/Users/daleyjansen_1/Developer/the-daley-dash\" && npx next dev -p 3003 -H 127.0.0.1"
-      ],
+      "url": "http://localhost:3003",
       "port": 3003,
+      "autoPort": false
+    },
+    {
+      "name": "daley-dash-test",
+      "url": "http://localhost:3004",
+      "port": 3004,
       "autoPort": false
     }
   ]

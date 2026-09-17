@@ -36,17 +36,21 @@ export async function GET(
 
   // Haal facturen op voor dit jaar op factuurdatum (factuurstelsel). Concept en
   // geannuleerde facturen en van omzet uitgesloten facturen tellen niet mee.
+  // Staat er een revenue_date op, dan is dat het omzetjaar en niet de factuurdatum:
+  // werk dat in een ander jaar is afgerekend hoort in dat jaar thuis.
   const jaarStart = `${jaar}-01-01`
   const jaarEind = `${jaar}-12-31`
   const UITGESLOTEN_STATUS = ['concept', 'geannuleerd']
   const { data: facturenRaw, error: facErr } = await supabase
     .from('facturen')
-    .select('id, number, client_name, date, due_date, subtotal, total, status, paid_at, exclude_from_revenue')
+    .select('id, number, client_name, date, due_date, revenue_date, subtotal, total, status, paid_at, exclude_from_revenue')
     // Alleen de eigen bedrijven. Montung is een aparte VOF met een eigen aangifte
     // en hoort dus niet in de persoonlijke inkomstenbelasting.
     .in('company_id', EIGEN_BEDRIJVEN)
-    .gte('date', jaarStart)
-    .lte('date', jaarEind)
+    .or(
+      `and(revenue_date.is.null,date.gte.${jaarStart},date.lte.${jaarEind}),` +
+      `and(revenue_date.gte.${jaarStart},revenue_date.lte.${jaarEind})`
+    )
     .order('date', { ascending: true })
 
   if (facErr) return NextResponse.json({ error: facErr.message }, { status: 500 })
@@ -67,6 +71,8 @@ export async function GET(
 
   const facturenMet = (facturen ?? []).map(f => ({
     ...f,
+    // Datum waarop de omzet wordt toegerekend, gebruikt voor de kwartaalverdeling.
+    omzet_datum: f.revenue_date ?? f.date,
     debiteur_status: statusMap.get(f.id)?.status ?? null,
     debiteur_notitie: statusMap.get(f.id)?.notitie ?? null,
     debiteur_oninbaar_per: statusMap.get(f.id)?.oninbaar_per ?? null,

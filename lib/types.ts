@@ -23,12 +23,21 @@ export interface Actie {
   updatedAt: string
 }
 
+export type TaakPrioriteit = 'urgent' | 'hoog' | 'middel' | 'laag'
+/** Alleen de open standen; afgerond is `done` */
+export type TaakStatus = 'niet_gestart' | 'bezig'
+
 export interface Taak {
   id: string
   title: string
   description?: string
   done: boolean
-  scheduledDate?: string  // ISO date — als gezet én <= vandaag: verschijnt in Vandaag-kolom
+  scheduledDate?: string  // ISO date, als gezet én <= vandaag: verschijnt in Vandaag-kolom
+  positie?: number        // eigen volgorde, laag = bovenaan
+  prioriteit?: TaakPrioriteit
+  status?: TaakStatus
+  bedrijf?: CompanyId
+  deadline?: string       // ISO date
   createdAt: string
 }
 
@@ -59,6 +68,8 @@ export interface UurKlant {
   stad?: string
   klantnummer?: string
   email?: string
+  /** Gezet = gearchiveerd: valt uit de urenregistratie, uren blijven staan. */
+  gearchiveerdOp?: string
   createdAt: string
   updatedAt: string
 }
@@ -85,6 +96,15 @@ export interface Company {
 export type OfferteStatus = 'concept' | 'opgeslagen' | 'verstuurd' | 'akkoord' | 'afgewezen' | 'verlopen' | 'on-hold'
 export type FactuurStatus = 'concept' | 'verzonden' | 'herinnering-verzonden' | 'betaald' | 'te-laat' | 'geannuleerd'
 
+/**
+ * Statussen die betekenen: deze factuur is de deur uit. Dat is een wettelijk
+ * document, dus die verdwijnt of verandert nooit zomaar. Staat hier en niet in
+ * lib/supabase/facturen.ts, zodat ook het scherm er zonder servercode bij kan.
+ */
+export const VERSTUURDE_STATUSSEN: FactuurStatus[] = [
+  'verzonden', 'herinnering-verzonden', 'betaald', 'te-laat',
+]
+
 export interface LineItem {
   id: string
   description: string
@@ -92,6 +112,10 @@ export interface LineItem {
   quantity: number
   unitPrice: number
   sectionTitle?: string
+  /** Alleen facturen: datum van het werk (uit uren), komt als subregel op de PDF. */
+  datum?: string
+  /** Alleen facturen: 'uur' toont de regel als uurtarief met uren. */
+  eenheid?: string
 }
 
 export interface Client {
@@ -239,4 +263,20 @@ export interface DashboardStats {
   totalPaidThisMonth: number
   recentOffertes: Offerte[]
   recentFacturen: Factuur[]
+}
+
+// Werkbank: het interne IT- en werkwijzehandboek (/bedrijfsinfo).
+// `status` scheidt wat op de machine zelf is nagekeken van wat uit oude
+// aantekeningen komt. Zonder dat onderscheid weet je niet of een regel te
+// vertrouwen is, dus dat veld is geen sierlijkheid.
+export type WerkbankStatus = 'nagekeken' | 'notities' | 'openstaand'
+
+export interface WerkbankSectie {
+  id: string
+  titel: string
+  inhoud: string
+  status: WerkbankStatus
+  gecontroleerdOp?: string
+  volgorde: number
+  bijgewerktOp: string
 }

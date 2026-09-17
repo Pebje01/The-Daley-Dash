@@ -3,14 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3003 -H 127.0.0.1",
+    "dev": "next dev -p 3003 -H 0.0.0.0",
+    "dev:test": "bash scripts/run-dash-test.sh",
+    "testdb:start": "supabase start --workdir testversie",
+    "testdb:stop": "supabase stop --workdir testversie",
+    "testdb:vullen": "node scripts/seed-testdata.mjs",
+    "testdb:migratie": "psql postgresql://postgres:postgres@127.0.0.1:55322/postgres -v ON_ERROR_STOP=1 -f",
     "build": "next build",
-    "start": "next start -p 3003 -H 127.0.0.1",
+    "start": "next start -p 3003 -H 0.0.0.0",
     "lint": "next lint",
     "test": "node --test lib/"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.97.0",
     "@types/bcryptjs": "^2.4.6",
@@ -20,7 +26,8 @@
     "lucide-react": "^0.575.0",
     "next": "14.2.35",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^20",

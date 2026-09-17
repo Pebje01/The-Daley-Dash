@@ -1,5 +1,6 @@
 import { createClient } from './server'
-import { Factuur, LineItem, CompanyId, FactuurStatus } from '../types'
+import { haalFacturatie, selecteerOffertesMetRestant } from '@/lib/offertes/facturatie'
+import { Factuur, LineItem, CompanyId, FactuurStatus, VERSTUURDE_STATUSSEN } from '../types'
 import { EIGEN_BEDRIJVEN } from '../btw'
 import { jaarPeriode, maandPeriode, valtBinnen } from '../periode'
 
@@ -44,6 +45,8 @@ interface DbFactuurLineItem {
   quantity: number
   unit_price: number
   section_title: string | null
+  datum: string | null
+  eenheid: string | null
 }
 
 // ── Mappers ────────────────────────────────────────────────────────────────
@@ -75,6 +78,8 @@ export function mapDbToFactuur(row: DbFactuur, items: DbFactuurLineItem[] = []):
         quantity: i.quantity,
         unitPrice: i.unit_price,
         sectionTitle: i.section_title ?? undefined,
+        datum: i.datum ?? undefined,
+        eenheid: i.eenheid ?? undefined,
       })),
     subtotal: row.subtotal,
     btwPercentage: row.btw_percentage,
@@ -172,6 +177,7 @@ interface CreateFactuurData {
   total: number
   notes?: string
   slug?: string
+  status?: FactuurStatus
 }
 
 export async function createFactuur(data: CreateFactuurData): Promise<Factuur> {
@@ -193,7 +199,7 @@ export async function createFactuur(data: CreateFactuurData): Promise<Factuur> {
       client_btw: data.client.btw ?? null,
       date: data.date,
       due_date: data.dueDate,
-      status: 'concept',
+      status: data.status ?? 'concept',
       subtotal: data.subtotal,
       btw_percentage: data.btwPercentage,
       btw_amount: data.btwAmount,
@@ -221,6 +227,8 @@ export async function createFactuur(data: CreateFactuurData): Promise<Factuur> {
           quantity: item.quantity,
           unit_price: item.unitPrice,
           section_title: item.sectionTitle ?? null,
+          datum: item.datum ?? null,
+          eenheid: item.eenheid ?? null,
         }))
       )
     if (itemError) throw itemError
@@ -234,7 +242,8 @@ export async function updateFactuur(
   data: Partial<{
     number: string
     companyId: CompanyId
-    offerteId: string
+    /** null ontkoppelt de factuur van zijn offerte */
+    offerteId: string | null
     client: Factuur['client']
     date: string
     dueDate: string
@@ -250,13 +259,29 @@ export async function updateFactuur(
     molliePaymentId: string
     molliePaymentUrl: string
     notes: string
+    layoutOverrides: Record<string, number> | null
   }>
 ): Promise<Factuur> {
   const supabase = createClient()
 
+  // Alleen nodig als de status verandert: om straks te bepalen of een concept
+  // nu pas echt verzonden wordt (en de uren dus voor het eerst afgeboekt
+  // moeten worden), moeten we weten wat de status vóór deze update was.
+  let vorigeStatus: FactuurStatus | null = null
+  let huidigNummer: string | null = null
+  if (data.status !== undefined || data.number !== undefined) {
+    const { data: huidige } = await supabase.from('facturen').select('status, number').eq('id', id).single()
+    vorigeStatus = (huidige?.status as FactuurStatus) ?? null
+    huidigNummer = huidige?.number ?? null
+  }
+
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
 
-  if (data.number !== undefined) update.number = data.number
+  if (data.number !== undefined) {
+    update.number = data.number
+    // De slug is het nummer in kleine letters, net als bij het aanmaken
+    update.slug = data.number.toLowerCase()
+  }
   if (data.companyId !== undefined) update.company_id = data.companyId
   if (data.offerteId !== undefined) update.offerte_id = data.offerteId
   if (data.date !== undefined) update.date = data.date
@@ -281,6 +306,7 @@ export async function updateFactuur(
   if (data.molliePaymentId !== undefined) update.mollie_payment_id = data.molliePaymentId
   if (data.molliePaymentUrl !== undefined) update.mollie_payment_url = data.molliePaymentUrl
   if (data.notes !== undefined) update.notes = data.notes
+  if (data.layoutOverrides !== undefined) update.layout_overrides = data.layoutOverrides
 
   if (data.client) {
     update.client_name = data.client.name
@@ -299,6 +325,20 @@ export async function updateFactuur(
 
   if (error) throw error
 
+  // Uren hangen via het factuurnummer aan de factuur. Verandert het nummer, dan
+  // verhuizen ze mee, anders staan ze los en lijken ze nooit gefactureerd.
+  if (data.number !== undefined && huidigNummer && data.number !== huidigNummer) {
+    await supabase.from('uren').update({ factuurnummer: data.number }).eq('factuurnummer', huidigNummer)
+    huidigNummer = data.number
+  }
+
+  // Een concept die nu voor het eerst een andere status krijgt: de uren die
+  // eraan hangen (gekoppeld via het factuurnummer, dat sinds de herbouw altijd
+  // al een echt nummer is) mogen nu pas als gefactureerd gelden.
+  if (data.status !== undefined && data.status !== 'concept' && vorigeStatus === 'concept' && huidigNummer) {
+    await supabase.from('uren').update({ gefactureerd: true }).eq('factuurnummer', huidigNummer)
+  }
+
   // Replace line items if provided
   if (data.items) {
     await supabase.from('factuur_line_items').delete().eq('factuur_id', id)
@@ -314,6 +354,10 @@ export async function updateFactuur(
             quantity: item.quantity,
             unit_price: item.unitPrice,
             section_title: item.sectionTitle ?? null,
+            // Zonder deze twee verloor een factuur uit uren bij elke keer
+            // Bewerken zijn werkdatums en de weergave als uurtarief.
+            datum: item.datum ?? null,
+            eenheid: item.eenheid ?? null,
           }))
         )
       if (itemError) throw itemError
@@ -323,14 +367,7 @@ export async function updateFactuur(
   return getFactuur(id) as Promise<Factuur>
 }
 
-/**
- * Statussen die betekenen: deze factuur is de deur uit. Dat is een wettelijk
- * document, dus die verdwijnt nooit zomaar. Alleen met een expliciete
- * bevestiging vanuit de interface, nooit door een automatisch proces.
- */
-export const VERSTUURDE_STATUSSEN: FactuurStatus[] = [
-  'verzonden', 'herinnering-verzonden', 'betaald', 'te-laat',
-]
+export { VERSTUURDE_STATUSSEN }
 
 export interface VerwijderOpties {
   /** Waar de verwijdering vandaan komt, voor de prullenbak: 'dashboard', 'uren-restore', 'sync' */
@@ -482,8 +519,20 @@ export interface MaandRegel {
   totaal: number
 }
 
-export async function getFactuurStats() {
+// Open uren tellen mee in de verwachte omzet, dus die volgen hetzelfde
+// bedrijfsfilter als de facturen.
+function urenQuery(supabase: ReturnType<typeof createClient>, bedrijven: string[]) {
+  return supabase
+    .from('uren')
+    .select('datum, uren, uurtarief, gefactureerd')
+    .in('company_id', bedrijven)
+}
+
+export async function getFactuurStats(companyId?: CompanyId | 'alle') {
   const supabase = createClient()
+  // Onder The Daley Edit zie je alle eigen bedrijven bij elkaar; kies je WGB of
+  // Daley Photography, dan blijft het bij dat ene bedrijf.
+  const bedrijven = companyId && companyId !== 'alle' ? [companyId] : EIGEN_BEDRIJVEN
   const now = new Date()
   const todayStr = now.toISOString().split('T')[0]
   // Boven- én ondergrens. Met alleen een ondergrens telde een factuur met een
@@ -502,15 +551,18 @@ export async function getFactuurStats() {
   ] = await Promise.all([
     supabase.from('facturen')
       .select('id, number, client_name, status, total, subtotal, date, due_date, paid_at, created_at, offerte_id, exclude_from_revenue, revenue_date')
-      .in('company_id', EIGEN_BEDRIJVEN),
-    supabase.from('uren').select('datum, uren, uurtarief, gefactureerd'),
+      .in('company_id', bedrijven),
+    urenQuery(supabase, bedrijven),
     // Ook hier op eigen bedrijven filteren, net als bij de facturen hierboven.
     // Anders telde de verwachte omzet offertes mee van bedrijven die in de
     // gerealiseerde omzet juist buiten beschouwing blijven.
-    supabase.from('offertes').select('id, subtotal, total, status, date')
-      .in('status', ['akkoord', 'verstuurd'])
-      .in('company_id', EIGEN_BEDRIJVEN),
-    getFacturen(),
+    selecteerOffertesMetRestant<any>(
+      (kolommen) => supabase.from('offertes').select(kolommen)
+        .in('status', ['akkoord', 'verstuurd'])
+        .in('company_id', bedrijven),
+      'id, subtotal, total, status, date',
+    ).then(data => ({ data })),
+    getFacturen({ companyId: companyId ?? 'alle' }),
   ])
   if (error) throw error
 
@@ -533,6 +585,9 @@ export async function getFactuurStats() {
   const overdueFacturen = facturen.filter(
     (f: any) => (openStatuses.includes(f.status) || f.status === 'te-laat') && f.due_date < todayStr
   ).length
+  const overdueBedrag = facturen
+    .filter((f: any) => (openStatuses.includes(f.status) || f.status === 'te-laat') && f.due_date < todayStr)
+    .reduce((sum: number, f: any) => sum + (f.total ?? 0), 0)
 
   // Betaald deze maand: echte cashflow, op betaaldatum (paid_at), niet op factuurdatum
   const paidDate = (f: any): string => ((f.paid_at || '') as string).split('T')[0]
@@ -586,16 +641,19 @@ export async function getFactuurStats() {
     }
   })
 
-  // Verwachte omzet: actieve facturen + akkoord/verstuurd offertes ZONDER bijbehorende factuur + open uren
-  const invoicedOfferteIds = new Set(
-    facturen
-      .filter((f: any) => f.offerte_id && f.status !== 'geannuleerd')
-      .map((f: any) => f.offerte_id)
-  )
-
-  const uninvoicedOffertes = (pipelineOffertes ?? []).filter(
-    (o: any) => !invoicedOfferteIds.has(o.id)
-  )
+  // Verwachte omzet: actieve facturen + wat er van offertes nog gefactureerd moet
+  // worden + open uren. Van een akkoord-offerte telt alleen het restant: na een
+  // aanbetaling van 50% hoort de andere helft hier nog bij. Een verstuurde
+  // offerte zonder factuur telt volledig, die is nog helemaal toekomst.
+  const facturatie = await haalFacturatie(pipelineOffertes ?? [])
+  const uninvoicedOffertes = (pipelineOffertes ?? [])
+    .map((o: any) => {
+      const f = facturatie.get(o.id)!
+      return o.status === 'akkoord'
+        ? { ...o, subtotal: f.restantExcl, total: f.restant }
+        : f.facturen.length ? null : o
+    })
+    .filter((o: any) => o && (o.total ?? 0) > 0)
 
   // Alleen niet-gefactureerde uren; gefactureerde uren zitten al in de facturen
   const openUren = (urenRows ?? []).filter((u: any) => !u.gefactureerd)
@@ -656,6 +714,11 @@ export async function getFactuurStats() {
     totalFacturen: facturen.length,
     totalOpenAmount,
     overdueFacturen,
+    overdueBedrag,
+    // Uren die nog op een factuur moeten (voor "Geld dat klaarligt" op het dashboard)
+    openUren: openUren.reduce((sum: number, u: any) => sum + (u.uren ?? 0), 0),
+    openUrenExcl: urenSubtotal,
+    openUrenIncl: urenSubtotal * (1 + AANNAME_BTW_OPEN_UREN),
     paidThisMonth,
     revenueYear,
     revenueYearIncl,

@@ -111,7 +111,7 @@ function veldenAlsRegels(customFields: any[], overslaan: string[] = []): string[
 
 // ── Context opbouwen ──────────────────────────────────────────────────
 
-async function bouwContext(leadId: string): Promise<{ naam: string; tekst: string }> {
+export async function bouwContext(leadId: string): Promise<{ naam: string; tekst: string }> {
   const supabase = createServiceClient()
 
   const { data: lead, error } = await supabase
@@ -157,15 +157,16 @@ async function bouwContext(leadId: string): Promise<{ naam: string; tekst: strin
   }
 
   // Wat er al gebeurd is. Vooral relevant bij een herbeoordeling.
-  const { data: activiteiten } = await supabase
+  const { data: ruweActiviteiten } = await supabase
     .from('crm_activiteiten')
-    .select('soort, omschrijving, nieuwe_waarde, created_at')
+    .select('soort, omschrijving, oude_waarde, nieuwe_waarde, created_at')
     .eq('record_id', leadId)
     .in('soort', ['contact', 'notitie', 'status'])
     .order('created_at', { ascending: false })
-    .limit(8)
+    .limit(30)
 
-  if (activiteiten?.length) {
+  const activiteiten = voegStatusKliksSamen(ruweActiviteiten || []).slice(0, 8)
+  if (activiteiten.length) {
     regels.push('Recente geschiedenis (nieuwste eerst):')
     for (const a of activiteiten) {
       const datum = String(a.created_at).slice(0, 10)
@@ -174,6 +175,55 @@ async function bouwContext(leadId: string): Promise<{ naam: string; tekst: strin
   }
 
   return { naam: lead.name, tekst: regels.join('\n') }
+}
+
+interface Activiteit {
+  soort: string
+  omschrijving: string
+  oude_waarde: string | null
+  nieuwe_waarde: string | null
+  created_at: string
+}
+
+/** Statuswijzigingen die zo kort na elkaar komen zijn één handeling. */
+const KLIK_VENSTER_MS = 15 * 60 * 1000
+
+/**
+ * Een reeks statuswijzigingen binnen een paar minuten is zoeken of misklikken,
+ * geen verloop van een gesprek. Die telt als één wijziging van begin naar eind,
+ * en valt helemaal weg als hij eindigt waar hij begon. Anders leest de AI
+ * "offerte uit" in de historie en neemt hij aan dat er een offerte is geweest.
+ * Verwacht nieuwste eerst, geeft nieuwste eerst terug.
+ */
+function voegStatusKliksSamen(activiteiten: Activiteit[]): Activiteit[] {
+  const oplopend = [...activiteiten].reverse()
+  const uit: Activiteit[] = []
+  let reeks: Activiteit[] = []
+
+  const sluitReeks = () => {
+    if (!reeks.length) return
+    const eerste = reeks[0]
+    const laatste = reeks[reeks.length - 1]
+    if ((eerste.oude_waarde || '') !== (laatste.nieuwe_waarde || '')) {
+      uit.push({ ...laatste, oude_waarde: eerste.oude_waarde })
+    }
+    reeks = []
+  }
+
+  for (const a of oplopend) {
+    if (a.soort !== 'status') {
+      sluitReeks()
+      uit.push(a)
+      continue
+    }
+    const vorige = reeks[reeks.length - 1]
+    if (vorige && new Date(a.created_at).getTime() - new Date(vorige.created_at).getTime() > KLIK_VENSTER_MS) {
+      sluitReeks()
+    }
+    reeks.push(a)
+  }
+  sluitReeks()
+  return uit.reverse()
 }
 
 // ── De kwalificatie zelf ──────────────────────────────────────────────

@@ -214,9 +214,12 @@ export function berekenKIA(
   jaar: number
 ): number {
   const c = getConstanten(jaar)
-  const heeftItemBoven450 = investeringen.some(i => i.bedrag >= c.kiaMinimumPerItem)
-  const totaal = investeringen.reduce((s, i) => s + i.bedrag, 0)
-  if (totaal < c.kiaMinimumTotaal || !heeftItemBoven450) return 0
+  // Bedrijfsmiddelen onder de drempel (2025: 450 euro) zijn wettelijk uitgesloten van
+  // investeringsaftrek en tellen dus ook niet mee voor het drempelbedrag. Ze meetellen
+  // duwt je ten onrechte over de drempel en levert aftrek op waar je geen recht op hebt.
+  const kwalificerend = investeringen.filter(i => i.bedrag >= c.kiaMinimumPerItem)
+  const totaal = kwalificerend.reduce((s, i) => s + i.bedrag, 0)
+  if (totaal < c.kiaMinimumTotaal) return 0
   return Math.min(totaal * c.kiaPct, c.kiaMaxAftrek)
 }
 

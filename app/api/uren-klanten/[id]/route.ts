@@ -7,8 +7,12 @@ export async function PATCH(
 ) {
   const { id } = await params
   const body = await request.json()
-  const klant = await updateUurKlant(id, body)
-  return NextResponse.json(klant)
+  try {
+    const klant = await updateUurKlant(id, body)
+    return NextResponse.json(klant)
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? 'Opslaan mislukt' }, { status: 500 })
+  }
 }
 
 export async function DELETE(

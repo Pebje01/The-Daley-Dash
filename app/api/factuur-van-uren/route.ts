@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { exec } from 'child_process'
 import { createClient } from '@/lib/supabase/server'
-import { updateUur } from '@/lib/supabase/uren'
-import { CONCEPT_PREFIX } from '@/lib/factuur-utils'
 import { volgendNummer } from '@/lib/supabase/factuurNummer'
-import { COMPANY_CONFIG, type CompanyKey, type FactuurRegel, genereerFactuurPdf } from '@/lib/pdf/factuurGenerator'
+import { COMPANY_CONFIG, type CompanyKey, type FactuurRegel } from '@/lib/pdf/factuurGenerator'
+import { maakFactuur } from '@/lib/facturen/maakFactuur'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,12 +12,6 @@ interface UurItem {
   omschrijving?: string
   uren: number
   uurtarief: number
-}
-
-// Knab betaalverzoek-links zijn gewone https-urls; weiger al het andere zodat
-// er nooit iets onveiligs in een href of in de database belandt.
-function isSafeUrl(url?: string | null): url is string {
-  return !!url && /^https?:\/\/[^\s"'<>]+$/.test(url.trim())
 }
 
 interface HandmatigeRegel {
@@ -38,7 +30,7 @@ interface HandmatigeRegel {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { uren, klantId, vastTarief, companyId, factuurdatum: factuurdatumInput, betaallink, btwPercentage, handmatigeRegels, concept }: {
+    const { uren, klantId, vastTarief, companyId, factuurdatum: factuurdatumInput, betaallink, btwPercentage, handmatigeRegels, concept, inEditor }: {
       uren: UurItem[]
       klantId: string
       vastTarief: number | null
@@ -47,13 +39,19 @@ export async function POST(request: NextRequest) {
       betaallink?: string | null
       btwPercentage?: number
       handmatigeRegels?: HandmatigeRegel[]
-      /** Concept: eigen C-reeks, PDF in _Concepten, uren blijven openstaan. */
+      /** Concept: status 'concept', uren blijven openstaan tot de factuur verzonden wordt. */
       concept?: boolean
+      /**
+       * Open in editor: de factuur wordt wel volledig vastgelegd (nummer, regels,
+       * uren), maar de PDF wordt nog NIET gemaakt. De gebruiker schuift eerst in
+       * de sleepbare editor en slaat daar pas de PDF op.
+       */
+      inEditor?: boolean
     } = body
 
     const isConcept = concept === true
+    const openInEditor = inEditor === true
 
-    const veiligeBetaallink = isSafeUrl(betaallink) ? betaallink.trim() : null
     // Alleen geldige Nederlandse btw-tarieven toestaan; val terug op 21%
     const btwTarief = typeof btwPercentage === 'number' && [21, 9, 0].includes(btwPercentage) ? btwPercentage : 21
 
@@ -93,29 +91,17 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Factuurdatum, vervaldatum en volgnummer
+    // Factuurdatum: lokale datum als er niets is meegegeven (toISOString is UTC)
+    const nu = new Date()
+    const vandaag = `${nu.getFullYear()}-${String(nu.getMonth() + 1).padStart(2, '0')}-${String(nu.getDate()).padStart(2, '0')}`
     const factuurdatum = (factuurdatumInput && /^\d{4}-\d{2}-\d{2}$/.test(factuurdatumInput))
       ? factuurdatumInput
-      : new Date().toISOString().split('T')[0]
-    const vervaldatumDate = new Date(`${factuurdatum}T12:00:00`)
-    vervaldatumDate.setDate(vervaldatumDate.getDate() + 14)
-    const vervaldatum = vervaldatumDate.toISOString().split('T')[0]
-    const prefix = isConcept ? CONCEPT_PREFIX : COMPANY_CONFIG[company].factuurPrefix
-    const factuurnummer = await volgendNummer(prefix, factuurdatum)
+      : vandaag
 
-    const klantData = {
-      bedrijfsnaam: klantRow.naam,
-      contactpersoon: klantRow.contactpersoon ?? undefined,
-      adres: klantRow.adres,
-      postcode: klantRow.postcode,
-      stad: klantRow.stad,
-      klantnummer: klantRow.klantnummer ?? undefined,
-    }
-
-    // Bouw één gezamenlijke regellijst: uren eerst, daarna vaste regels.
+    // Eén gezamenlijke regellijst: uren eerst, daarna vaste regels.
     const tariefVan = (u: UurItem) => vastTarief ?? u.uurtarief
     const regels: FactuurRegel[] = [
-      ...uren.map(u => ({
+      ...(uren ?? []).map(u => ({
         omschrijving: u.omschrijving?.trim() || COMPANY_CONFIG[company].defaultOmschrijving,
         datum: u.datum, aantal: u.uren, prijsPerStuk: tariefVan(u), perUur: true,
       })),
@@ -125,72 +111,38 @@ export async function POST(request: NextRequest) {
       })),
     ]
 
-    // Eerst vastleggen in Supabase, dan pas de PDF en de uren. Andersom liep het
-    // mis: als de insert stukliep, lag er wel een PDF in de map en stonden de uren
-    // op gefactureerd, terwijl de factuur nergens in de Dash te vinden was.
-    const subtotaal = regels.reduce((s, r) => s + r.aantal * r.prijsPerStuk, 0)
-    const btwAmount = subtotaal * (btwTarief / 100)
-    const { data: nieuweFactuur, error: insertFout } = await supabase.from('facturen').insert({
-      company_id: company,
-      number: factuurnummer,
-      slug: factuurnummer.toLowerCase(),
-      client_name: klantRow.naam,
-      client_contact_person: klantRow.contactpersoon ?? null,
-      client_address: `${klantRow.adres}, ${klantRow.postcode} ${klantRow.stad}`,
-      client_email: klantRow.email ?? null,
-      client_phone: null,
-      date: factuurdatum,
-      due_date: vervaldatum,
-      subtotal: subtotaal,
-      btw_percentage: btwTarief,
-      btw_amount: btwAmount,
-      total: subtotaal + btwAmount,
+    // Nummer, regels, PDF en uren gaan via de gedeelde helper, zodat de
+    // assistent precies dezelfde factuur maakt als deze knop.
+    // Bij "Open in editor" komt de PDF er pas als de editor opslaat.
+    const { factuurId, factuurnummer } = await maakFactuur({
+      company,
+      klant: {
+        naam: klantRow.naam,
+        contactpersoon: klantRow.contactpersoon,
+        adres: klantRow.adres,
+        postcode: klantRow.postcode,
+        stad: klantRow.stad,
+        email: klantRow.email,
+        klantnummer: klantRow.klantnummer,
+      },
+      regels,
+      factuurdatum,
+      betaaltermijnDagen: 14,
+      btwPercentage: btwTarief,
       status: isConcept ? 'concept' : 'verzonden',
-      mollie_payment_url: veiligeBetaallink,
-      offerte_id: null,
-      notes: null,
-    }).select('id').single()
-
-    if (insertFout || !nieuweFactuur?.id) {
-      console.error('factuur-van-uren: opslaan in Supabase mislukt', insertFout)
-      return NextResponse.json(
-        { error: `Opslaan in de Dash mislukt, er is niets aangemaakt: ${insertFout?.message ?? 'onbekende fout'}` },
-        { status: 500 }
-      )
-    }
-
-    await supabase.from('factuur_line_items').insert(
-      regels.map((r, idx) => ({
-        factuur_id: nieuweFactuur.id,
-        sort_order: idx,
-        description: r.omschrijving,
-        details: r.detail ?? null,
-        quantity: r.aantal,
-        unit_price: r.prijsPerStuk,
-        section_title: null,
-        datum: r.datum ?? null,
-        eenheid: r.perUur ? 'uur' : null,
-      }))
-    )
-
-    // PDF genereren via de GEDEELDE generator (zelfde route als opnieuw-opslaan)
-    const { pdfPath } = await genereerFactuurPdf({
-      company, factuurnummer, klant: klantData, klantNaamVoorBestand: klantRow.naam,
-      regels, factuurdatum, vervaldatum,
-      betaallink: veiligeBetaallink ?? undefined, btwPercentage: btwTarief,
-      concept: isConcept,
+      betaallink,
+      urenIds: (uren ?? []).map(u => u.id),
+      zonderPdf: openInEditor,
+      openPdf: true,
     })
-    exec(`open "${pdfPath}"`)
 
-    // Uren pas afboeken bij een echte factuur. Bij een concept leggen we alleen
-    // de koppeling vast: ze blijven openstaan in de urenlijst, maar bij
-    // "Definitief maken" weten we nog precies welke uren erop stonden.
-    await Promise.all(uren.map(u => updateUur(u.id, {
-      gefactureerd: !isConcept,
+    return NextResponse.json({
+      ok: true,
       factuurnummer,
-    })))
-
-    return NextResponse.json({ ok: true, factuurnummer, concept: isConcept })
+      factuurId,
+      concept: isConcept,
+      editorUrl: openInEditor ? `/api/facturen/${factuurId}/editor?nieuw=1` : null,
+    })
   } catch (err: any) {
     console.error('factuur-van-uren error:', err)
     return NextResponse.json({ error: err.message ?? 'Onbekende fout' }, { status: 500 })
@@ -208,11 +160,7 @@ export async function GET(request: NextRequest) {
     ? COMPANY_CONFIG[companyParam as CompanyKey].factuurPrefix
     : 'F'
 
-  // De popup toont beide nummers, zodat je vooraf ziet wat je krijgt bij
-  // "Genereer factuur" en wat bij "Concept".
-  const [factuurnummer, conceptnummer] = await Promise.all([
-    volgendNummer(bedrijfsPrefix, date),
-    volgendNummer(CONCEPT_PREFIX, date),
-  ])
-  return NextResponse.json({ factuurnummer, conceptnummer })
+  // Concept en direct-verzonden krijgen hetzelfde nummer, alleen de status verschilt.
+  const factuurnummer = await volgendNummer(bedrijfsPrefix, date)
+  return NextResponse.json({ factuurnummer })
 }

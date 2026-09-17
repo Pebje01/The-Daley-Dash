@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getFacturen, createFactuur, getTodayFactuurCount } from '@/lib/supabase/facturen'
-import { generateFactuurNumber } from '@/lib/factuur-utils'
+import { getFacturen, createFactuur } from '@/lib/supabase/facturen'
+import { volgendNummer } from '@/lib/supabase/factuurNummer'
+import { COMPANY_CONFIG, type CompanyKey } from '@/lib/pdf/factuurGenerator'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
   // Auth tijdelijk uitgeschakeld
 
   const body = await request.json()
-  const { companyId, client, items, btwPercentage, notes, offerteId, date: customDate, dueDate: customDueDate, dueDays } = body
+  const { companyId, client, items, btwPercentage, notes, offerteId, date: customDate, dueDate: customDueDate, dueDays, status } = body
 
   if (!companyId || !client?.name || !items?.length) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -38,13 +39,16 @@ export async function POST(request: NextRequest) {
   const now = new Date()
   const factuurDate = customDate || now.toISOString().split('T')[0]
   const dueDate = customDueDate || new Date(new Date(factuurDate).getTime() + (dueDays || 30) * 86400000).toISOString().split('T')[0]
-  const todayCount = await getTodayFactuurCount() // globale dag-sequentie over alle bedrijven
+  const prefix = (companyId in COMPANY_CONFIG) ? COMPANY_CONFIG[companyId as CompanyKey].factuurPrefix : 'F'
 
   let createdFactuur = null
   let retries = 0
 
-  while (retries < 8) {
-    const number = generateFactuurNumber('F', todayCount + retries)
+  // Zelfde nummerbron als de urenroute: telt op het datumdeel in `number`,
+  // niet op `created_at`, dus geen dubbele nummers ongeacht welke route het
+  // laatste nummer van de dag claimt.
+  while (retries < 3) {
+    const number = await volgendNummer(prefix, factuurDate)
     const slug = number.toLowerCase()
 
     try {
@@ -62,6 +66,7 @@ export async function POST(request: NextRequest) {
         notes,
         offerteId,
         slug,
+        status: status ?? 'concept',
       })
       break
     } catch (e: any) {

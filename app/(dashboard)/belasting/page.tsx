@@ -2,6 +2,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Landmark, RefreshCw, Info, TrendingUp, Receipt, PiggyBank, Calculator } from 'lucide-react'
 import type { IBBreakdown, KwartaalData, MaandData } from '@/lib/belasting'
+import { useActiveCompany } from '@/components/CompanyContext'
+import { getCompany } from '@/lib/companies'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -28,6 +30,7 @@ interface BelastingResponse {
 }
 
 export default function BelastingPage() {
+  const { scope, setActiveCompany } = useActiveCompany()
   const [data, setData] = useState<BelastingResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -52,12 +55,36 @@ export default function BelastingPage() {
     fetchData()
   }, [fetchData])
 
+  // De aangifte gaat over alle drie de bedrijven samen: één KVK, één
+  // BTW-nummer, één aangifte. Binnen WGB of Daley Photography valt er dus niets
+  // apart aan te geven, en een half beeld is hier gevaarlijker dan geen beeld.
+  if (scope !== 'alle') {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8">
+        <div className="card max-w-xl">
+          <div className="flex items-center gap-3 mb-3">
+            <Landmark size={18} className="text-brand-text-secondary" />
+            <h1 className="font-uxum text-headline text-brand-text-primary">Belasting</h1>
+          </div>
+          <p className="text-body text-brand-text-secondary mb-4">
+            {getCompany(scope).name} valt onder hetzelfde KVK en BTW-nummer als de
+            andere bedrijven, dus de BTW en de inkomstenbelasting worden in één
+            aangifte gedaan. Die vind je onder The Daley Edit.
+          </p>
+          <button onClick={() => setActiveCompany('tde')} className="btn-primary">
+            Naar The Daley Edit
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (loading && !data) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-brand-page-medium rounded w-48" />
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[1, 2, 3, 4].map(i => <div key={i} className="h-28 bg-brand-page-medium rounded-brand" />)}
           </div>
         </div>
@@ -67,11 +94,11 @@ export default function BelastingPage() {
 
   if (error) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <h1 className="font-uxum text-headline text-brand-text-primary mb-4">Belasting</h1>
-        <div className="card border-red-200 bg-red-50 flex items-center justify-between">
+        <div className="card border-red-200 bg-red-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <p className="text-body text-red-600">{error}</p>
-          <button onClick={fetchData} className="btn-secondary">
+          <button onClick={fetchData} className="btn-secondary self-start sm:self-auto">
             <RefreshCw size={14} /> Opnieuw proberen
           </button>
         </div>
@@ -84,9 +111,11 @@ export default function BelastingPage() {
   const { eigen, jaar, huidigKwartaal: huidigKw } = data
 
   return (
-    <div className="p-8">
+    // Vanaf xl (MacBook Pro 14") past alles in één scherm: de root krijgt de
+    // schermhoogte, de vaste blokken krimpen niet en alleen de maandtabel scrolt.
+    <div className="p-4 sm:p-6 lg:p-8 xl:pt-8 xl:pb-4 xl:h-[calc(100dvh-var(--dash-topbar))] xl:overflow-hidden xl:flex xl:flex-col">
       {/* Header */}
-      <div className="flex items-start justify-between mb-8">
+      <div className="flex items-start justify-between gap-4 mb-6 lg:mb-8 xl:mb-3 xl:shrink-0">
         <div>
           <h1 className="font-uxum text-headline text-brand-text-primary">Belasting</h1>
           <p className="text-body text-brand-text-secondary mt-1">
@@ -125,10 +154,10 @@ function GroepSectie({ groep, jaar, huidigKw, toonIB, toonMaandoverzicht }: {
 
   return (
     <>
-      {/* KPI Cards */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="card">
-          <div className="flex items-start justify-between mb-3">
+      {/* KPI Cards: twee naast elkaar op telefoon en tablet, vier op desktop */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6 xl:mb-4 xl:shrink-0">
+        <div className="card xl:p-4">
+          <div className="flex items-start justify-between mb-3 xl:mb-2">
             <p className="text-caption text-brand-text-secondary">BTW dit kwartaal</p>
             <div className="w-8 h-8 rounded-brand-sm bg-brand-light-blue flex items-center justify-center">
               <Receipt size={17} className="text-brand-blue-accent" />
@@ -138,8 +167,8 @@ function GroepSectie({ groep, jaar, huidigKw, toonIB, toonMaandoverzicht }: {
           <p className="text-caption text-brand-text-secondary mt-1">Q{huidigKw} af te dragen</p>
         </div>
 
-        <div className="card">
-          <div className="flex items-start justify-between mb-3">
+        <div className="card xl:p-4">
+          <div className="flex items-start justify-between mb-3 xl:mb-2">
             <p className="text-caption text-brand-text-secondary">BTW dit jaar</p>
             <div className="w-8 h-8 rounded-brand-sm bg-brand-lavender-accent flex items-center justify-center">
               <Landmark size={17} className="text-brand-lav-accent" />
@@ -150,8 +179,8 @@ function GroepSectie({ groep, jaar, huidigKw, toonIB, toonMaandoverzicht }: {
         </div>
 
         {toonIB ? (
-          <div className="card">
-            <div className="flex items-start justify-between mb-3">
+          <div className="card xl:p-4">
+            <div className="flex items-start justify-between mb-3 xl:mb-2">
               <p className="text-caption text-brand-text-secondary">Geschatte IB</p>
               <div className="w-8 h-8 rounded-brand-sm bg-brand-pink flex items-center justify-center">
                 <Calculator size={17} className="text-brand-status-orange" />
@@ -161,8 +190,8 @@ function GroepSectie({ groep, jaar, huidigKw, toonIB, toonMaandoverzicht }: {
             <p className="text-caption text-brand-text-secondary mt-1">op basis van projectie</p>
           </div>
         ) : (
-          <div className="card">
-            <div className="flex items-start justify-between mb-3">
+          <div className="card xl:p-4">
+            <div className="flex items-start justify-between mb-3 xl:mb-2">
               <p className="text-caption text-brand-text-secondary">Omzet excl. BTW</p>
               <div className="w-8 h-8 rounded-brand-sm bg-brand-pink flex items-center justify-center">
                 <TrendingUp size={17} className="text-brand-status-orange" />
@@ -173,8 +202,8 @@ function GroepSectie({ groep, jaar, huidigKw, toonIB, toonMaandoverzicht }: {
           </div>
         )}
 
-        <div className="card">
-          <div className="flex items-start justify-between mb-3">
+        <div className="card xl:p-4">
+          <div className="flex items-start justify-between mb-3 xl:mb-2">
             <p className="text-caption text-brand-text-secondary">Totaal opzij zetten</p>
             <div className="w-8 h-8 rounded-brand-sm bg-brand-lime flex items-center justify-center">
               <PiggyBank size={17} className="text-brand-lime-accent" />
@@ -185,140 +214,148 @@ function GroepSectie({ groep, jaar, huidigKw, toonIB, toonMaandoverzicht }: {
         </div>
       </div>
 
-      {/* BTW per kwartaal */}
-      <div className="card mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-body">BTW per kwartaal</h2>
-          <span className="text-caption text-brand-text-secondary">op factuurdatum (factuurstelsel)</span>
-        </div>
-        <div className="grid grid-cols-4 gap-3">
-          {groep.kwartalen.map(kw => {
-            const isHuidig = kw.kwartaal === huidigKw
-            return (
-              <div
-                key={kw.kwartaal}
-                className={`rounded-brand-sm border p-4 ${
-                  isHuidig
-                    ? 'border-brand-lime-accent bg-brand-lime/30'
-                    : 'border-brand-card-border bg-brand-card-bg'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <p className="font-semibold text-body text-brand-text-primary">{kw.label}</p>
-                  {isHuidig && (
-                    <span className="pill bg-brand-lime text-brand-text-primary text-pill font-semibold px-2 py-0.5">
-                      Huidig
-                    </span>
-                  )}
+      {/* Vanaf xl staan BTW per kwartaal, de IB-indicatie en het jaaroverzicht in één rij
+          van drie. De IB-grid eronder krijgt daarvoor `xl:contents`, zodat zijn twee kaarten
+          rechtstreeks cellen van deze rij worden. Onder xl is deze wrapper een gewone div. */}
+      <div className="xl:grid xl:grid-cols-3 xl:gap-4 xl:mb-4 xl:shrink-0">
+        {/* BTW per kwartaal: vanaf xl twee bij twee, want de kaart is dan een derde breed */}
+        <div className="card mb-6 xl:mb-0 xl:p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-4 xl:mb-3">
+            <h2 className="font-semibold text-body">BTW per kwartaal</h2>
+            <span className="text-caption text-brand-text-secondary">op factuurdatum (factuurstelsel)</span>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-2 gap-3">
+            {groep.kwartalen.map(kw => {
+              const isHuidig = kw.kwartaal === huidigKw
+              return (
+                <div
+                  key={kw.kwartaal}
+                  className={`rounded-brand-sm border p-4 xl:p-3 ${
+                    isHuidig
+                      ? 'border-brand-lime-accent bg-brand-lime/30'
+                      : 'border-brand-card-border bg-brand-card-bg'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="font-semibold text-body text-brand-text-primary">{kw.label}</p>
+                    {isHuidig && (
+                      <span className="pill bg-brand-lime text-brand-text-primary text-pill font-semibold px-2 py-0.5">
+                        Huidig
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-caption text-brand-text-secondary mb-1">{kw.maanden}</p>
+                  <div className="space-y-1 mt-3">
+                    <div className="flex justify-between text-caption">
+                      <span className="text-brand-text-secondary">Omzet excl.</span>
+                      <span className="text-brand-text-primary font-medium">{euro(kw.omzetExcl)}</span>
+                    </div>
+                    <div className="flex justify-between text-caption">
+                      <span className="text-brand-text-secondary">BTW (21%)</span>
+                      <span className="text-brand-text-primary font-semibold">{euro(kw.btwBedrag)}</span>
+                    </div>
+                    <div className="flex justify-between text-caption pt-1 border-t border-brand-card-border">
+                      <span className="text-brand-text-secondary">Facturen</span>
+                      <span className="text-brand-text-primary">{kw.aantalFacturen}</span>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-caption text-brand-text-secondary mb-1">{kw.maanden}</p>
-                <div className="space-y-1 mt-3">
-                  <div className="flex justify-between text-caption">
-                    <span className="text-brand-text-secondary">Omzet excl.</span>
-                    <span className="text-brand-text-primary font-medium">{euro(kw.omzetExcl)}</span>
-                  </div>
-                  <div className="flex justify-between text-caption">
-                    <span className="text-brand-text-secondary">BTW (21%)</span>
-                    <span className="text-brand-text-primary font-semibold">{euro(kw.btwBedrag)}</span>
-                  </div>
-                  <div className="flex justify-between text-caption pt-1 border-t border-brand-card-border">
-                    <span className="text-brand-text-secondary">Facturen</span>
-                    <span className="text-brand-text-primary">{kw.aantalFacturen}</span>
-                  </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* IB breakdown + Jaarprojectie (alleen voor eigen bedrijven) */}
+        {toonIB && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6 xl:contents">
+            {/* IB Berekening */}
+            <div className="card xl:p-4">
+              <div className="flex items-center justify-between mb-4 xl:mb-2">
+                <h2 className="font-semibold text-body">Inkomstenbelasting indicatie</h2>
+                <TrendingUp size={15} className="text-brand-text-secondary" />
+              </div>
+
+              <div className="space-y-2 xl:space-y-1">
+                <Row label="Bruto winst (omzet excl. BTW)" value={euro(groep.ibProjectie.brutoWinst)} />
+                <Row label="Zelfstandigenaftrek" value={`- ${euro(groep.ibProjectie.zelfstandigenaftrek)}`} muted />
+                <Row label="Winst na aftrek" value={euro(groep.ibProjectie.winstNaAftrek)} />
+                <Row label="MKB-winstvrijstelling (13,31%)" value={`- ${euro(groep.ibProjectie.mkbVrijstelling)}`} muted />
+                <div className="border-t border-brand-card-border pt-2">
+                  <Row label="Belastbaar inkomen" value={euro(groep.ibProjectie.belastbaarInkomen)} bold />
+                </div>
+                <Row label={`Schijf 1 (36,97% tot ${euro(75518)})`} value={euro(groep.ibProjectie.belastingSchijf1)} muted />
+                {groep.ibProjectie.belastingSchijf2 > 0 && (
+                  <Row label="Schijf 2 (49,50%)" value={euro(groep.ibProjectie.belastingSchijf2)} muted />
+                )}
+                <Row label="Bruto belasting" value={euro(groep.ibProjectie.brutoBelasting)} />
+                <Row label="Algemene heffingskorting" value={`- ${euro(groep.ibProjectie.algemeneHeffingskorting)}`} muted />
+                <Row label="Arbeidskorting" value={`- ${euro(groep.ibProjectie.arbeidskorting)}`} muted />
+                <div className="border-t border-brand-card-border pt-2">
+                  <Row label="Geschatte inkomstenbelasting" value={euro(groep.ibProjectie.geschatteIB)} bold highlight />
                 </div>
               </div>
-            )
-          })}
-        </div>
+
+              <div className="mt-4 xl:mt-3 flex items-start gap-2 p-3 rounded-brand-sm bg-brand-page-light">
+                <Info size={14} className="text-brand-text-secondary mt-0.5 flex-shrink-0" />
+                <p className="text-caption text-brand-text-secondary">
+                  Grove schatting op basis van projectie ({euro(groep.geprojecteerdeJaaromzet)}).
+                  Kosten buiten zelfstandigenaftrek niet meegenomen. Raadpleeg je boekhouder.
+                </p>
+              </div>
+            </div>
+
+            {/* Jaarprojectie samenvatting. Vanaf xl twee bij twee met een kleiner cijfer,
+                anders wordt deze kaart de hoogste van de rij en drukt hij de maandtabel weg. */}
+            <div className="card xl:p-4">
+              <div className="flex items-center justify-between mb-4 xl:mb-2">
+                <h2 className="font-semibold text-body">Jaaroverzicht {jaar}</h2>
+                <PiggyBank size={15} className="text-brand-text-secondary" />
+              </div>
+
+              <div className="space-y-3 xl:space-y-0 xl:grid xl:grid-cols-2 xl:gap-2">
+                <div className="rounded-brand-sm border border-brand-card-border bg-brand-card-bg p-4 xl:p-3">
+                  <p className="text-caption text-brand-text-secondary mb-1">Omzet excl. BTW (werkelijk)</p>
+                  <p className="font-uxum text-stat xl:text-xl text-brand-text-primary">{euro(groep.totaalOmzetExcl)}</p>
+                </div>
+                <div className="rounded-brand-sm border border-brand-card-border bg-brand-card-bg p-4 xl:p-3">
+                  <p className="text-caption text-brand-text-secondary mb-1">Geprojecteerde jaaromzet</p>
+                  <p className="font-uxum text-stat xl:text-xl text-brand-text-primary">{euro(groep.geprojecteerdeJaaromzet)}</p>
+                </div>
+                <div className="rounded-brand-sm border border-brand-card-border bg-brand-card-bg p-4 xl:p-3">
+                  <p className="text-caption text-brand-text-secondary mb-1">Maandelijks opzij zetten</p>
+                  <p className="font-uxum text-stat xl:text-xl text-brand-text-primary">
+                    {euro(groep.maandelijkseIBReservering + (groep.totaalBtw / Math.max(1, new Date().getMonth() + 1)))}
+                  </p>
+                  <p className="text-caption text-brand-text-secondary mt-1">
+                    {euro(groep.totaalBtw / Math.max(1, new Date().getMonth() + 1))} BTW + {euro(groep.maandelijkseIBReservering)} IB
+                  </p>
+                </div>
+                <div className="rounded-brand-sm border border-brand-lime-accent bg-brand-lime/20 p-4 xl:p-3">
+                  <p className="text-caption text-brand-text-secondary mb-1">Netto na belasting (schatting)</p>
+                  <p className="font-uxum text-stat xl:text-xl text-brand-text-primary">
+                    {euro(groep.geprojecteerdeJaaromzet - groep.ibProjectie.geschatteIB)}
+                  </p>
+                  <p className="text-caption text-brand-text-secondary mt-1">
+                    {euro((groep.geprojecteerdeJaaromzet - groep.ibProjectie.geschatteIB) / 12)}/maand
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* IB breakdown + Jaarprojectie (alleen voor eigen bedrijven) */}
-      {toonIB && (
-        <div className="grid grid-cols-2 gap-6 mb-6">
-          {/* IB Berekening */}
-          <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-body">Inkomstenbelasting indicatie</h2>
-              <TrendingUp size={15} className="text-brand-text-secondary" />
-            </div>
-
-            <div className="space-y-2">
-              <Row label="Bruto winst (omzet excl. BTW)" value={euro(groep.ibProjectie.brutoWinst)} />
-              <Row label="Zelfstandigenaftrek" value={`- ${euro(groep.ibProjectie.zelfstandigenaftrek)}`} muted />
-              <Row label="Winst na aftrek" value={euro(groep.ibProjectie.winstNaAftrek)} />
-              <Row label="MKB-winstvrijstelling (13,31%)" value={`- ${euro(groep.ibProjectie.mkbVrijstelling)}`} muted />
-              <div className="border-t border-brand-card-border pt-2">
-                <Row label="Belastbaar inkomen" value={euro(groep.ibProjectie.belastbaarInkomen)} bold />
-              </div>
-              <Row label={`Schijf 1 (36,97% tot ${euro(75518)})`} value={euro(groep.ibProjectie.belastingSchijf1)} muted />
-              {groep.ibProjectie.belastingSchijf2 > 0 && (
-                <Row label="Schijf 2 (49,50%)" value={euro(groep.ibProjectie.belastingSchijf2)} muted />
-              )}
-              <Row label="Bruto belasting" value={euro(groep.ibProjectie.brutoBelasting)} />
-              <Row label="Algemene heffingskorting" value={`- ${euro(groep.ibProjectie.algemeneHeffingskorting)}`} muted />
-              <Row label="Arbeidskorting" value={`- ${euro(groep.ibProjectie.arbeidskorting)}`} muted />
-              <div className="border-t border-brand-card-border pt-2">
-                <Row label="Geschatte inkomstenbelasting" value={euro(groep.ibProjectie.geschatteIB)} bold highlight />
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-start gap-2 p-3 rounded-brand-sm bg-brand-page-light">
-              <Info size={14} className="text-brand-text-secondary mt-0.5 flex-shrink-0" />
-              <p className="text-caption text-brand-text-secondary">
-                Grove schatting op basis van projectie ({euro(groep.geprojecteerdeJaaromzet)}).
-                Kosten buiten zelfstandigenaftrek niet meegenomen. Raadpleeg je boekhouder.
-              </p>
-            </div>
-          </div>
-
-          {/* Jaarprojectie samenvatting */}
-          <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-body">Jaaroverzicht {jaar}</h2>
-              <PiggyBank size={15} className="text-brand-text-secondary" />
-            </div>
-
-            <div className="space-y-3">
-              <div className="rounded-brand-sm border border-brand-card-border bg-brand-card-bg p-4">
-                <p className="text-caption text-brand-text-secondary mb-1">Omzet excl. BTW (werkelijk)</p>
-                <p className="font-uxum text-stat text-brand-text-primary">{euro(groep.totaalOmzetExcl)}</p>
-              </div>
-              <div className="rounded-brand-sm border border-brand-card-border bg-brand-card-bg p-4">
-                <p className="text-caption text-brand-text-secondary mb-1">Geprojecteerde jaaromzet</p>
-                <p className="font-uxum text-stat text-brand-text-primary">{euro(groep.geprojecteerdeJaaromzet)}</p>
-              </div>
-              <div className="rounded-brand-sm border border-brand-card-border bg-brand-card-bg p-4">
-                <p className="text-caption text-brand-text-secondary mb-1">Maandelijks opzij zetten</p>
-                <p className="font-uxum text-stat text-brand-text-primary">
-                  {euro(groep.maandelijkseIBReservering + (groep.totaalBtw / Math.max(1, new Date().getMonth() + 1)))}
-                </p>
-                <p className="text-caption text-brand-text-secondary mt-1">
-                  {euro(groep.totaalBtw / Math.max(1, new Date().getMonth() + 1))} BTW + {euro(groep.maandelijkseIBReservering)} IB
-                </p>
-              </div>
-              <div className="rounded-brand-sm border border-brand-lime-accent bg-brand-lime/20 p-4">
-                <p className="text-caption text-brand-text-secondary mb-1">Netto na belasting (schatting)</p>
-                <p className="font-uxum text-stat text-brand-text-primary">
-                  {euro(groep.geprojecteerdeJaaromzet - groep.ibProjectie.geschatteIB)}
-                </p>
-                <p className="text-caption text-brand-text-secondary mt-1">
-                  {euro((groep.geprojecteerdeJaaromzet - groep.ibProjectie.geschatteIB) / 12)}/maand
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Maandoverzicht tabel */}
+      {/* Maandoverzicht tabel. Vanaf xl vult de kaart de resterende hoogte en scrolt
+          alleen de tabel, met vaste kop- en totaalregel. */}
       {toonMaandoverzicht && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
+        <div className="card xl:p-4 xl:flex-1 xl:min-h-0 xl:flex xl:flex-col">
+          <div className="flex items-center justify-between mb-4 xl:mb-2 xl:shrink-0">
             <h2 className="font-semibold text-body">Maandoverzicht {jaar}</h2>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
+          <div className="overflow-x-auto xl:flex-1 xl:min-h-0 xl:overflow-auto">
+            {/* Vijf bedragkolommen: op smal scherm scrollt de tabel in plaats van in elkaar te drukken */}
+            <table className="w-full min-w-[560px]">
+              <thead className="xl:sticky xl:top-0 xl:z-10 xl:bg-brand-card-bg">
                 <tr className="border-b border-brand-card-border">
                   <th className="text-left text-caption text-brand-text-secondary font-medium py-2 pr-4">Maand</th>
                   <th className="text-right text-caption text-brand-text-secondary font-medium py-2 px-4">Omzet excl.</th>
@@ -338,18 +375,18 @@ function GroepSectie({ groep, jaar, huidigKw, toonIB, toonMaandoverzicht }: {
                   if (!isVerleden && !isHuidig) {
                     return (
                       <tr key={m.maand} className="text-brand-text-secondary/40">
-                        <td className="py-2.5 pr-4 text-body">{m.label}</td>
-                        <td className="py-2.5 px-4 text-right text-body">-</td>
-                        <td className="py-2.5 px-4 text-right text-body">-</td>
-                        <td className="py-2.5 px-4 text-right text-body">-</td>
-                        <td className="py-2.5 pl-4 text-right text-body">-</td>
+                        <td className="py-2.5 xl:py-1.5pr-4 text-body">{m.label}</td>
+                        <td className="py-2.5 xl:py-1.5px-4 text-right text-body">-</td>
+                        <td className="py-2.5 xl:py-1.5px-4 text-right text-body">-</td>
+                        <td className="py-2.5 xl:py-1.5px-4 text-right text-body">-</td>
+                        <td className="py-2.5 xl:py-1.5pl-4 text-right text-body">-</td>
                       </tr>
                     )
                   }
 
                   return (
                     <tr key={m.maand} className={isHuidig ? 'bg-brand-lime/10' : 'hover:bg-brand-page-light'}>
-                      <td className="py-2.5 pr-4">
+                      <td className="py-2.5 xl:py-1.5pr-4">
                         <span className="text-body text-brand-text-primary font-medium">{m.label}</span>
                         {isHuidig && (
                           <span className="ml-2 pill bg-brand-lime text-brand-text-primary text-pill font-semibold px-1.5 py-0.5">
@@ -357,15 +394,15 @@ function GroepSectie({ groep, jaar, huidigKw, toonIB, toonMaandoverzicht }: {
                           </span>
                         )}
                       </td>
-                      <td className="py-2.5 px-4 text-right text-body text-brand-text-primary">{euro(m.omzetExcl)}</td>
-                      <td className="py-2.5 px-4 text-right text-body text-brand-text-primary">{euro(m.btwBedrag)}</td>
-                      <td className="py-2.5 px-4 text-right text-body text-brand-text-primary">{euro(ibReservering)}</td>
-                      <td className="py-2.5 pl-4 text-right text-body font-semibold text-brand-text-primary">{euro(totaalOpzij)}</td>
+                      <td className="py-2.5 xl:py-1.5px-4 text-right text-body text-brand-text-primary">{euro(m.omzetExcl)}</td>
+                      <td className="py-2.5 xl:py-1.5px-4 text-right text-body text-brand-text-primary">{euro(m.btwBedrag)}</td>
+                      <td className="py-2.5 xl:py-1.5px-4 text-right text-body text-brand-text-primary">{euro(ibReservering)}</td>
+                      <td className="py-2.5 xl:py-1.5pl-4 text-right text-body font-semibold text-brand-text-primary">{euro(totaalOpzij)}</td>
                     </tr>
                   )
                 })}
               </tbody>
-              <tfoot>
+              <tfoot className="xl:sticky xl:bottom-0 xl:bg-brand-card-bg">
                 <tr className="border-t-2 border-brand-text-primary/20">
                   <td className="py-3 pr-4 font-semibold text-body text-brand-text-primary">Totaal</td>
                   <td className="py-3 px-4 text-right font-semibold text-body text-brand-text-primary">{euro(groep.totaalOmzetExcl)}</td>

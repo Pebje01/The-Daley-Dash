@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useState, useMemo, type ReactNode } from 'react'
-import { Plus, Pencil, Trash2, Search, X, Check, RefreshCw, Building2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, X, Check, RefreshCw, Building2, Archive, ArchiveRestore } from 'lucide-react'
 import { UurKlant, CompanyId, Offerte, Factuur } from '@/lib/types'
 import { COMPANIES, getCompany } from '@/lib/companies'
 import { useColumnOrder, useColumnDnD } from '@/lib/columnOrder'
 import { ColumnGrip } from '@/components/ColumnGrip'
+import { useActiveCompany } from '@/components/CompanyContext'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -64,6 +65,7 @@ function toForm(k: UurKlant): KlantForm {
 }
 
 export default function KlantenPage() {
+  const { scope, scopeGeladen } = useActiveCompany()
   const { order, move } = useColumnOrder('klanten', KLANT_KOLOMMEN.map(c => c.key))
   const dnd = useColumnDnD(move)
   const [klanten, setKlanten] = useState<UurKlant[]>([])
@@ -76,12 +78,16 @@ export default function KlantenPage() {
   const [saving, setSaving] = useState(false)
 
   const load = async () => {
+    if (!scopeGeladen) return
     setLoading(true)
     try {
+      const bedrijf = scope === 'alle' ? '' : `?company=${scope}`
       const [kRes, oRes, fRes] = await Promise.all([
-        fetch('/api/uren-klanten'),
-        fetch('/api/offertes'),
-        fetch('/api/facturen'),
+        // Met archief: dit is de beheerpagina, hier hoort een geparkeerde klant
+        // gewoon te staan. Alleen de urenregistratie zelf laat ze weg.
+        fetch(`/api/uren-klanten${bedrijf ? `${bedrijf}&` : '?'}archief=1`),
+        fetch(`/api/offertes${bedrijf}`),
+        fetch(`/api/facturen${bedrijf}`),
       ])
       if (kRes.ok) setKlanten(await kRes.json())
       if (oRes.ok) setOffertes(await oRes.json())
@@ -92,7 +98,7 @@ export default function KlantenPage() {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [scope, scopeGeladen])
 
   // Stats per klant (uit offertes + facturen)
   const stats = useMemo(() => {
@@ -188,6 +194,26 @@ export default function KlantenPage() {
     }
   }
 
+  const handleArchiveer = async (k: UurKlant, archiveren: boolean) => {
+    try {
+      const res = await fetch(`/api/uren-klanten/${k.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gearchiveerd: archiveren }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Onbekende fout' }))
+        alert(err.error || (archiveren ? 'Archiveren mislukt' : 'Terughalen mislukt'))
+        return
+      }
+      const updated = await res.json()
+      setKlanten(prev => prev.map(x => x.id === k.id ? updated : x))
+    } catch (e) {
+      console.error('klant archiveren fout:', e)
+      alert('Fout bij archiveren, zie console.')
+    }
+  }
+
   const handleDelete = async (k: UurKlant) => {
     if (!confirm(`Weet je zeker dat je ${k.naam} wilt verwijderen?\n\nDit verwijdert alleen de klantgegevens, niet de bijbehorende uren of facturen.`)) return
     try {
@@ -204,8 +230,8 @@ export default function KlantenPage() {
   }
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-start justify-between gap-4">
+    <div className="p-4 sm:p-6 lg:p-8 flex flex-col gap-6 lg:h-[calc(100dvh-var(--dash-topbar))] lg:overflow-hidden">
+      <div className="flex items-start justify-between gap-4 shrink-0">
         <div>
           <h1 className="font-uxum text-headline text-brand-text-primary">Klanten</h1>
           <p className="text-body text-brand-text-secondary mt-1">
@@ -222,7 +248,7 @@ export default function KlantenPage() {
         </div>
       </div>
 
-      <div className="relative max-w-md">
+      <div className="relative max-w-md shrink-0">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-text-secondary" />
         <input
           type="text"
@@ -233,7 +259,7 @@ export default function KlantenPage() {
         />
       </div>
 
-      <div className="card p-0 overflow-hidden">
+      <div className="card p-0 overflow-auto lg:flex-1 lg:min-h-0">
         {loading ? (
           <div className="p-12 text-center text-brand-text-secondary">Laden...</div>
         ) : filteredKlanten.length === 0 ? (
@@ -247,8 +273,8 @@ export default function KlantenPage() {
             </p>
           </div>
         ) : (
-          <table className="w-full text-body">
-            <thead className="bg-brand-page-light border-b border-brand-page-medium">
+          <table className="w-full min-w-[640px] text-body">
+            <thead className="sticky top-0 z-10 bg-brand-page-light border-b border-brand-page-medium">
               <tr>
                 {order.map(key => {
                   const col = KLANT_KOLOMMEN.find(c => c.key === key)
@@ -269,7 +295,7 @@ export default function KlantenPage() {
                     </th>
                   )
                 })}
-                <th className="text-center px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide font-medium w-20"></th>
+                <th className="text-center px-5 py-3 text-caption text-brand-text-secondary uppercase tracking-wide font-medium w-28"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-brand-page-medium">
@@ -282,6 +308,11 @@ export default function KlantenPage() {
                       {k.naam}
                       {k.klantnummer && (
                         <span className="ml-2 text-caption text-brand-text-secondary/60">#{k.klantnummer}</span>
+                      )}
+                      {k.gearchiveerdOp && (
+                        <span className="ml-2 pill bg-brand-page-medium text-brand-text-secondary inline-flex items-center gap-1">
+                          <Archive size={10} /> Archief
+                        </span>
                       )}
                     </td>
                   ),
@@ -338,6 +369,15 @@ export default function KlantenPage() {
                           title="Bewerken"
                         >
                           <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={() => handleArchiveer(k, !k.gearchiveerdOp)}
+                          className="p-1.5 rounded hover:bg-brand-page-light text-brand-text-secondary hover:text-brand-text-primary transition-colors"
+                          title={k.gearchiveerdOp
+                            ? 'Terughalen naar de urenregistratie'
+                            : 'Archiveren: uit de urenregistratie, uren blijven staan'}
+                        >
+                          {k.gearchiveerdOp ? <ArchiveRestore size={13} /> : <Archive size={13} />}
                         </button>
                         <button
                           onClick={() => handleDelete(k)}

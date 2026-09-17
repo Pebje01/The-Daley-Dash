@@ -17,7 +17,27 @@
  *   node scripts/kwalificeer-leads.mjs --status      # alleen tellen, niets doen
  */
 
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
 const BASIS = process.env.DASH_URL || 'http://127.0.0.1:3003'
+
+// De Dash vraagt sinds september 2026 om een login. Scripts sturen in plaats
+// daarvan het geheim uit .env.local mee (header x-dash-secret, zie
+// lib/supabase/middleware.ts). De LaunchAgent erft geen env, dus we lezen het
+// bestand zelf als de variabele ontbreekt.
+function leesSecret() {
+  if (process.env.CRON_SECRET) return process.env.CRON_SECRET
+  try {
+    const env = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '.env.local'), 'utf8')
+    const m = env.match(/^CRON_SECRET=(.*)$/m)
+    return m ? m[1].trim().replace(/^["']|["']$/g, '') : ''
+  } catch {
+    return ''
+  }
+}
+const DASH_SECRET = leesSecret()
 
 const args = process.argv.slice(2)
 const heeft = (vlag) => args.includes(vlag)
@@ -29,8 +49,11 @@ const waarde = (vlag, standaard) => {
 const LIMIET = waarde('--limit', 10)
 const INTERVAL_MIN = waarde('--interval', 15)
 
-async function json(pad, opties) {
-  const res = await fetch(`${BASIS}${pad}`, opties)
+async function json(pad, opties = {}) {
+  const res = await fetch(`${BASIS}${pad}`, {
+    ...opties,
+    headers: { ...(opties.headers || {}), 'x-dash-secret': DASH_SECRET },
+  })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(body.error || `${res.status} op ${pad}`)
   return body
@@ -100,6 +123,16 @@ async function main() {
         await ronde()
       } catch (e) {
         console.error(`[${nu()}] Ronde mislukt: ${e.message}`)
+      }
+      // Mail met leads: verzonden (uit een concept of zelf geschreven) en reacties. De Dash legt het vast.
+      try {
+        const { concepten, verstuurd, losseMails, reacties, fouten } = await json('/api/crm/benaderen/controleer', { method: 'POST' })
+        if (verstuurd || losseMails || reacties) {
+          console.log(`[${nu()}] Mail: ${verstuurd} van ${concepten} concepten verstuurd, ${losseMails} losse mails vastgelegd, ${reacties} nieuwe reacties.`)
+        }
+        if (fouten?.length) console.error(`[${nu()}] Spark: ${fouten[0]}`)
+      } catch (e) {
+        console.error(`[${nu()}] Verzonden mail nakijken mislukt: ${e.message}`)
       }
       await pauze(INTERVAL_MIN * 60_000)
     }

@@ -30,7 +30,8 @@ const uxum = localFont({
 })
 
 export const metadata: Metadata = {
-  title: 'The Daley Dash',
+  // In de testversie staat TEST in het tabblad, zodat je de twee nooit verwart
+  title: process.env.NEXT_PUBLIC_DASH_MODUS === 'test' ? 'TEST | The Daley Dash' : 'The Daley Dash',
   description: 'Jouw werkportaal: offertes, facturen en meer',
   manifest: '/manifest.json',
   appleWebApp: {

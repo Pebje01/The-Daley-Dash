@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getFactuur, updateFactuur, verwijderFactuurVeilig, FactuurVerstuurdError } from '@/lib/supabase/facturen'
+import { getFactuur, verwijderFactuurVeilig, FactuurVerstuurdError } from '@/lib/supabase/facturen'
+import { wijzigFactuurMetPdf } from '@/lib/facturen/wijzigFactuur'
 
 export async function GET(
   request: NextRequest,
@@ -21,8 +22,8 @@ export async function PATCH(
 
   try {
     const body = await request.json()
-    const factuur = await updateFactuur(params.id, body)
-    return NextResponse.json(factuur)
+    const { factuur, pdf } = await wijzigFactuurMetPdf(params.id, body)
+    return NextResponse.json(pdf ? { ...factuur, pdf } : factuur)
   } catch (err) {
     const msg = err instanceof Error ? err.message : (err as any)?.message ?? JSON.stringify(err)
     console.error(`PATCH /api/facturen/${params.id} fout:`, msg, err)

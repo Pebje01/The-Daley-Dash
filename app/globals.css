@@ -1,5 +1,13 @@
 /* ── Theme Variabelen ─────────────────────────────────────────── */
 
+/* Hoogte van de werkbalk boven de pagina's. Staat hier als één waarde, zodat
+   de schermvullende pagina's er met calc() op kunnen rekenen. Op telefoon is er
+   geen werkbalk: daar zit de hamburgerbalk al bovenin. */
+:root { --dash-topbar: 0px; }
+@media (min-width: 768px) {
+  :root { --dash-topbar: 50px; }
+}
+
 /* ── Palette: Lila (default) ────────────────────────────────── */
 
 :root {
@@ -212,7 +220,8 @@
   }
 
   .card {
-    @apply bg-brand-card-bg rounded-brand border-brand border-brand-card-border p-card-padding;
+    /* Op telefoon iets minder padding, anders blijft er tussen page-padding en card-padding weinig ruimte over */
+    @apply bg-brand-card-bg rounded-brand border-brand border-brand-card-border p-4 sm:p-card-padding;
   }
 
   .input {
@@ -251,6 +260,17 @@
 }
 
 /* ── Slide-over drawer animaties ─────────────────────────────── */
+/* Assistentknop: de gloed draait langzaam rond en de sterretjes twinkelen.
+   Rustig gehouden, hij staat op elke pagina in beeld. */
+@keyframes assistent-gloed {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes assistent-twinkel {
+  0%, 100% { opacity: 0.25; transform: scale(0.8); }
+  50%      { opacity: 1;    transform: scale(1); }
+}
+
 @keyframes modal-in {
   from { opacity: 0; transform: scale(0.96) translateY(12px); }
   to   { opacity: 1; transform: scale(1) translateY(0); }

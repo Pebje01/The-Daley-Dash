@@ -23,7 +23,7 @@ export default function DashboardError({
   }, [error])
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="card max-w-2xl">
         <div className="flex items-start gap-3">
           <AlertTriangle size={20} className="text-brand-status-orange mt-0.5 shrink-0" />

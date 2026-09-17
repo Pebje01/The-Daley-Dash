@@ -9,7 +9,11 @@ import { laadFactuurBouwData } from '@/lib/pdf/factuurData'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  // ?nieuw=1 komt van "Open in editor" op de urenpagina: de factuur staat al in
+  // Supabase maar er is nog geen PDF. De opslaanknop heet dan "Sla op als PDF"
+  // zodat duidelijk is dat de PDF daar pas ontstaat.
+  const pdfNogNietGemaakt = req.nextUrl.searchParams.get('nieuw') === '1'
   const supabase = createClient()
   const { data: bouwData, error } = await laadFactuurBouwData(supabase, params.id)
   if (!bouwData) {
@@ -20,6 +24,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     ...bouwData,
     editMode: true,
     factuurId: params.id,
+    pdfNogNietGemaakt,
   })
 
   return new NextResponse(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })

@@ -6,6 +6,10 @@
 import { randomUUID } from 'crypto'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { CrmEntityType } from '@/lib/crm/types'
+import {
+  contactVeldenBijFase, faseVoorContactStatus, faseNaContact, standaardOpvolgdatum,
+  type ContactStatus,
+} from '@/lib/crm/pipeline'
 
 export interface CrmRecordData {
   name?: string
@@ -18,12 +22,19 @@ export interface CrmRecordData {
   dash_tags?: string[]
   /** Alleen voor het promoveren van een ruwe_lead naar een volwaardig entity_type. */
   entity_type?: CrmEntityType
+  /**
+   * Van welk eigen bedrijf deze prospect of lead is. Leeg = nog niet
+   * toegewezen; die zie je alleen in de overkoepelende weergave (TDE).
+   */
+  company_id?: string | null
   /** Onderstaande velden zijn alleen relevant voor entity_type ruwe_lead. */
   ruwe_contact_email?: string | null
   ruwe_website?: string | null
   ruwe_bron?: string | null
   ruwe_fit_reden?: string | null
   ruwe_prioriteit?: 'ster' | 'normaal' | 'laag' | null
+  ruwe_contactpersoon?: string | null
+  ruwe_telefoon?: string | null
   /** Opvolging: datum waarop je deze lead weer oppakt (yyyy-mm-dd), null wist hem. */
   volgende_actie?: string | null
   volgende_actie_notitie?: string | null
@@ -35,7 +46,32 @@ export interface CrmRecordData {
 }
 
 const RECORD_COLUMNS =
-  'id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, dash_tags, due_date, clickup_date_updated, synced_at, raw, volgende_actie, volgende_actie_notitie, laatste_contact, contact_pogingen, contact_status, contact_status_tot, contact_status_reden, ai_status, ai_score, ai_prioriteit, ai_branche, ai_website, ai_samenvatting, ai_signalen, ai_volgende_stap, ai_beoordeeld_op, ai_model, ai_fout, ruwe_contact_email, ruwe_website, ruwe_bron, ruwe_fit_reden, ruwe_prioriteit'
+  'id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, dash_tags, due_date, clickup_date_updated, synced_at, raw, company_id, volgende_actie, volgende_actie_notitie, laatste_contact, contact_pogingen, contact_status, contact_status_tot, contact_status_reden, ai_status, ai_score, ai_prioriteit, ai_branche, ai_website, ai_samenvatting, ai_signalen, ai_volgende_stap, ai_beoordeeld_op, ai_model, ai_fout, ruwe_contact_email, ruwe_website, ruwe_bron, ruwe_fit_reden, ruwe_prioriteit, ruwe_contactpersoon, ruwe_telefoon, ruwe_contact_status, ruwe_contact_gezocht_op, ruwe_contact_toelichting, ruwe_contact_fout'
+
+/**
+ * True als de fout komt doordat company_id nog niet in de tabel staat.
+ * Migraties draaien handmatig, dus tot 20260909_crm_bedrijf.sql is uitgevoerd
+ * moet het aanmaken en bijwerken van records gewoon blijven werken.
+ */
+function ontbrekendeBedrijfsKolom(error: any) {
+  return error?.code === '42703' || /company_id/.test(error?.message || '')
+}
+
+/**
+ * Alleen terugvallen als er niets te verliezen valt. Wie wél een bedrijf koos
+ * krijgt een duidelijke fout in plaats van een veld dat stilletjes vergeet.
+ */
+function bedrijfsKolomFout() {
+  return new Error(
+    'De kolom company_id bestaat nog niet. Draai supabase/migrations/20260909_crm_bedrijf.sql in de Supabase SQL Editor.'
+  )
+}
+
+function zonderBedrijf<T extends Record<string, any>>(row: T): T {
+  const kopie = { ...row }
+  delete kopie.company_id
+  return kopie
+}
 
 function toIso(value: string | number | undefined): string | null {
   if (value === undefined || value === null || value === '') return null
@@ -228,15 +264,27 @@ export async function createCrmRecord(entityType: CrmEntityType, data: CrmRecord
     ruwe_bron: data.ruwe_bron || null,
     ruwe_fit_reden: data.ruwe_fit_reden || null,
     ruwe_prioriteit: data.ruwe_prioriteit || null,
+    ruwe_contactpersoon: data.ruwe_contactpersoon || null,
+    ruwe_telefoon: data.ruwe_telefoon || null,
+    company_id: data.company_id || null,
   }
 
-  const { data: record, error } = await supabase
+  let { data: record, error } = await supabase
     .from('clickup_crm_records')
     .insert(row)
     .select(RECORD_COLUMNS)
     .single()
 
+  if (error && ontbrekendeBedrijfsKolom(error)) {
+    if ((row as any).company_id) throw bedrijfsKolomFout()
+    ;({ data: record, error } = await supabase
+      .from('clickup_crm_records')
+      .insert(zonderBedrijf(row))
+      .select(RECORD_COLUMNS.replace(', company_id', ''))
+      .single())
+  }
   if (error) throw error
+  if (!record) throw new Error('Record niet aangemaakt')
   await logActiviteiten(record.id, [
     { soort: 'aangemaakt', omschrijving: 'Record aangemaakt', nieuwe_waarde: record.name },
   ])
@@ -297,6 +345,36 @@ export async function updateCrmRecord(recordId: string, data: CrmRecordData) {
   if (data.ruwe_bron !== undefined) update.ruwe_bron = data.ruwe_bron || null
   if (data.ruwe_fit_reden !== undefined) update.ruwe_fit_reden = data.ruwe_fit_reden || null
   if (data.ruwe_prioriteit !== undefined) update.ruwe_prioriteit = data.ruwe_prioriteit || null
+  if (data.ruwe_contactpersoon !== undefined) update.ruwe_contactpersoon = data.ruwe_contactpersoon || null
+  if (data.ruwe_telefoon !== undefined) update.ruwe_telefoon = data.ruwe_telefoon || null
+  if (data.company_id !== undefined) update.company_id = data.company_id || null
+
+  // Bij een lead zijn fase en contactstatus één en dezelfde keuze: "On hold"
+  // is pauze, "Blocklist" is blokkade. Wat je ook aanpast, de ander gaat mee,
+  // zodat het bord en de Blocklist-pagina nooit iets anders zeggen.
+  if ((data.entity_type ?? existing.entity_type) === 'lead') {
+    if (data.status !== undefined) {
+      const huidig = {
+        contact_status: existing.contact_status,
+        contact_status_tot: (update.contact_status_tot ?? existing.contact_status_tot) as string | null,
+        contact_status_reden: (update.contact_status_reden ?? existing.contact_status_reden) as string | null,
+      }
+      const velden = contactVeldenBijFase(data.status, huidig)
+      if (velden) {
+        update.contact_status = velden.contact_status
+        update.contact_status_tot = velden.contact_status_tot
+        update.contact_status_reden = velden.contact_status_reden
+      }
+    } else if (data.contact_status !== undefined) {
+      const fase = faseVoorContactStatus(data.contact_status as ContactStatus, existing.status)
+      if (fase) {
+        update.status = fase
+        if (data.volgende_actie === undefined && data.contact_status === 'open') {
+          update.volgende_actie = standaardOpvolgdatum(fase)
+        }
+      }
+    }
+  }
 
   const nieuweStand = (update.contact_status ?? existing.contact_status ?? 'open') as string
   if (nieuweStand === 'blokkade') {
@@ -311,14 +389,24 @@ export async function updateCrmRecord(recordId: string, data: CrmRecordData) {
     if (!tot) update.volgende_actie_notitie = null
   }
 
-  const { data: record, error } = await supabase
+  let { data: record, error } = await supabase
     .from('clickup_crm_records')
     .update(update)
     .eq('id', recordId)
     .select(RECORD_COLUMNS)
     .single()
 
+  if (error && ontbrekendeBedrijfsKolom(error)) {
+    if (update.company_id) throw bedrijfsKolomFout()
+    ;({ data: record, error } = await supabase
+      .from('clickup_crm_records')
+      .update(zonderBedrijf(update))
+      .eq('id', recordId)
+      .select(RECORD_COLUMNS.replace(', company_id', ''))
+      .single())
+  }
   if (error) throw error
+  if (!record) throw new Error('Record niet bijgewerkt')
 
   // Activiteitenfeed: log wat er daadwerkelijk veranderd is
   const activiteiten: ActiviteitInput[] = []
@@ -330,8 +418,8 @@ export async function updateCrmRecord(recordId: string, data: CrmRecordData) {
       nieuwe_waarde: data.entity_type,
     })
   }
-  if (data.status !== undefined && data.status !== existing.status) {
-    activiteiten.push({ soort: 'status', omschrijving: 'Status gewijzigd', oude_waarde: existing.status, nieuwe_waarde: data.status })
+  if (update.status !== undefined && update.status !== existing.status) {
+    activiteiten.push({ soort: 'status', omschrijving: 'Status gewijzigd', oude_waarde: existing.status, nieuwe_waarde: update.status as string })
   }
   if (data.name !== undefined && data.name !== existing.name) {
     activiteiten.push({ soort: 'naam', omschrijving: 'Naam gewijzigd', oude_waarde: existing.name, nieuwe_waarde: data.name })
@@ -357,18 +445,20 @@ export async function updateCrmRecord(recordId: string, data: CrmRecordData) {
       nieuwe_waarde: (update.volgende_actie as string | null) ?? null,
     })
   }
-  if (data.contact_status !== undefined && data.contact_status !== (existing.contact_status || 'open')) {
-    const omschrijving = data.contact_status === 'blokkade'
+  const nieuweContactStatus = update.contact_status as string | undefined
+  if (nieuweContactStatus !== undefined && nieuweContactStatus !== (existing.contact_status || 'open')) {
+    const omschrijving = nieuweContactStatus === 'blokkade'
       ? 'Op blokkeerlijst gezet'
-      : data.contact_status === 'pauze'
+      : nieuweContactStatus === 'pauze'
         ? 'Contact gepauzeerd'
         : 'Weer benaderbaar'
     const tot = (update.contact_status_tot ?? null) as string | null
+    const reden = (update.contact_status_reden ?? null) as string | null
     activiteiten.push({
       soort: 'blokkade',
       omschrijving,
       oude_waarde: existing.contact_status || 'open',
-      nieuwe_waarde: [data.contact_status, tot ? `tot ${tot}` : null, data.contact_status_reden || null]
+      nieuwe_waarde: [nieuweContactStatus, tot ? `tot ${tot}` : null, reden]
         .filter(Boolean).join(', '),
     })
   }
@@ -404,7 +494,7 @@ export async function logContactMoment(recordId: string, data: ContactMomentData
 
   const { data: existing, error: fetchError } = await supabase
     .from('clickup_crm_records')
-    .select('id, status, contact_pogingen, contact_status, contact_status_tot, volgende_actie')
+    .select('id, entity_type, status, contact_pogingen, contact_status, contact_status_tot, volgende_actie')
     .eq('id', recordId)
     .single()
 
@@ -422,6 +512,11 @@ export async function logContactMoment(recordId: string, data: ContactMomentData
   if (existing.contact_status === 'pauze' && teltAlsPoging) {
     update.contact_status = 'open'
     update.contact_status_tot = null
+    // Bij een lead is de pauze de kolom "On hold": die verlaat hij dan ook.
+    if (existing.entity_type === 'lead' && !data.status) {
+      const fase = faseNaContact(existing.status)
+      if (fase) update.status = fase
+    }
   }
   if (teltAlsPoging) {
     update.laatste_contact = now
@@ -564,18 +659,48 @@ export async function promoteCrmRecord(recordId: string) {
     active: true,
   }
 
-  const { data: record, error } = await supabase
+  let { data: record, error } = await supabase
     .from('clickup_crm_records')
     .insert(row)
     .select(RECORD_COLUMNS)
     .single()
 
+  if (error && ontbrekendeBedrijfsKolom(error)) {
+    if ((row as any).company_id) throw bedrijfsKolomFout()
+    ;({ data: record, error } = await supabase
+      .from('clickup_crm_records')
+      .insert(zonderBedrijf(row))
+      .select(RECORD_COLUMNS.replace(', company_id', ''))
+      .single())
+  }
   if (error) throw error
+  if (!record) throw new Error('Record niet aangemaakt')
   await logActiviteiten(record.id, [
     { soort: 'aangemaakt', omschrijving: 'Record aangemaakt', nieuwe_waarde: record.name },
   ])
   await logActiviteiten(recordId, [
     { soort: 'promotie', omschrijving: `Gepromoveerd naar ${promote.target === 'clickup_invoice' ? 'factuur' : 'opdracht'}`, nieuwe_waarde: record.name },
   ])
+
+  // Het bronrecord sluit zichzelf af: het werk loopt verder op de volgende
+  // lijst. Anders blijft Gewonnen vollopen met leads waar allang een opdracht
+  // van is, en Opdrachten met werk dat allang gefactureerd is. De koppeling
+  // tussen de twee blijft staan, dus de geschiedenis raak je niet kwijt.
+  const afsluitStatus = source.entity_type === 'lead' ? 'omgezet'
+    : source.entity_type === 'assignment' ? 'gefactureerd'
+    : null
+
+  if (afsluitStatus && source.status !== afsluitStatus) {
+    const { error: sluitFout } = await supabase
+      .from('clickup_crm_records')
+      .update({ status: afsluitStatus, clickup_date_updated: now, updated_at: now })
+      .eq('id', recordId)
+    if (!sluitFout) {
+      await logActiviteiten(recordId, [
+        { soort: 'status', omschrijving: 'Status gewijzigd', oude_waarde: source.status, nieuwe_waarde: afsluitStatus },
+      ])
+    }
+  }
+
   return record
 }

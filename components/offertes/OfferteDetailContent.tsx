@@ -13,6 +13,7 @@ import { saveOffertePdf } from '@/lib/pdf/offertePdf'
 import { pickOfferteFolder, getOfferteFolder } from '@/lib/pdf/folderStorage'
 import { dataChanged } from '@/lib/events'
 import { useMelding } from '@/components/MeldingProvider'
+import OfferteFacturatie from '@/components/offertes/OfferteFacturatie'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -91,17 +92,18 @@ function InlineDetailField({
 
   if (readOnly) {
     return (
-      <div className="flex justify-between items-baseline -my-0.5">
-        <dt className="text-brand-text-secondary">{label}</dt>
-        <dd className={className}>{displayValue || value || <span className="text-brand-text-secondary/40 italic">-</span>}</dd>
+      <div className="flex justify-between items-baseline gap-3 -my-0.5">
+        <dt className="text-brand-text-secondary shrink-0">{label}</dt>
+        {/* min-w-0 + break-words zodat een lange waarde op telefoon afbreekt in plaats van de rij oprekt */}
+        <dd className={`min-w-0 break-words text-right ${className}`}>{displayValue || value || <span className="text-brand-text-secondary/40 italic">-</span>}</dd>
       </div>
     )
   }
 
   return (
-    <div className="flex justify-between items-baseline -my-0.5">
-      <dt className="text-brand-text-secondary">{label}</dt>
-      <dd className="relative">
+    <div className="flex justify-between items-baseline gap-3 -my-0.5">
+      <dt className="text-brand-text-secondary shrink-0">{label}</dt>
+      <dd className="relative min-w-0">
         {editing ? (
           <input
             ref={inputRef}
@@ -114,12 +116,12 @@ function InlineDetailField({
               if (e.key === 'Escape') cancel()
             }}
             placeholder={placeholder}
-            className={`bg-transparent border-b border-brand-card-border/50 focus:border-brand-lavender-dark outline-none text-right py-0.5 px-1 -mx-1 text-body text-brand-text-primary ${className}`}
+            className={`max-w-full bg-transparent border-b border-brand-card-border/50 focus:border-brand-lavender-dark outline-none text-right py-0.5 px-1 -mx-1 text-body text-brand-text-primary ${className}`}
           />
         ) : (
           <button
             onClick={() => setEditing(true)}
-            className={`text-right py-0.5 px-1 -mx-1 rounded-brand-sm hover:bg-brand-page-light border-b border-dashed border-transparent hover:border-brand-text-secondary/30 transition-all cursor-text ${className}`}
+            className={`max-w-full break-words text-right py-0.5 px-1 -mx-1 rounded-brand-sm hover:bg-brand-page-light border-b border-dashed border-transparent hover:border-brand-text-secondary/30 transition-all cursor-text ${className}`}
           >
             {displayValue || value || <span className="text-brand-text-secondary/40 italic">{placeholder || 'Klik om in te vullen...'}</span>}
           </button>
@@ -246,8 +248,8 @@ function InlineCompanySelector({
   }, [open])
 
   return (
-    <div className="flex justify-between items-baseline -my-0.5">
-      <dt className="text-brand-text-secondary">Bedrijf</dt>
+    <div className="flex justify-between items-baseline gap-3 -my-0.5">
+      <dt className="text-brand-text-secondary shrink-0">Bedrijf</dt>
       <dd className="relative" ref={ref}>
         <button
           onClick={() => setOpen(!open)}
@@ -604,15 +606,15 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
 
   return (
     <div className={isDrawer ? 'p-6' : ''}>
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
+      {/* Header: op telefoon stapelen titel en knoppenrij onder elkaar, vanaf sm naast elkaar */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
         {!isDrawer && (
-          <button onClick={goBack} className="btn-secondary px-2.5">
+          <button onClick={goBack} className="btn-secondary px-2.5 self-start sm:self-auto">
             <ArrowLeft size={15} />
           </button>
         )}
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-3">
             <h1 className="font-uxum text-sidebar-t text-brand-text-primary">{offerte.number}</h1>
             {/* Klikbare status dropdown */}
             <div className="relative" ref={statusMenuRef}>
@@ -653,7 +655,7 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
             {offerte.client.name} · <span style={{ color: company.color }}>{company.name}</span>
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap justify-end">
+        <div className="flex gap-2 flex-wrap sm:justify-end">
           {(offerte.status === 'concept' || offerte.status === 'opgeslagen') && (
             <button onClick={() => handleStatusChange('verstuurd')} className="btn-primary">
               <Send size={14} /> Markeer als verstuurd
@@ -719,7 +721,7 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
                 {aiError}
               </div>
             )}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <button
                 onClick={() => { setShowAiRewrite(false); setAiPrompt(''); setAiError('') }}
                 className="btn-secondary"
@@ -749,7 +751,8 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
               <ExternalLink size={14} /> Online offertepagina
             </h2>
             <div className="flex items-center gap-3 text-caption">
-              <code className="bg-brand-card-bg px-3 py-1.5 rounded-brand-sm border border-brand-card-border flex-1 truncate">
+              {/* min-w-0 is nodig, anders werkt truncate niet binnen een flex-rij */}
+              <code className="bg-brand-card-bg px-3 py-1.5 rounded-brand-sm border border-brand-card-border flex-1 min-w-0 truncate">
                 {publicUrl}
               </code>
               <button onClick={() => copyToClipboard(publicUrl)} className="btn-secondary py-1.5 px-2.5" title="Kopieer link">
@@ -764,12 +767,12 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
 
         {/* PDF map info */}
         <div className="card bg-brand-page-light">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-body">
-              <Download size={14} className="text-brand-text-secondary" />
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2 text-body min-w-0">
+              <Download size={14} className="text-brand-text-secondary shrink-0" />
               <span className="text-brand-text-secondary">PDF-opslagmap:</span>
               {folderName ? (
-                <span className="font-semibold text-brand-text-primary">{folderName}/</span>
+                <span className="font-semibold text-brand-text-primary break-all">{folderName}/</span>
               ) : (
                 <span className="text-brand-text-secondary italic">Nog niet ingesteld</span>
               )}
@@ -779,16 +782,20 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
                 const handle = await pickOfferteFolder()
                 if (handle) setFolderName(handle.name)
               }}
-              className="btn-secondary py-1.5 text-caption"
+              className="btn-secondary py-1.5 text-caption self-start sm:self-auto shrink-0"
             >
               {folderName ? 'Wijzig map' : 'Kies map'}
             </button>
           </div>
         </div>
 
+        {/* -- Facturatie: wat er van deze offerte al gefactureerd is ------- */}
+        <OfferteFacturatie offerteId={offerte.id} status={offerte.status} />
+
         {/* -- Info grid: Offerte Details + Klant -------------------------- */}
         <div className="card">
-          <div className="grid grid-cols-2 gap-6">
+          {/* Op telefoon onder elkaar, vanaf sm twee kolommen */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
               <h3 className="text-caption text-brand-text-secondary uppercase tracking-wide mb-3">Offerte details</h3>
               <dl className="space-y-2 text-body">
@@ -893,7 +900,7 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
 
         {/* -- Line items: always-editable section-based grid -------------- */}
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-semibold text-body">Diensten / producten</h2>
             <button onClick={addSection} className="btn-secondary py-1.5 text-caption">
               <Plus size={13} /> Nieuwe sectie
@@ -904,7 +911,7 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
             <div key={section.id} className="card border-2 border-brand-page-medium">
               {/* Section header */}
               <div className="flex items-center gap-2 mb-4">
-                <div className="flex flex-col gap-0.5">
+                <div className="flex flex-col gap-0.5 shrink-0">
                   <button onClick={() => moveSectionUp(sIdx)} disabled={sIdx === 0}
                     className="p-0.5 text-brand-text-secondary hover:text-brand-text-primary disabled:opacity-30 transition-colors">
                     <GripVertical size={12} className="rotate-180" />
@@ -915,7 +922,7 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
                   </button>
                 </div>
                 <input
-                  className="flex-1 font-semibold bg-transparent border-b border-dashed border-transparent hover:border-brand-text-secondary/30 focus:border-brand-card-border/50 outline-none py-1 px-1 text-body text-brand-text-primary placeholder:text-brand-text-secondary/40 placeholder:italic placeholder:font-normal transition-colors"
+                  className="flex-1 min-w-0 font-semibold bg-transparent border-b border-dashed border-transparent hover:border-brand-text-secondary/30 focus:border-brand-card-border/50 outline-none py-1 px-1 text-body text-brand-text-primary placeholder:text-brand-text-secondary/40 placeholder:italic placeholder:font-normal transition-colors"
                   placeholder="Sectie titel (bijv. Website & Design)"
                   value={section.title}
                   onChange={e => updateSectionTitle(section.id, e.target.value)}
@@ -933,8 +940,11 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
                 )}
               </div>
 
-              {/* Items table met lichte grid borders (ClickUp-stijl) */}
-              <div className="border border-brand-card-border/25 rounded-brand-sm overflow-hidden">
+              {/* Items table met lichte grid borders (ClickUp-stijl).
+                  De vaste kolommen (80+100+100+36px) passen niet op een telefoon, daarom scrolt de tabel horizontaal
+                  en houdt de binnenkant een minimale breedte. Op desktop is de kaart breder, dus daar verandert niets. */}
+              <div className="border border-brand-card-border/25 rounded-brand-sm overflow-x-auto">
+               <div className="min-w-[520px]">
                 {/* Header */}
                 <div className="grid grid-cols-[1fr_80px_100px_100px_36px] bg-brand-page-light/70">
                   <span className="text-caption text-brand-text-secondary uppercase tracking-wide px-3 py-2">Omschrijving</span>
@@ -996,7 +1006,8 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
                             setTimeout(() => saveLineItems(), 0)
                           }}
                           disabled={section.items.length <= 1}
-                          className="p-1.5 text-brand-text-secondary/0 group-hover:text-brand-text-secondary hover:!text-brand-status-red rounded-brand-sm hover:bg-brand-pink transition-all disabled:opacity-0"
+                          // Op touch bestaat hover niet, dus daar is het prullenbakje altijd zichtbaar. Vanaf sm pas bij hover.
+                          className="p-1.5 text-brand-text-secondary sm:text-brand-text-secondary/0 sm:group-hover:text-brand-text-secondary hover:!text-brand-status-red rounded-brand-sm hover:bg-brand-pink transition-all disabled:opacity-0"
                         >
                           <Trash2 size={13} />
                         </button>
@@ -1004,6 +1015,7 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
                     </div>
                   ))}
                 </div>
+               </div>
               </div>
 
               <button onClick={() => addItem(section.id)} className="mt-3 text-caption text-brand-text-secondary hover:text-brand-text-primary flex items-center gap-1 transition-colors">
@@ -1015,7 +1027,8 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
 
         {/* -- Totalen ----------------------------------------------------- */}
         <div className="card">
-          <div className="border-t border-brand-page-medium pt-4 ml-auto max-w-xs space-y-2">
+          {/* Op telefoon volle breedte, vanaf sm rechts uitgelijnd blok */}
+          <div className="border-t border-brand-page-medium pt-4 sm:ml-auto sm:max-w-xs space-y-2">
             <div className="flex justify-between text-body">
               <span className="text-brand-text-secondary">Subtotaal</span>
               <span className="font-semibold">{euro(editSubtotal)}</span>
@@ -1072,11 +1085,11 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
               <CheckCircle2 size={16} /> Goedgekeurd
             </h3>
             <dl className="space-y-1 text-caption text-brand-text-secondary">
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5">
                 <dt>Door:</dt>
-                <dd className="text-brand-text-primary">{offerte.approvedByName} ({offerte.approvedByEmail})</dd>
+                <dd className="text-brand-text-primary break-words">{offerte.approvedByName} ({offerte.approvedByEmail})</dd>
               </div>
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5">
                 <dt>Datum:</dt>
                 <dd className="text-brand-text-primary">{new Date(offerte.approvedAt).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</dd>
               </div>
@@ -1085,7 +1098,7 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
         )}
 
         {/* Timestamps */}
-        <div className="flex gap-4 text-caption text-brand-text-secondary">
+        <div className="flex flex-col sm:flex-row gap-1 sm:gap-4 text-caption text-brand-text-secondary">
           <span className="flex items-center gap-1"><Clock size={11} /> Aangemaakt: {new Date(offerte.createdAt).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
           <span className="flex items-center gap-1"><Clock size={11} /> Bijgewerkt: {new Date(offerte.updatedAt).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
         </div>
@@ -1108,7 +1121,7 @@ export default function OfferteDetailContent({ id, onClose, isDrawer }: OfferteD
             <p className="text-body text-brand-text-secondary mb-6">
               Weet je zeker dat je <span className="font-semibold text-brand-text-primary">{offerte.number}</span> van <span className="font-semibold text-brand-text-primary">{offerte.client.name}</span> permanent wilt verwijderen?
             </p>
-            <div className="flex gap-3 justify-end">
+            <div className="flex flex-wrap gap-3 justify-end">
               <button
                 onClick={() => setShowDeleteModal(false)}
                 disabled={deleting}

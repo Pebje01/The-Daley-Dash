@@ -7,6 +7,7 @@ import LocaleBestandenSection from '@/components/LocaleBestandenSection'
 import SyncAllesKnop from '@/components/SyncAllesKnop'
 import { runSync, type OntbrekendDoc } from '@/lib/admin/syncClient'
 import { useMelding } from '@/components/MeldingProvider'
+import { verwijderFactuurMetBevestiging } from '@/components/facturen/verwijderFactuur'
 import { getCompany, COMPANIES } from '@/lib/companies'
 import { Factuur, FactuurStatus, CompanyId } from '@/lib/types'
 import { FactuurStatusBadge } from '@/components/StatusBadge'
@@ -181,7 +182,7 @@ export default function FacturenPage() {
 function FacturenContent() {
   const melding = useMelding()
   const searchParams = useSearchParams()
-  const { activeCompany } = useActiveCompany()
+  const { activeCompany, scope, scopeGeladen } = useActiveCompany()
   const { openDrawer } = useDrawer()
   const { order, move } = useColumnOrder('facturen', FACTUUR_KOLOMMEN.map(c => c.key))
   const dnd = useColumnDnD(move)
@@ -202,6 +203,9 @@ function FacturenContent() {
   const [companyFilter, setCompanyFilter] = useState<CompanyId | 'alle'>(
     (searchParams.get('bedrijf') as CompanyId) || 'alle'
   )
+  // Buiten The Daley Edit kijk je alleen naar het eigen bedrijf, de tabs
+  // hieronder zijn dan niet zichtbaar.
+  const effectiefBedrijf = scope === 'alle' ? companyFilter : scope
   const [folderName, setFolderName] = useState<string | null>(null)
   const [sortField, setSortField] = useState<FactuurSortField>('date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
@@ -213,13 +217,15 @@ function FacturenContent() {
   }, [])
 
   const fetchFacturen = useCallback(async () => {
+    // Wachten tot het opgeslagen bedrijf bekend is, anders haal je eerst alles op
+    if (!scopeGeladen) return
     setLoading(true)
     setFetchError(false)
     try {
       const params = new URLSearchParams()
       // 'te-laat' bevat ook verzonden+vervallen facturen — client-side filteren
       if (statusFilter !== 'alle' && statusFilter !== 'te-laat') params.set('status', statusFilter)
-      if (companyFilter !== 'alle') params.set('company', companyFilter)
+      if (effectiefBedrijf !== 'alle') params.set('company', effectiefBedrijf)
       if (search) params.set('search', search)
 
       const res = await fetch(`/api/facturen?${params}`)
@@ -233,7 +239,7 @@ function FacturenContent() {
       setFetchError(true)
     }
     setLoading(false)
-  }, [statusFilter, companyFilter, search])
+  }, [statusFilter, effectiefBedrijf, search, scopeGeladen])
 
   useEffect(() => { fetchFacturen() }, [fetchFacturen])
 
@@ -371,6 +377,10 @@ function FacturenContent() {
   // niet aan, jij beslist wat er moet gebeuren.
   const [ontbrekend, setOntbrekend] = useState<OntbrekendDoc[]>([])
   const [herstelBezig, setHerstelBezig] = useState<string | null>(null)
+  const ontbrekendePdf = useMemo(
+    () => new Map(ontbrekend.filter(d => d.type === 'factuur').map(d => [d.number.toUpperCase(), d])),
+    [ontbrekend],
+  )
   const [localFileMap, setLocalFileMap] = useState<Map<string, string>>(new Map())
   const localFileSignatureRef = useRef('')
   const backgroundSyncRef = useRef(false)
@@ -385,6 +395,14 @@ function FacturenContent() {
         const previousSignature = localFileSignatureRef.current
         localFileSignatureRef.current = signature
         setLocalFileMap(map)
+        // Bij het openen van de pagina alleen een lichte controle, zonder import:
+        // anders zie je pas na een wijziging in de map welke facturen hun PDF
+        // kwijt zijn.
+        if (!previousSignature && !backgroundSyncRef.current) {
+          runSync(undefined, { alleenControle: true })
+            .then(samenvatting => setOntbrekend(samenvatting.ontbrekend))
+            .catch(() => {})
+        }
         if (previousSignature && previousSignature !== signature && !backgroundSyncRef.current) {
           backgroundSyncRef.current = true
           // Deze sync draait automatisch zodra er iets in de mappen verandert.
@@ -447,24 +465,24 @@ function FacturenContent() {
     await fetch('/api/open-folder', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ company: companyFilter }),
+      body: JSON.stringify({ company: effectiefBedrijf }),
     })
   }
 
-  const newFactuurHref = companyFilter !== 'alle'
-    ? `/facturen/nieuw?bedrijf=${companyFilter}`
+  const newFactuurHref = effectiefBedrijf !== 'alle'
+    ? `/facturen/nieuw?bedrijf=${effectiefBedrijf}`
     : `/facturen/nieuw?bedrijf=${activeCompany}`
 
   return (
-    <div className="p-8 flex flex-col min-h-screen">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-6 lg:p-8 flex flex-col min-h-screen lg:min-h-0 lg:h-[calc(100dvh-var(--dash-topbar))] lg:overflow-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 shrink-0">
         <div>
-          <h1 className="font-uxum text-sidebar-t text-brand-text-primary">Facturen</h1>
-          <p className="text-body text-brand-text-secondary mt-0.5">
+          <h1 className="font-uxum text-headline text-brand-text-primary">Facturen</h1>
+          <p className="text-body text-brand-text-secondary mt-1">
             {facturen.length} facturen · <span className="text-brand-status-orange font-medium">{euro(totalOpen)} openstaand</span>
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={async () => {
               const handle = await pickFacturenFolder()
@@ -496,7 +514,7 @@ function FacturenContent() {
 
       {/* PDF ontbreekt: melden, nooit verwijderen. Zie docs/audit-2026-08-01.md punt 1b. */}
       {ontbrekend.length > 0 && (
-        <div className="card border-amber-300 bg-amber-50/60 p-4 mb-4">
+        <div className="card border-amber-300 bg-amber-50/60 p-4 mb-4 shrink-0">
           <div className="flex items-start gap-2.5">
             <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -554,6 +572,25 @@ function FacturenContent() {
                           {herstelBezig === factuur.id ? 'Bezig...' : 'PDF opnieuw opslaan'}
                         </button>
                       )}
+                      {/* Heb je de PDF bewust weggegooid omdat de factuur niet klopt,
+                          dan hoort hij ook uit de Dash. De map is leidend. */}
+                      {factuur && !doc.gevondenOp && (
+                        <button
+                          onClick={async () => {
+                            const weg = await verwijderFactuurMetBevestiging(factuur, melding, {
+                              aanleiding: 'De PDF van deze factuur staat niet meer in je administratie. Klopt het dat de factuur weg moet?',
+                            })
+                            if (weg) {
+                              setOntbrekend(prev => prev.filter(d => d.number !== doc.number))
+                              fetchFacturen()
+                              dataChanged('facturen')
+                            }
+                          }}
+                          className="text-caption text-brand-status-red hover:underline"
+                        >
+                          Klopt, factuur verwijderen
+                        </button>
+                      )}
                     </li>
                   )
                 })}
@@ -570,8 +607,9 @@ function FacturenContent() {
         </div>
       )}
 
-      {/* Company tabs */}
-      <div className="flex gap-2 mb-4">
+      {/* Company tabs, alleen onder The Daley Edit: daar zie je alle bedrijven */}
+      {scope === 'alle' && (
+      <div className="flex flex-wrap gap-2 mb-4 shrink-0">
         <button
           onClick={() => setCompanyFilter('alle')}
           className={`px-3 py-1.5 rounded-brand-btn text-caption font-medium transition-colors border ${
@@ -598,10 +636,11 @@ function FacturenContent() {
           </button>
         ))}
       </div>
+      )}
 
       {/* Search + status filters */}
-      <div className="flex gap-3 mb-5">
-        <div className="relative flex-1 max-w-xs">
+      <div className="flex flex-col sm:flex-row gap-3 mb-5 shrink-0">
+        <div className="relative flex-1 sm:max-w-xs">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-text-secondary" />
           <input
             className="input pl-8"
@@ -611,12 +650,12 @@ function FacturenContent() {
             onKeyDown={e => e.key === 'Enter' && fetchFacturen()}
           />
         </div>
-        <div className="flex gap-1 bg-brand-card-bg border-brand border-brand-card-border rounded-brand-btn p-1">
+        <div className="flex gap-1 bg-brand-card-bg border-brand border-brand-card-border rounded-brand-btn p-1 overflow-x-auto max-w-full">
           {STATUS_TABS.map(s => (
             <button
               key={s.key}
               onClick={() => setStatusFilter(s.key)}
-              className={`px-3 py-1 rounded-brand-sm text-pill font-medium transition-colors ${
+              className={`px-3 py-1 rounded-brand-sm text-pill font-medium transition-colors whitespace-nowrap shrink-0 ${
                 statusFilter === s.key
                   ? 'bg-brand-purple text-white'
                   : 'text-brand-text-secondary hover:text-brand-text-primary'
@@ -630,7 +669,7 @@ function FacturenContent() {
 
       {/* Omzetperiode banner */}
       {periodeRange && (
-        <div className="mb-4 rounded-brand border border-brand-lime-accent/40 bg-brand-lime/20 px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
+        <div className="mb-4 rounded-brand border border-brand-lime-accent/40 bg-brand-lime/20 px-5 py-4 flex items-center justify-between gap-4 flex-wrap shrink-0">
           <div>
             <p className="text-caption text-brand-text-secondary uppercase tracking-wide">
               Omzet {periodeRange.type === 'jaar' ? `jaar ${periodeRange.label}` : periodeRange.label}
@@ -651,7 +690,7 @@ function FacturenContent() {
 
       {/* Foutbanner als data niet geladen kon worden */}
       {fetchError && (
-        <div className="mb-4 rounded-brand border border-brand-pink-accent/40 bg-brand-pink/20 px-5 py-4 flex items-center justify-between gap-4">
+        <div className="mb-4 rounded-brand border border-brand-pink-accent/40 bg-brand-pink/20 px-5 py-4 flex items-center justify-between gap-4 shrink-0">
           <p className="text-body text-brand-status-red font-medium">
             Data kon niet worden geladen. De server is mogelijk niet bereikbaar.
           </p>
@@ -662,9 +701,9 @@ function FacturenContent() {
       )}
 
       {/* Supabase tabel */}
-      <div className="card p-0 overflow-hidden flex-1">
-        <table className="w-full text-body">
-          <thead className="bg-brand-page-light border-b border-brand-page-medium">
+      <div className="card p-0 overflow-auto flex-1 lg:min-h-0">
+        <table className="w-full min-w-[760px] text-body">
+          <thead className="sticky top-0 z-10 bg-brand-page-light border-b border-brand-page-medium">
             <tr>
               {(() => {
                 const headerInner: Record<string, ReactNode> = {
@@ -765,10 +804,12 @@ function FacturenContent() {
               </tr>
             ) : sorted.map(f => {
               const co = getCompany(f.companyId)
+              // PDF weg uit de map: rood. Alleen verplaatst naar een andere map: oranje.
+              const pdfMist = ontbrekendePdf.get(f.number.toUpperCase())
               const isOverdue = f.status === 'te-laat' || ((f.status === 'verzonden' || f.status === 'herinnering-verzonden') && new Date(f.dueDate) < new Date())
               const cell: Record<string, ReactNode> = {
                 number: (
-                  <td key="number" className="px-5 py-3.5" onClick={e => e.stopPropagation()}>
+                  <td key="number" className="px-5 py-3.5 whitespace-nowrap" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
                       {(() => {
                         const localPath = localFileMap.get(f.number.toUpperCase())
@@ -783,7 +824,16 @@ function FacturenContent() {
                                 {f.number}
                               </button>
                             ) : (
-                              <span className="font-mono text-caption text-brand-text-secondary">{f.number}</span>
+                              <span className={`font-mono text-caption ${pdfMist && !pdfMist.gevondenOp ? 'text-brand-status-red font-semibold' : 'text-brand-text-secondary'}`}>{f.number}</span>
+                            )}
+                            {pdfMist && (
+                              <span
+                                className={`inline-flex items-center gap-1 text-pill px-1.5 py-0.5 rounded font-semibold ${pdfMist.gevondenOp ? 'bg-amber-100 text-amber-700' : 'bg-brand-pink text-brand-status-red'}`}
+                                title={pdfMist.gevondenOp ? 'De PDF staat in een andere map dan verwacht' : 'De PDF staat niet meer in je administratie'}
+                              >
+                                <AlertTriangle size={10} />
+                                {pdfMist.gevondenOp ? 'PDF verplaatst' : 'Geen PDF'}
+                              </span>
                             )}
                             <button
                               onClick={() => localPath ? callFileAction(localPath, 'reveal') : handleOpenFolder()}
@@ -882,7 +932,13 @@ function FacturenContent() {
               return (
                 <tr
                   key={f.id}
-                  className={`group hover:bg-brand-page-light cursor-pointer transition-colors ${isOverdue ? 'bg-brand-pink/30' : ''}`}
+                  className={`group cursor-pointer transition-colors ${
+                    pdfMist && !pdfMist.gevondenOp
+                      ? 'bg-brand-pink/70 hover:bg-brand-pink'
+                      : pdfMist
+                        ? 'bg-amber-50 hover:bg-amber-100/70'
+                        : `hover:bg-brand-page-light ${isOverdue ? 'bg-brand-pink/30' : ''}`
+                  }`}
                   onClick={() => openDrawer({ type: 'factuur-detail', id: f.id })}
                 >
                   {order.map(key => cell[key])}
@@ -893,7 +949,10 @@ function FacturenContent() {
         </table>
       </div>
 
-      <LocaleBestandenSection type="factuur" />
+      {/* Onder de tabel: standaard ingeklapt, uitgeklapt scrolt hij in zijn eigen vak zodat de tabel niet verdwijnt */}
+      <div className="shrink-0 lg:max-h-[40vh] lg:overflow-y-auto">
+        <LocaleBestandenSection type="factuur" />
+      </div>
     </div>
   )
 }

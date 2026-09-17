@@ -77,6 +77,9 @@ await mkdir(werkMap, { recursive: true })
 const previewFile = `${werkMap}/${cfg.templateFile}`
 await writeFile(previewFile, html, 'utf-8')
 
+// Elke factuur krijgt altijd meteen een echt nummer uit de bedrijfsreeks, dus
+// de PDF gaat altijd naar de kwartaalmap, ook voor een concept (status in
+// Supabase, geregeld in stap 4, niet het bestandspad).
 const datum = new Date(`${p.factuurdatum}T12:00:00`)
 const jaar = datum.getFullYear()
 const kwartaal = Math.ceil((datum.getMonth() + 1) / 3)

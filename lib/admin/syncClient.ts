@@ -31,8 +31,11 @@ type SyncBericht =
 
 const LEEG: SyncSamenvatting = { imported: 0, skipped: 0, failed: 0, ontbrekend: [], overgeslagenOud: 0 }
 
-export async function runSync(onBericht?: (msg: SyncBericht) => void): Promise<SyncSamenvatting> {
-  const res = await fetch('/api/admin/sync', { method: 'POST' })
+export async function runSync(
+  onBericht?: (msg: SyncBericht) => void,
+  opties: { alleenControle?: boolean } = {},
+): Promise<SyncSamenvatting> {
+  const res = await fetch(`/api/admin/sync${opties.alleenControle ? '?alleenControle=1' : ''}`, { method: 'POST' })
   if (!res.ok || !res.body) return { ...LEEG }
 
   const reader = res.body.getReader()

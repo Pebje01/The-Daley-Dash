@@ -21,7 +21,7 @@ const STANDAARD_MODEL = 'claude-sonnet-5'
  * Daarom zoeken we het binary zelf op in plaats van te vertrouwen op PATH.
  * Staat hij ergens anders, zet dan CLAUDE_CLI_PATH in .env.local.
  */
-function zoekClaude(): string {
+export function zoekClaude(): string {
   if (process.env.CLAUDE_CLI_PATH) return process.env.CLAUDE_CLI_PATH
   const kandidaten = [
     join(homedir(), '.local/bin/claude'),
