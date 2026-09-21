@@ -8,7 +8,7 @@ import {
   RefreshCw, Search, Plus, X, Save, Trash2, LayoutList, Columns3, ArrowRight,
   Building2, User, BadgeDollarSign, BriefcaseBusiness,
   ArrowUp, ArrowDown, Filter as FilterIcon, FileText, CalendarDays, PencilLine,
-  Bell, Ban, Mail, GripVertical, Send,
+  Bell, Ban, Mail, GripVertical, Send, Undo2, Link2,
 } from 'lucide-react'
 import {
   LEAD_STATUS_VOLGORDE, faseDef, leadBordFases, contactStand,
@@ -22,6 +22,8 @@ import { AiScoreBadge, AiKwalificatieBlok } from '@/components/crm/AiKwalificati
 import BenaderenBlok from '@/components/crm/BenaderenBlok'
 import ReactieMelding from '@/components/crm/ReactieMelding'
 import MailAdresKiezer from '@/components/crm/MailAdresKiezer'
+import UrenKlantBlok from '@/components/crm/UrenKlantBlok'
+import { useMelding } from '@/components/MeldingProvider'
 import { DashTagsProvider, InlineTags, type DashTag, DASH_TAG_KLEURNAMEN } from '@/components/CrmTagPicker'
 import { useColumnOrder, useColumnDnD, useColumnWidths } from '@/lib/columnOrder'
 import { ColumnGrip } from '@/components/ColumnGrip'
@@ -104,6 +106,7 @@ interface CrmRecord {
   ruwe_contact_email?: string | null
   ruwe_telefoon?: string | null
   ruwe_contact_status?: string | null
+  afsluit_reden?: string | null
   // AI-kwalificatie (zie lib/ai/kwalificeer-lead.ts). Advies, geen automaat:
   // deze velden sturen nooit de fase of de opvolging aan.
   ai_status?: string | null
@@ -129,6 +132,7 @@ const STATUS_BADGE: Record<string, string> = {
   'klant on hold':           'bg-amber-500 text-white',
   'benaderd':                'bg-purple-500 text-white',
   'in gesprek':              'bg-indigo-500 text-white',
+  'in uitvoering':           'bg-indigo-500 text-white',
   'offerte uit':             'bg-sky-500 text-white',
   'later opvolgen':          'bg-amber-500 text-white',
   'eigen bedrijf':           'bg-purple-500 text-white',
@@ -141,7 +145,7 @@ const STATUS_BADGE: Record<string, string> = {
   'verloren':                'bg-rose-500 text-white',
   'niets uitgekomen':        'bg-orange-400 text-white',
   'archief':                 'bg-gray-400 text-white',
-  'omgezet':                 'bg-teal-500 text-white',
+  'omgezet':                 'bg-green-500 text-white',
   'gefactureerd':            'bg-emerald-600 text-white',
   'geannuleerd':             'bg-rose-400 text-white',
   'samenwerking afgesloten': 'bg-gray-500 text-white',
@@ -157,6 +161,7 @@ const STATUS_HEX: Record<string, string> = {
   'on hold':                 '#f59e0b',
   'klant on hold':           '#f59e0b',
   'in gesprek':              '#6366f1',
+  'in uitvoering':           '#6366f1',
   'eigen bedrijf':           '#8b5cf6',
   'factuur open':            '#f59e0b',
   'gewonnen':                '#22c55e',
@@ -167,7 +172,7 @@ const STATUS_HEX: Record<string, string> = {
   'verloren':                '#f43f5e',
   'niets uitgekomen':        '#fb923c',
   'archief':                 '#9ca3af',
-  'omgezet':                 '#14b8a6',
+  'omgezet':                 '#22c55e',
   'gefactureerd':            '#059669',
   'geannuleerd':             '#f43f5e',
   'samenwerking afgesloten': '#9ca3af',
@@ -186,12 +191,14 @@ const STATUS_GROUP_MAP: Record<string, string> = {
   'klant on hold':           'Active',
   'benaderd':                'Active',
   'in gesprek':              'Active',
+  'in uitvoering':           'Active',
   'offerte uit':             'Active',
   'later opvolgen':          'Active',
   'eigen bedrijf':           'Active',
   'factuur open':            'Active',
   'gewonnen':                'Done',
   'afgerond':                'Done',
+  'gefactureerd':            'Done',
   'klant':                   'Done',
   'factuur betaald':         'Done',
   'blacklist':               'Done',
@@ -213,10 +220,10 @@ const ENTITY_STATUS_ORDER: Partial<Record<EntityType, string[]>> = {
   lead: LEAD_STATUS_VOLGORDE,
   assignment: [
     'nieuwe opdracht',
-    'on hold',
     'in uitvoering',
+    'on hold',
     'afgerond',
-    'geannuleerd',
+    'gefactureerd',
   ],
   company: [
     'open',
@@ -653,10 +660,9 @@ function companyColumns(klantMap: Map<string, string>): Column[] {
     {
       key: 'klantnummer', label: 'Klantnr', width: 88,
       render: (r) => {
-        // Eerst het veld 'Klantnummer' op het record, anders de uren_klanten map
-        const veldNr = cfValue(r, 'Klantnummer')
-        const urenNr = klantMap.get(r.name.toLowerCase().trim())
-        const nr = veldNr || urenNr
+        // Eén plek voor het klantnummer: de uren- en factuurgegevens van het
+        // bedrijf (uren_klanten). Het oude CRM-veld Klantnummer telt niet meer.
+        const nr = klantMap.get(`id:${r.id}`) ?? klantMap.get(r.name.toLowerCase().trim())
         return nr
           ? <span className="text-xs font-mono text-indigo-600 tracking-wider">{nr}</span>
           : DASH
@@ -680,19 +686,111 @@ function getColumns(entity: EntityType, klantMap: Map<string, string> = new Map(
 
 // ── StatusPicker ───────────────────────────────────────────────────
 
+/**
+ * Sommige fases willen eerst iets weten.
+ *
+ *  - Archief: waarom is er niets uit gekomen? Die reden blijft op de kaart staan,
+ *    zodat je er over een jaar nog iets aan hebt.
+ *  - Blocklist: waarom, en gaat het contact of bedrijf erachter ook mee? Dat
+ *    laatste is een aparte vraag, want een lead blokkeren is iets anders dan
+ *    iemand nooit meer benaderen.
+ *
+ * Geeft de extra velden terug voor de PATCH, of null als je annuleert.
+ */
+async function vraagFaseVelden(
+  melding: ReturnType<typeof useMelding>,
+  recordId: string,
+  naam: string,
+  status: string,
+  entity?: EntityType
+): Promise<Record<string, unknown> | null> {
+  const fase = (status || '').toLowerCase()
+
+  // Een opdracht afronden kan van alles betekenen: opgeleverd, of halverwege
+  // gestopt. Daarom dezelfde vraag als bij Archief.
+  if (entity === 'assignment' && fase === 'afgerond') {
+    const reden = await melding.vraagTekst({
+      titel: `"${naam}" afronden`,
+      tekst: 'Hoe is het geëindigd? Dat blijft op de kaart staan.',
+      placeholder: 'Bijvoorbeeld: opgeleverd en akkoord',
+      suggesties: ['Opgeleverd', 'Opgeleverd, wacht op akkoord', 'Klant is gestopt', 'Niet doorgegaan', 'Ingetrokken'],
+      bevestigLabel: 'Afronden',
+    })
+    return reden === null ? null : { afsluit_reden: reden }
+  }
+
+  if (fase === 'archief') {
+    const reden = await melding.vraagTekst({
+      titel: `Waarom is er niets uit "${naam}" gekomen?`,
+      tekst: 'De reden komt op de kaart te staan.',
+      placeholder: 'Bijvoorbeeld: nooit meer iets van gehoord',
+      suggesties: ['Geen reactie', 'Te duur', 'Naar een ander gegaan', 'Geen budget', 'Timing klopte niet', 'Geen match'],
+      bevestigLabel: 'Naar archief',
+    })
+    return reden === null ? null : { afsluit_reden: reden }
+  }
+
+  if (fase === FASE_BLOCKLIST) {
+    const reden = await melding.vraagTekst({
+      titel: `"${naam}" op de blocklist?`,
+      tekst: 'Waarom wil je hier niet meer mee verder?',
+      placeholder: 'Bijvoorbeeld: wil niet benaderd worden',
+      suggesties: ['Wil niet benaderd worden', 'Slechte ervaring', 'Betaalt niet', 'Concurrent', 'Niet serieus'],
+      bevestigLabel: 'Blokkeren',
+      gevaarlijk: true,
+    })
+    if (reden === null) return null
+
+    // De lead is het werk, de mensen erachter zijn de relatie. Die vraag hoort los.
+    try {
+      const res = await fetch(`/api/crm/relations?id=${recordId}`)
+      const json = await res.json()
+      const mensen = [...(json?.contacten || []), ...(json?.bedrijven || [])]
+        .filter((r: any) => r?.id && r?.naam)
+      if (mensen.length) {
+        const ook = await melding.bevestig({
+          titel: 'Contact op blocklist zetten?',
+          tekst: `Hieraan gekoppeld: ${mensen.map((m: any) => m.naam).join(', ')}.\n\nOok blokkeren? Dan benader je ze nergens meer, ook niet vanuit een andere lead.`,
+          bevestigLabel: 'Ja, ook blokkeren',
+          annuleerLabel: 'Nee, alleen deze lead',
+        })
+        if (ook) {
+          await Promise.allSettled(mensen.map((m: any) =>
+            fetch(`/api/crm/records/${m.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contact_status: 'blokkade', contact_status_reden: reden }),
+            })
+          ))
+        }
+      }
+    } catch {
+      // De koppelingen niet kunnen ophalen mag het blokkeren niet tegenhouden
+    }
+    return { contact_status_reden: reden }
+  }
+
+  return {}
+}
+
 function StatusPicker({
   recordId,
+  recordNaam,
+  recordEntity,
   currentStatus,
   allStatuses,
   onStatusChange,
   iconOnly = false,
 }: {
   recordId: string
+  recordNaam?: string
+  recordEntity?: EntityType
   currentStatus: string | null
   allStatuses: string[]
   onStatusChange: (id: string, status: string) => void
   iconOnly?: boolean
 }) {
+  const melding = useMelding()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [saving, setSaving] = useState(false)
@@ -716,13 +814,18 @@ function StatusPicker({
     if (status === currentStatus) { setOpen(false); setSearch(''); return }
     setOpen(false)
     setSearch('')
+
+    // Archief wil een reden, Blocklist een reden plus de vraag over het contact
+    const extra = await vraagFaseVelden(melding, recordId, recordNaam || 'dit record', status, recordEntity)
+    if (extra === null) return
+
     setSaving(true)
     onStatusChange(recordId, status)
     try {
       await fetch(`/api/crm/records/${recordId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, ...extra }),
       })
     } catch { /* best effort */ } finally {
       setSaving(false)
@@ -1072,6 +1175,8 @@ function GroupedListView({
                   >
                     <StatusPicker
                       recordId={item.id}
+                      recordNaam={item.name}
+                      recordEntity={item.entity_type}
                       currentStatus={item.status ?? null}
                       allStatuses={allStatuses}
                       onStatusChange={onStatusChange}
@@ -1140,6 +1245,40 @@ function GroupedListView({
 
 // ── Board card ──────────────────────────────────────────────────────
 
+/** Terugzetten kan bij een opdracht (terug naar de lead) en een factuur (terug naar de opdracht). */
+function kanTerugzetten(record: CrmRecord) {
+  return record.entity_type === 'assignment' || record.entity_type === 'clickup_invoice'
+}
+
+/**
+ * Per ongeluk een opdracht of factuur aangemaakt: die gaat weg en de lead of
+ * opdracht waar hij uit voortkwam gaat terug naar de fase van daarvoor.
+ * Gedeeld door de detailkaart en de kaart op het bord, zodat de vraag en de
+ * melding overal gelijk zijn. Geeft false als Daley annuleert, gooit bij een fout.
+ */
+async function terugzettenApi(id: string): Promise<{ bron: { id: string; name: string; status: string } | null }> {
+  const res = await fetch(`/api/crm/records/${id}/terugzetten`, { method: 'POST' })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(json.error || 'Terugzetten mislukt')
+  return json
+}
+
+async function zetPromotieTerug(record: CrmRecord, melding: ReturnType<typeof useMelding>): Promise<boolean> {
+  const soort = record.entity_type === 'assignment' ? 'opdracht' : 'factuur'
+  const akkoord = await melding.bevestig({
+    titel: `"${record.name}" terugzetten?`,
+    tekst: `Deze ${soort} wordt verwijderd, en ${soort === 'opdracht' ? 'de lead' : 'de opdracht'} gaat terug naar de fase van daarvoor.\n\nDit kan niet ongedaan worden gemaakt.`,
+    bevestigLabel: 'Terugzetten',
+    gevaarlijk: true,
+  })
+  if (!akkoord) return false
+  const json = await terugzettenApi(record.id)
+  melding.gelukt(json.bron
+    ? `Teruggezet: "${json.bron.name}" staat weer op ${json.bron.status}.`
+    : `${soort === 'opdracht' ? 'Opdracht' : 'Factuur'} verwijderd. Er was geen gekoppelde lead gevonden.`)
+  return true
+}
+
 function BoardCard({
   item,
   allStatuses,
@@ -1148,6 +1287,7 @@ function BoardCard({
   toonOpvolging = false,
   onOpvolgPatch,
   onDragStart,
+  onTerugzetten,
 }: {
   item: CrmRecord
   allStatuses: string[]
@@ -1156,6 +1296,7 @@ function BoardCard({
   toonOpvolging?: boolean
   onOpvolgPatch?: (id: string, patch: Partial<CrmRecord>) => void
   onDragStart?: (id: string) => void
+  onTerugzetten?: (record: CrmRecord) => void
 }) {
   const assignee = item.assignees?.[0]
   const fields = (item.custom_fields || [])
@@ -1188,6 +1329,8 @@ function BoardCard({
         <p className="text-sm font-medium text-brand-text-primary leading-snug flex-1">{item.name}</p>
         <StatusPicker
           recordId={item.id}
+          recordNaam={item.name}
+          recordEntity={item.entity_type}
           currentStatus={item.status ?? null}
           allStatuses={allStatuses}
           onStatusChange={onStatusChange}
@@ -1207,6 +1350,11 @@ function BoardCard({
       )}
       {/* Waarom hij geblokkeerd of gepauzeerd staat hoort op de kaart zelf: de
           blocklist gaat over bedrijven en contacten, niet over losse leads. */}
+      {item.afsluit_reden && (
+        <p className="text-xs text-brand-text-secondary line-clamp-2">
+          <span className="opacity-70">Reden:</span> {item.afsluit_reden}
+        </p>
+      )}
       {contact !== 'open' && item.contact_status_reden && (
         <p className="text-xs text-brand-text-secondary line-clamp-2">
           <span className="opacity-70">Reden:</span> {item.contact_status_reden}
@@ -1234,6 +1382,16 @@ function BoardCard({
           ))}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          {onTerugzetten && kanTerugzetten(item) && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onTerugzetten(item) }}
+              title="Terugzetten: per ongeluk aangemaakt? Verwijdert dit record en zet de vorige stap terug."
+              aria-label="Terugzetten"
+              className="p-1 rounded-brand-btn text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-page-medium transition-colors"
+            >
+              <Undo2 size={13} />
+            </button>
+          )}
           {toonOpvolging && (
             <>
               <ContactKnop record={item} onSaved={patch} variant="icoon" />
@@ -1267,6 +1425,7 @@ function BoardView({
   onCardClick,
   onOpvolgPatch,
   onFaseChange,
+  onTerugzetten,
 }: {
   items: CrmRecord[]
   entity: EntityType
@@ -1275,6 +1434,7 @@ function BoardView({
   onCardClick: (r: CrmRecord) => void
   onOpvolgPatch?: (id: string, patch: Partial<CrmRecord>) => void
   onFaseChange?: (id: string, status: string) => void
+  onTerugzetten?: (record: CrmRecord) => void
 }) {
   const isLead = entity === 'lead'
   const [toonAfgesloten, setToonAfgesloten] = useState(false)
@@ -1410,6 +1570,7 @@ function BoardView({
                     toonOpvolging={isLead}
                     onOpvolgPatch={onOpvolgPatch}
                     onDragStart={onFaseChange ? () => {} : undefined}
+                    onTerugzetten={onTerugzetten}
                   />
                 ))}
               </div>
@@ -1766,7 +1927,10 @@ function EditableFieldsPanel({
 }) {
   const fields = useMemo(() => {
     const all = (src.custom_fields || []).filter(
-      (f: any) => f?.id && f?.name && !HIDDEN_FIELD_TYPES.has(f?.type)
+      (f: any) => f?.id && f?.name && !HIDDEN_FIELD_TYPES.has(f?.type) &&
+        // Het klantnummer van een bedrijf staat in "Urenregistratie en facturatie";
+        // het oude importveld zou een tweede, afwijkend nummer tonen
+        !(entity === 'company' && String(f.name).toLowerCase() === 'klantnummer')
     )
     // Dedupliceer op naam (de oude import heeft soms dubbele velden); hou het veld met waarde
     const byName = new Map<string, any>()
@@ -2193,40 +2357,41 @@ function RelationsPanel({ record }: { record: CrmRecord }) {
       ].filter((g) => g.items?.length)
     : []
 
+  const alle = groups.flatMap((g) => g.items.map((item) => ({ item, icon: g.icon, soort: g.label })))
+
+  // Koppelingen staan in de kop van de kaart, onder de titel: altijd in beeld,
+  // ook als de middelste kolom naar de velden gescrold is. Daar stonden ze eerst,
+  // en dan zag je niet dat een lead al aan een bedrijf en contact hing.
   return (
-    <div>
-      <div className="flex items-center justify-between gap-3 mb-2">
-        <h3 className="text-caption font-semibold uppercase tracking-wide text-brand-text-secondary">Relaties</h3>
+    <div className="mt-3">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {state === 'loading' && <span className="text-caption text-brand-text-secondary">Koppelingen laden...</span>}
+        {state === 'error' && (
+          <button onClick={load} className="text-caption text-brand-status-red hover:underline">Koppelingen laden mislukt, opnieuw proberen</button>
+        )}
+        {state === 'done' && alle.length === 0 && !picking && (
+          <span className="text-caption text-brand-text-secondary italic">Nog nergens aan gekoppeld</span>
+        )}
+        {state === 'done' && alle.map(({ item, icon, soort }) => (
+          <span
+            key={`${soort}-${item.id}`}
+            title={soort}
+            className="inline-flex items-center gap-1 max-w-[260px] rounded-full border border-brand-card-border/15 bg-white dark:bg-brand-card-bg pl-2 pr-1.5 py-0.5"
+          >
+            <span className="text-brand-text-secondary shrink-0">{icon}</span>
+            <RelationLink item={item} onUnlink={unlink} />
+          </span>
+        ))}
         <button
           onClick={() => setPicking((v) => !v)}
-          className="inline-flex items-center gap-1 text-caption text-brand-purple hover:text-brand-text-primary"
+          className="inline-flex items-center gap-1 text-caption font-medium rounded-full px-2.5 py-0.5 border border-dashed border-brand-lav-accent/50 text-brand-lav-accent hover:bg-brand-lavender-light/40 transition-colors"
         >
-          {picking ? <X size={12} /> : <Plus size={12} />} {picking ? 'Sluiten' : 'Koppel record'}
+          {picking ? <X size={12} /> : <Link2 size={12} />} {picking ? 'Sluiten' : 'Koppelen'}
         </button>
       </div>
-
-      {picking && <RecordLinker record={record} onLinked={load} />}
-
-      {state === 'loading' && <p className="text-xs text-gray-400">Laden...</p>}
-      {state === 'error' && (
-        <div>
-          <p className="text-xs text-red-500 mb-1">Relaties laden mislukt.</p>
-          <button onClick={load} className="text-xs text-indigo-600 hover:underline">Opnieuw proberen</button>
-        </div>
-      )}
-      {state === 'done' && groups.length === 0 && !picking && (
-        <p className="text-caption text-brand-text-secondary italic">Nog niets gekoppeld</p>
-      )}
-      {state === 'done' && groups.length > 0 && (
-        <div className="space-y-3">
-          {groups.map((g) => (
-            <div key={g.label}>
-              <p className="text-caption text-brand-text-secondary mb-1 flex items-center gap-1">{g.icon} {g.label} ({g.items.length})</p>
-              <div className="flex flex-wrap gap-x-4 gap-y-1">
-                {g.items.map((item) => <RelationLink key={item.id} item={item} onUnlink={unlink} />)}
-              </div>
-            </div>
-          ))}
+      {picking && (
+        <div className="mt-2 max-h-72 overflow-y-auto rounded-brand-sm border border-brand-card-border/15 bg-white dark:bg-brand-card-bg p-3">
+          <RecordLinker record={record} onLinked={load} />
         </div>
       )}
     </div>
@@ -2362,11 +2527,14 @@ function RecordDetailModal({
   const [full, setFull] = useState<CrmRecord | null>(null)
   const [opvolgRec, setOpvolgRec] = useState<CrmRecord>(record)
   const [loadingFull, setLoadingFull] = useState(true)
+  const melding = useMelding()
   // Knop "Benaderen" in de kop: opent het mailconcept in de werkkolom
   const [benaderen, setBenaderen] = useState(false)
   const [name, setName] = useState(record.name)
   const [currentStatus, setCurrentStatus] = useState(record.status || '')
   const [notes, setNotes] = useState('')
+  // Beschrijving is een gewoon wit tekstvlak dat je zelf bijwerkt. null = nog niet geladen.
+  const [beschrijving, setBeschrijving] = useState<string | null>(null)
   const [fieldEdits, setFieldEdits] = useState<Record<string, { value: any }>>({})
   // Alleen leads horen bij één bedrijf; bedrijven en contacten blijven gedeeld.
   const [companyId, setCompanyId] = useState<string>(record.company_id || '')
@@ -2378,17 +2546,6 @@ function RecordDetailModal({
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
 
-  // Klantnummer + uren-koppeling
-  const [klantnummer, setKlantnummer] = useState('')
-  const [origKlantnummer, setOrigKlantnummer] = useState('')
-  const [klantId, setKlantId] = useState<string | null>(null)
-  const [crmBedrijfId, setCrmBedrijfId] = useState<string | null>(null)
-  const [loadingKlant, setLoadingKlant] = useState(true)
-  const [toevoegenAanUren, setToevoegenAanUren] = useState(false)
-  // Uren-samenvatting
-  const [urenSamenvatting, setUrenSamenvatting] = useState<{ totaalUren: number; totaalOmzet: number; openstaand: number } | null>(null)
-  const [loadingUren, setLoadingUren] = useState(false)
-
   /** Haalt het volledige record op. Ook gebruikt om de AI-uitslag binnen te halen. */
   const laadFull = useCallback((toonLader = true) => {
     if (toonLader) setLoadingFull(true)
@@ -2399,6 +2556,7 @@ function RecordDetailModal({
         setFull(item)
         if (item && item.company_id !== undefined) setCompanyId(item.company_id || '')
         if (toonLader && item?.raw?.notes) setNotes(item.raw.notes)
+        if (toonLader && item) setBeschrijving(item.raw?.description ?? '')
         // Verse opvolgwaarden uit de database overnemen
         if (item) {
           setOpvolgRec((prev) => ({
@@ -2420,54 +2578,6 @@ function RecordDetailModal({
   useEffect(() => {
     laadFull()
   }, [laadFull])
-
-  useEffect(() => {
-    setLoadingKlant(true)
-    Promise.all([
-      fetch('/api/uren-klanten').then(r => r.json()),
-      fetch('/api/crm/bedrijven?lite=true').then(r => r.json()),
-    ])
-      .then(([klanten, crmBedrijven]: [any[], any[]]) => {
-        // Zoek het crm_bedrijven record op naam
-        const crmBedrijf = crmBedrijven.find(
-          (cb: any) => cb.naam?.toLowerCase() === record.name?.toLowerCase()
-        )
-        setCrmBedrijfId(crmBedrijf?.id ?? null)
-
-        // Zoek uren_klant: eerst via crm_bedrijf_id (FK), fallback op naam
-        let match: any = null
-        if (crmBedrijf?.id) {
-          match = klanten.find((k: any) => k.crmBedrijfId === crmBedrijf.id)
-        }
-        if (!match) {
-          match = klanten.find((k: any) => k.naam?.toLowerCase() === record.name?.toLowerCase())
-        }
-
-        if (match) {
-          setKlantId(match.id)
-          setKlantnummer(match.klantnummer ?? '')
-          setOrigKlantnummer(match.klantnummer ?? '')
-        }
-        setLoadingKlant(false)
-      })
-      .catch(() => setLoadingKlant(false))
-  }, [record.name])
-
-  useEffect(() => {
-    if (!klantId) return
-    setLoadingUren(true)
-    fetch(`/api/uren?klant=${encodeURIComponent(record.name)}`)
-      .then(r => r.json())
-      .then((uren: any[]) => {
-        if (!Array.isArray(uren)) return
-        const totaalUren = uren.reduce((s, u) => s + (Number(u.uren) || 0), 0)
-        const totaalOmzet = uren.reduce((s, u) => s + ((Number(u.uren) || 0) * (Number(u.uurtarief) || 0)), 0)
-        const openstaand = uren.filter(u => !u.gefactureerd).reduce((s, u) => s + ((Number(u.uren) || 0) * (Number(u.uurtarief) || 0)), 0)
-        setUrenSamenvatting({ totaalUren, totaalOmzet, openstaand })
-        setLoadingUren(false)
-      })
-      .catch(() => setLoadingUren(false))
-  }, [klantId, record.name])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -2533,31 +2643,22 @@ function RecordDetailModal({
     setError('')
     try {
       const customFields = Object.entries(fieldEdits).map(([id, v]) => ({ id, value: v.value }))
-      const [res] = await Promise.all([
-        fetch(`/api/crm/records/${record.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name,
-            status: currentStatus || undefined,
-            notes,
-            due_date: dueDate && dueDate !== origDueDate ? `${dueDate}T12:00:00Z` : undefined,
-            custom_fields: customFields.length ? customFields : undefined,
-            company_id: record.entity_type === 'lead' ? companyId || null : undefined,
-          }),
+      const res = await fetch(`/api/crm/records/${record.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          status: currentStatus || undefined,
+          notes,
+          // Alleen meesturen als hij geladen en gewijzigd is, anders wis je hem
+          description: beschrijving !== null && beschrijving !== (description ?? '') ? beschrijving : undefined,
+          due_date: dueDate && dueDate !== origDueDate ? `${dueDate}T12:00:00Z` : undefined,
+          custom_fields: customFields.length ? customFields : undefined,
+          company_id: record.entity_type === 'lead' ? companyId || null : undefined,
         }),
-        // Sla klantnummer op in Supabase als het gewijzigd is
-        klantId && klantnummer !== origKlantnummer
-          ? fetch(`/api/uren-klanten/${klantId}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ klantnummer: klantnummer.trim() }),
-            })
-          : Promise.resolve(null),
-      ])
+      })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Update mislukt')
-      setOrigKlantnummer(klantnummer)
       onSaved()
       onClose()
     } catch (e: any) {
@@ -2583,25 +2684,22 @@ function RecordDetailModal({
     }
   }
 
-  const handleVoegToeAanUren = async () => {
-    setToevoegenAanUren(true)
+  /**
+   * Per ongeluk een opdracht of factuur aangemaakt: die gaat weg en de lead of
+   * opdracht waar hij uit voortkwam gaat terug naar de fase van daarvoor.
+   */
+  const [terugzetten, setTerugzetten] = useState(false)
+  const handleTerugzetten = async () => {
     setError('')
+    setTerugzetten(true)
     try {
-      const res = await fetch('/api/uren-klanten', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ naam: record.name, crmBedrijfId: crmBedrijfId ?? undefined }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Aanmaken mislukt')
-      setKlantId(json.id)
-      setKlantnummer(json.klantnummer ?? '')
-      setOrigKlantnummer(json.klantnummer ?? '')
-      setInfo(`Klant aangemaakt in urenregistratie (${json.klantnummer ?? ''})`)
+      if (!(await zetPromotieTerug(record, melding))) return
+      onDeleted()
+      onClose()
     } catch (e: any) {
-      setError(e.message || 'Kon klant niet aanmaken')
+      setError(e.message || 'Terugzetten mislukt')
     } finally {
-      setToevoegenAanUren(false)
+      setTerugzetten(false)
     }
   }
 
@@ -2636,8 +2734,6 @@ function RecordDetailModal({
 
   const toonOpvolging = ['lead', 'contact', 'company'].includes(record.entity_type)
   const aanmaakDatum = fmtDate(record.clickup_date_created || record.synced_at)
-  const euro = (n: number) => new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
-
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4" onClick={() => { if (!saving && !deleting) handleSave() }}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm overlay-enter" />
@@ -2651,6 +2747,8 @@ function RecordDetailModal({
             <div className="flex items-center gap-2 flex-wrap min-w-0">
               <StatusPicker
                 recordId={record.id}
+                recordNaam={record.name}
+                recordEntity={record.entity_type}
                 currentStatus={currentStatus || null}
                 allStatuses={allStatuses}
                 onStatusChange={handleStatusChange}
@@ -2707,6 +2805,8 @@ function RecordDetailModal({
             </div>
           )}
 
+          <RelationsPanel record={record} />
+
           {record.entity_type === 'lead' && (
             <ReactieMelding recordId={record.id} fase={currentStatus} onInGesprek={zetInGesprek} />
           )}
@@ -2739,13 +2839,17 @@ function RecordDetailModal({
               <p className="text-caption text-brand-text-secondary flex items-center gap-1.5">
                 <RefreshCw size={11} className="animate-spin" /> Laden...
               </p>
-            ) : description ? (
+            ) : (
               <DetailSectie titel="Beschrijving">
-                <div className="text-body text-brand-text-primary whitespace-pre-wrap bg-white dark:bg-brand-card-bg rounded-brand-btn p-4 border-brand border-brand-card-border/15">
-                  {description}
-                </div>
+                <textarea
+                  className={`${VELD_INPUT} !text-body !p-4 resize-y min-h-[88px] leading-relaxed placeholder:text-brand-text-secondary/50`}
+                  placeholder={record.entity_type === 'lead' ? 'Wat weet je van deze lead? Wie, wat zoeken ze, hoe kwam het binnen...' : 'Wat wil je hierover onthouden?'}
+                  value={beschrijving ?? ''}
+                  onChange={(e) => setBeschrijving(e.target.value)}
+                  rows={3}
+                />
               </DetailSectie>
-            ) : null}
+            )}
 
             <DetailSectie titel="Notities">
               <textarea
@@ -2769,8 +2873,6 @@ function RecordDetailModal({
               />
             )}
 
-            <RelationsPanel record={record} />
-
             {record.entity_type === 'lead' && (
               <DetailSectie titel="Mailadres">
                 <MailAdresKiezer recordId={record.id} />
@@ -2793,59 +2895,12 @@ function RecordDetailModal({
               onEdit={(fieldId, value) => setFieldEdits((prev) => ({ ...prev, [fieldId]: { value } }))}
             />
 
-            {/* Klantnummer + uren-koppeling */}
-            <DetailSectie titel="Urenregistratie">
-              {loadingKlant ? (
-                <p className="text-caption text-brand-text-secondary">Laden...</p>
-              ) : klantId ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={klantnummer}
-                      onChange={e => setKlantnummer(e.target.value.toUpperCase())}
-                      placeholder="bijv. DRI001"
-                      maxLength={10}
-                      className={`${VELD_INPUT} font-mono tracking-wider`}
-                    />
-                    <Link href="/uren" className="btn-secondary text-xs py-1.5 px-3 shrink-0">
-                      Uren <ArrowRight size={12} />
-                    </Link>
-                  </div>
-                  {loadingUren ? (
-                    <p className="text-caption text-brand-text-secondary">Laden...</p>
-                  ) : urenSamenvatting && (
-                    urenSamenvatting.totaalUren === 0 ? (
-                      <p className="text-caption text-brand-text-secondary italic">Nog geen uren geboekt</p>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="rounded-brand-btn bg-brand-card-bg border-brand border-brand-card-border/15 px-3 py-2">
-                          <p className="text-caption text-brand-text-secondary">Uren</p>
-                          <p className="text-body font-semibold text-brand-text-primary">{urenSamenvatting.totaalUren.toFixed(1)}u</p>
-                        </div>
-                        <div className="rounded-brand-btn bg-brand-card-bg border-brand border-brand-card-border/15 px-3 py-2">
-                          <p className="text-caption text-brand-text-secondary">Omzet</p>
-                          <p className="text-body font-semibold text-brand-text-primary">{euro(urenSamenvatting.totaalOmzet)}</p>
-                        </div>
-                        {urenSamenvatting.openstaand > 0 && (
-                          <p className="col-span-2 text-caption text-brand-status-orange">
-                            {euro(urenSamenvatting.openstaand)} nog niet gefactureerd
-                          </p>
-                        )}
-                      </div>
-                    )
-                  )}
-                </div>
-              ) : (
-                <button
-                  onClick={handleVoegToeAanUren}
-                  disabled={toevoegenAanUren}
-                  className="btn-secondary text-xs py-1.5 px-3 disabled:opacity-50"
-                >
-                  <Plus size={12} /> {toevoegenAanUren ? 'Aanmaken...' : 'Toevoegen aan uren'}
-                </button>
-              )}
-            </DetailSectie>
+            {/* Uren- en factuurkant van het bedrijf. Verving de pagina Klanten. */}
+            {record.entity_type === 'company' && (
+              <DetailSectie titel="Urenregistratie en facturatie">
+                <UrenKlantBlok recordId={record.id} recordNaam={record.name} />
+              </DetailSectie>
+            )}
 
             {/* Eigen tags (Notion-stijl, alleen bij bedrijven) */}
             {record.entity_type === 'company' && (
@@ -2881,6 +2936,16 @@ function RecordDetailModal({
           {promote && (
             <button onClick={handlePromote} disabled={promoting} className="btn-secondary text-sm disabled:opacity-60">
               <ArrowRight size={13} /> {promoting ? 'Bezig...' : promote.label}
+            </button>
+          )}
+          {kanTerugzetten(record) && (
+            <button
+              onClick={handleTerugzetten}
+              disabled={terugzetten}
+              title="Per ongeluk aangemaakt? Verwijdert dit record en zet de vorige stap terug."
+              className="btn-secondary text-sm disabled:opacity-60"
+            >
+              <Undo2 size={13} /> {terugzetten ? 'Bezig...' : 'Terugzetten'}
             </button>
           )}
           <button
@@ -3177,6 +3242,7 @@ export default function CrmRecordsPage({ entity }: { entity: EntityType }) {
   const [search, setSearch] = useState('')
   const [message, setMessage] = useState('')
   const [adressenBezig, setAdressenBezig] = useState(false)
+  const melding = useMelding()
   const [loadError, setLoadError] = useState(false)
   const [viewMode, setViewMode] = useState<'list' | 'board'>('list')
   const [detailRecord, setDetailRecord] = useState<CrmRecord | null>(null)
@@ -3265,6 +3331,9 @@ export default function CrmRecordsPage({ entity }: { entity: EntityType }) {
   const verplaatsNaarFase = useCallback(async (id: string, status: string) => {
     const huidige = items.find((i) => i.id === id)
     if (!huidige || (huidige.status || '') === status) return
+    // Slepen naar Archief of Blocklist stelt dezelfde vragen als de statuskiezer
+    const extra = await vraagFaseVelden(melding, id, huidige.name, status, huidige.entity_type)
+    if (extra === null) return
     // Een lead naar On hold of Blocklist slepen pauzeert of blokkeert hem, en
     // eruit slepen maakt hem weer benaderbaar. Dat bepaalt ook de opvolging.
     const velden = huidige.entity_type === 'lead' ? contactVeldenBijFase(status, huidige) : null
@@ -3277,17 +3346,17 @@ export default function CrmRecordsPage({ entity }: { entity: EntityType }) {
         ? huidige.volgende_actie ?? null
         : huidige.volgende_actie || standaardOpvolgdatum(status)
     setItems((prev) => prev.map((item) =>
-      item.id === id ? { ...naSlepen, status, volgende_actie: nieuweActie } : item))
+      item.id === id ? { ...naSlepen, ...extra, status, volgende_actie: nieuweActie } : item))
     try {
       await fetch(`/api/crm/records/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, volgende_actie: nieuweActie }),
+        body: JSON.stringify({ status, volgende_actie: nieuweActie, ...extra }),
       })
     } catch {
       setMessage('Fase wijzigen mislukt')
     }
-  }, [items])
+  }, [items, melding])
 
   const visibleItems = useMemo(() => {
     let result = items
@@ -3378,6 +3447,52 @@ export default function CrmRecordsPage({ entity }: { entity: EntityType }) {
     } finally {
       setDeletingId(null)
     }
+  }
+
+  const terugzettenVanBord = async (record: CrmRecord) => {
+    try {
+      if (!(await zetPromotieTerug(record, melding))) return
+      setItems((prev) => prev.filter((r) => r.id !== record.id))
+      await load({ stil: true })
+    } catch (e: any) {
+      melding.fout(e?.message || 'Terugzetten mislukt')
+    }
+  }
+
+  // Alleen opdrachten en facturen kunnen terug; de knop telt alleen die mee.
+  const selectieTerug = items.filter((r) => selected.has(r.id) && kanTerugzetten(r))
+
+  const bulkTerugzetten = async () => {
+    if (selectieTerug.length === 0) return
+    const soort = selectieTerug[0].entity_type === 'assignment' ? 'opdracht' : 'factuur'
+    const meer = selectieTerug.length === 1 ? `"${selectieTerug[0].name}"` : `${selectieTerug.length} ${soort === 'opdracht' ? 'opdrachten' : 'facturen'}`
+    const akkoord = await melding.bevestig({
+      titel: `${meer} terugzetten?`,
+      tekst: `${selectieTerug.length === 1 ? `Deze ${soort} wordt` : 'Ze worden'} verwijderd, en ${soort === 'opdracht' ? 'de lead' : 'de opdracht'} waar ${selectieTerug.length === 1 ? 'hij' : 'ze'} uit voortkwam${selectieTerug.length === 1 ? '' : 'en'} gaat terug naar de fase van daarvoor.\n\nDit kan niet ongedaan worden gemaakt.`,
+      bevestigLabel: 'Terugzetten',
+      gevaarlijk: true,
+    })
+    if (!akkoord) return
+    setBulkBusy(true)
+    setMessage('')
+    // Na elkaar, niet tegelijk: twee opdrachten uit dezelfde lead zouden anders
+    // allebei tegelijk de fase van die lead terugzetten.
+    const gelukt: string[] = []
+    const fouten: string[] = []
+    for (const r of selectieTerug) {
+      try {
+        await terugzettenApi(r.id)
+        gelukt.push(r.id)
+      } catch (e: any) {
+        fouten.push(`${r.name}: ${e?.message || 'mislukt'}`)
+      }
+    }
+    if (fouten.length) melding.fout(`Terugzetten mislukt bij ${fouten.join(', ')}`)
+    if (gelukt.length) melding.gelukt(gelukt.length === 1 ? 'Teruggezet' : `${gelukt.length} teruggezet`)
+    setSelected(new Set())
+    setItems((prev) => prev.filter((r) => !gelukt.includes(r.id)))
+    await load({ stil: true })
+    setBulkBusy(false)
   }
 
   const bulkDelete = async () => {
@@ -3502,14 +3617,16 @@ export default function CrmRecordsPage({ entity }: { entity: EntityType }) {
   }, [openParam, loading, items])
 
   useEffect(() => {
-    fetch('/api/uren-klanten')
+    // Met archief: ook een bedrijf dat niet (meer) tussen de urentabs staat
+    // heeft een klantnummer
+    fetch('/api/uren-klanten?archief=1')
       .then(r => r.json())
       .then((klanten: any[]) => {
         const map = new Map<string, string>()
         for (const k of klanten) {
-          if (k.naam && k.klantnummer) {
-            map.set(k.naam.toLowerCase().trim(), k.klantnummer)
-          }
+          if (!k.klantnummer) continue
+          if (k.crmRecordId) map.set(`id:${k.crmRecordId}`, k.klantnummer)
+          else if (k.naam) map.set(k.naam.toLowerCase().trim(), k.klantnummer)
         }
         setKlantMap(map)
       })
@@ -3593,6 +3710,16 @@ export default function CrmRecordsPage({ entity }: { entity: EntityType }) {
             <option value="">Status wijzigen…</option>
             {allStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
+          {selectieTerug.length > 0 && (
+            <button
+              onClick={bulkTerugzetten}
+              disabled={bulkBusy}
+              title="Per ongeluk aangemaakt? Verwijdert dit record en zet de vorige stap terug."
+              className="inline-flex items-center gap-1.5 text-sm text-white/90 hover:text-white disabled:opacity-50"
+            >
+              <Undo2 size={13} /> Terugzetten
+            </button>
+          )}
           <button
             onClick={bulkDelete}
             disabled={bulkBusy}
@@ -3667,6 +3794,7 @@ export default function CrmRecordsPage({ entity }: { entity: EntityType }) {
               onCardClick={setDetailRecord}
               onOpvolgPatch={applyOpvolgPatch}
               onFaseChange={entity === 'lead' ? verplaatsNaarFase : undefined}
+              onTerugzetten={terugzettenVanBord}
             />
           </div>
         )}

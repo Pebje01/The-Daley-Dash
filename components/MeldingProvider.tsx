@@ -14,6 +14,7 @@
  *   melding.fout('PDF opslaan mislukt')
  *   melding.gelukt('Factuur opgeslagen')
  *   if (await melding.bevestig({ titel: '...', tekst: '...' })) { ... }
+ *   const reden = await melding.vraagTekst({ titel: 'Waarom?', suggesties: [...] })
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react'
@@ -35,11 +36,22 @@ interface BevestigOpties {
   gevaarlijk?: boolean
 }
 
+/** Zelfde venster als een bevestiging, met een invoerveld erbij. */
+interface TekstOpties extends BevestigOpties {
+  placeholder?: string
+  /** Klikbare voorzetjes, bijvoorbeeld veelgebruikte redenen. */
+  suggesties?: string[]
+  /** Leeg laten mag: dan komt er een lege string terug in plaats van null. */
+  leegMag?: boolean
+}
+
 interface MeldingApi {
   fout: (tekst: string) => void
   gelukt: (tekst: string) => void
   info: (tekst: string) => void
   bevestig: (opties: BevestigOpties) => Promise<boolean>
+  /** Geeft de ingevulde tekst terug, of null als je annuleert. */
+  vraagTekst: (opties: TekstOpties) => Promise<string | null>
 }
 
 const MeldingContext = createContext<MeldingApi | null>(null)
@@ -60,10 +72,12 @@ const STIJL: Record<Soort, { rand: string; achtergrond: string; kleur: string; I
 
 export default function MeldingProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
-  const [vraag, setVraag] = useState<BevestigOpties | null>(null)
+  const [vraag, setVraag] = useState<(BevestigOpties & { tekstVraag?: TekstOpties }) | null>(null)
+  const [invoer, setInvoer] = useState('')
   // Het antwoord van de bevestiging komt uit een klik, dus de promise wordt
   // hier vastgehouden tot de gebruiker kiest.
   const antwoordRef = useRef<((akkoord: boolean) => void) | null>(null)
+  const tekstRef = useRef<((tekst: string | null) => void) | null>(null)
 
   const sluit = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id))
@@ -76,10 +90,13 @@ export default function MeldingProvider({ children }: { children: ReactNode }) {
     if (soort !== 'fout') setTimeout(() => sluit(id), TOON_DUUR_MS)
   }, [sluit])
 
-  const beantwoord = useCallback((akkoord: boolean) => {
+  const beantwoord = useCallback((akkoord: boolean, tekst = '') => {
     antwoordRef.current?.(akkoord)
     antwoordRef.current = null
+    tekstRef.current?.(akkoord ? tekst : null)
+    tekstRef.current = null
     setVraag(null)
+    setInvoer('')
   }, [])
 
   // Escape sluit de bevestiging, net als klikken naast het venster. Zonder dit
@@ -98,6 +115,11 @@ export default function MeldingProvider({ children }: { children: ReactNode }) {
     bevestig: (opties) => new Promise<boolean>(resolve => {
       antwoordRef.current = resolve
       setVraag(opties)
+    }),
+    vraagTekst: (opties) => new Promise<string | null>(resolve => {
+      tekstRef.current = resolve
+      setInvoer('')
+      setVraag({ ...opties, tekstVraag: opties })
     }),
   }), [toon])
 
@@ -140,16 +162,50 @@ export default function MeldingProvider({ children }: { children: ReactNode }) {
             {vraag.tekst && (
               <p className="text-body text-brand-text-secondary mt-2 whitespace-pre-line">{vraag.tekst}</p>
             )}
+            {vraag.tekstVraag && (
+              <div className="mt-4 space-y-2">
+                <textarea
+                  autoFocus
+                  value={invoer}
+                  onChange={e => setInvoer(e.target.value)}
+                  onKeyDown={e => {
+                    // Enter bevestigt, shift+enter is een nieuwe regel
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      if (invoer.trim() || vraag.tekstVraag?.leegMag) beantwoord(true, invoer.trim())
+                    }
+                  }}
+                  rows={3}
+                  placeholder={vraag.tekstVraag.placeholder}
+                  className="input w-full text-sm resize-y"
+                />
+                {!!vraag.tekstVraag.suggesties?.length && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {vraag.tekstVraag.suggesties.map(s => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setInvoer(s)}
+                        className="pill bg-brand-page-medium text-brand-text-secondary hover:text-brand-text-primary"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="flex gap-2 justify-end mt-6">
               <button onClick={() => beantwoord(false)} className="btn-secondary">
                 {vraag.annuleerLabel ?? 'Annuleren'}
               </button>
               <button
-                onClick={() => beantwoord(true)}
-                autoFocus
+                onClick={() => beantwoord(true, invoer.trim())}
+                autoFocus={!vraag.tekstVraag}
+                disabled={!!vraag.tekstVraag && !vraag.tekstVraag.leegMag && !invoer.trim()}
                 className={vraag.gevaarlijk
-                  ? 'btn-primary !bg-brand-pink-accent !border-brand-pink-accent'
-                  : 'btn-primary'}
+                  ? 'btn-primary !bg-brand-pink-accent !border-brand-pink-accent disabled:opacity-50'
+                  : 'btn-primary disabled:opacity-50'}
               >
                 {vraag.bevestigLabel ?? 'Doorgaan'}
               </button>

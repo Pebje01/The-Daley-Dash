@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { naam, standaardUurtarief, companyId, crmBedrijfId, contactpersoon, email, adres, postcode, stad } = body
+  const { naam, standaardUurtarief, companyId, crmBedrijfId, crmRecordId, contactpersoon, email, adres, postcode, stad } = body
   let klantnummer: string = (body.klantnummer ?? '').trim()
 
   if (!naam?.trim()) {
@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
       companyId,
       klantnummer,
       crmBedrijfId: crmBedrijfId ?? undefined,
+      crmRecordId: crmRecordId ?? undefined,
     })
 
     // Update direct met de overige velden indien meegegeven
@@ -68,6 +69,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(klant, { status: 201 })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message ?? 'Fout bij aanmaken' }, { status: 500 })
+    return NextResponse.json({ error: e.message ?? 'Fout bij aanmaken' }, { status: 400 })
   }
 }

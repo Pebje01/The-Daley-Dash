@@ -43,18 +43,46 @@ export interface CrmRecordData {
   /** Einddatum van een pauze (yyyy-mm-dd), null = zonder einddatum. */
   contact_status_tot?: string | null
   contact_status_reden?: string | null
+  /** Waarom deze lead is afgesloten, bij Archief */
+  afsluit_reden?: string | null
 }
 
 const RECORD_COLUMNS =
-  'id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, dash_tags, due_date, clickup_date_updated, synced_at, raw, company_id, volgende_actie, volgende_actie_notitie, laatste_contact, contact_pogingen, contact_status, contact_status_tot, contact_status_reden, ai_status, ai_score, ai_prioriteit, ai_branche, ai_website, ai_samenvatting, ai_signalen, ai_volgende_stap, ai_beoordeeld_op, ai_model, ai_fout, ruwe_contact_email, ruwe_website, ruwe_bron, ruwe_fit_reden, ruwe_prioriteit, ruwe_contactpersoon, ruwe_telefoon, ruwe_contact_status, ruwe_contact_gezocht_op, ruwe_contact_toelichting, ruwe_contact_fout'
+  'id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, dash_tags, due_date, clickup_date_updated, synced_at, raw, company_id, volgende_actie, volgende_actie_notitie, laatste_contact, contact_pogingen, contact_status, contact_status_tot, contact_status_reden, ai_status, ai_score, ai_prioriteit, ai_branche, ai_website, ai_samenvatting, ai_signalen, ai_volgende_stap, ai_beoordeeld_op, ai_model, ai_fout, afsluit_reden, ruwe_contact_email, ruwe_website, ruwe_bron, ruwe_fit_reden, ruwe_prioriteit, ruwe_contactpersoon, ruwe_telefoon, ruwe_contact_status, ruwe_contact_gezocht_op, ruwe_contact_toelichting, ruwe_contact_fout'
 
 /**
  * True als de fout komt doordat company_id nog niet in de tabel staat.
  * Migraties draaien handmatig, dus tot 20260909_crm_bedrijf.sql is uitgevoerd
  * moet het aanmaken en bijwerken van records gewoon blijven werken.
  */
+// Alleen op de kolomnaam in de melding, niet op code 42703: die code geldt voor
+// elke ontbrekende kolom, en dan hield de ene terugval de fout van de andere
+// voor de zijne (Opslaan viel zo om op afsluit_reden).
 function ontbrekendeBedrijfsKolom(error: any) {
-  return error?.code === '42703' || /company_id/.test(error?.message || '')
+  return /company_id/.test(error?.message || '')
+}
+
+/** Zolang de migratie 20260918_crm_afsluit_reden.sql niet gedraaid is. */
+function ontbrekendeRedenKolom(error: any) {
+  return /afsluit_reden/.test(error?.message || '')
+}
+
+function redenKolomFout() {
+  return new Error(
+    'De kolom afsluit_reden bestaat nog niet. Draai supabase/migrations/20260918_crm_afsluit_reden.sql in de Supabase SQL Editor.'
+  )
+}
+
+const KOLOMMEN_ZONDER_REDEN = RECORD_COLUMNS.replace(', afsluit_reden', '')
+
+/**
+ * Onthoudt of de kolom er al is. Zolang de migratie niet gedraaid is werkt het
+ * CRM gewoon door zonder de reden, in plaats van bij elke lees- of schrijfactie
+ * om te vallen op een kolom die nog niet bestaat.
+ */
+let redenKolomBestaat = true
+function kolommen() {
+  return redenKolomBestaat ? RECORD_COLUMNS : KOLOMMEN_ZONDER_REDEN
 }
 
 /**
@@ -272,15 +300,23 @@ export async function createCrmRecord(entityType: CrmEntityType, data: CrmRecord
   let { data: record, error } = await supabase
     .from('clickup_crm_records')
     .insert(row)
-    .select(RECORD_COLUMNS)
-    .single()
+    .select(kolommen())
+    .single<any>()
 
+  if (error && ontbrekendeRedenKolom(error)) {
+    redenKolomBestaat = false
+    ;({ data: record, error } = await supabase
+      .from('clickup_crm_records')
+      .insert(row)
+      .select(kolommen())
+      .single<any>())
+  }
   if (error && ontbrekendeBedrijfsKolom(error)) {
     if ((row as any).company_id) throw bedrijfsKolomFout()
     ;({ data: record, error } = await supabase
       .from('clickup_crm_records')
       .insert(zonderBedrijf(row))
-      .select(RECORD_COLUMNS.replace(', company_id', ''))
+      .select(kolommen().replace(', company_id', ''))
       .single())
   }
   if (error) throw error
@@ -336,6 +372,9 @@ export async function updateCrmRecord(recordId: string, data: CrmRecordData) {
   }
   if (data.contact_status_tot !== undefined) {
     update.contact_status_tot = data.contact_status_tot ? String(data.contact_status_tot).slice(0, 10) : null
+  }
+  if (data.afsluit_reden !== undefined) {
+    update.afsluit_reden = data.afsluit_reden || null
   }
   if (data.contact_status_reden !== undefined) {
     update.contact_status_reden = data.contact_status_reden || null
@@ -393,16 +432,29 @@ export async function updateCrmRecord(recordId: string, data: CrmRecordData) {
     .from('clickup_crm_records')
     .update(update)
     .eq('id', recordId)
-    .select(RECORD_COLUMNS)
-    .single()
+    .select(kolommen())
+    .single<any>()
 
+  // Migratie 20260918_crm_afsluit_reden.sql nog niet gedraaid: zonder reden
+  // werkt alles, mét reden geven we een duidelijke fout
+  if (error && ontbrekendeRedenKolom(error)) {
+    if (update.afsluit_reden !== undefined && update.afsluit_reden !== null) throw redenKolomFout()
+    redenKolomBestaat = false
+    delete update.afsluit_reden
+    ;({ data: record, error } = await supabase
+      .from('clickup_crm_records')
+      .update(update)
+      .eq('id', recordId)
+      .select(kolommen())
+      .single<any>())
+  }
   if (error && ontbrekendeBedrijfsKolom(error)) {
     if (update.company_id) throw bedrijfsKolomFout()
     ;({ data: record, error } = await supabase
       .from('clickup_crm_records')
       .update(zonderBedrijf(update))
       .eq('id', recordId)
-      .select(RECORD_COLUMNS.replace(', company_id', ''))
+      .select(kolommen().replace(', company_id', ''))
       .single())
   }
   if (error) throw error
@@ -532,12 +584,25 @@ export async function logContactMoment(recordId: string, data: ContactMomentData
     update.status = data.status
   }
 
-  const { data: record, error } = await supabase
+  let { data: record, error } = await supabase
     .from('clickup_crm_records')
     .update(update)
     .eq('id', recordId)
-    .select(RECORD_COLUMNS)
-    .single()
+    .select(kolommen())
+    .single<any>()
+
+  // Migratie nog niet gedraaid: zonder reden werkt alles, mét reden liegen we niet
+  if (error && ontbrekendeRedenKolom(error)) {
+    if (update.afsluit_reden !== undefined && update.afsluit_reden !== null) throw redenKolomFout()
+    redenKolomBestaat = false
+    delete update.afsluit_reden
+    ;({ data: record, error } = await supabase
+      .from('clickup_crm_records')
+      .update(update)
+      .eq('id', recordId)
+      .select(kolommen())
+      .single<any>())
+  }
 
   if (error) throw error
 
@@ -662,15 +727,23 @@ export async function promoteCrmRecord(recordId: string) {
   let { data: record, error } = await supabase
     .from('clickup_crm_records')
     .insert(row)
-    .select(RECORD_COLUMNS)
-    .single()
+    .select(kolommen())
+    .single<any>()
 
+  if (error && ontbrekendeRedenKolom(error)) {
+    redenKolomBestaat = false
+    ;({ data: record, error } = await supabase
+      .from('clickup_crm_records')
+      .insert(row)
+      .select(kolommen())
+      .single<any>())
+  }
   if (error && ontbrekendeBedrijfsKolom(error)) {
     if ((row as any).company_id) throw bedrijfsKolomFout()
     ;({ data: record, error } = await supabase
       .from('clickup_crm_records')
       .insert(zonderBedrijf(row))
-      .select(RECORD_COLUMNS.replace(', company_id', ''))
+      .select(kolommen().replace(', company_id', ''))
       .single())
   }
   if (error) throw error
@@ -703,4 +776,93 @@ export async function promoteCrmRecord(recordId: string) {
   }
 
   return record
+}
+
+// ── Promotie terugdraaien ────────────────────────────────────────
+
+/**
+ * Per ongeluk een opdracht van een lead gemaakt? Dit draait dat terug: de
+ * opdracht wordt verwijderd en de lead gaat terug naar de fase waar hij vandaan
+ * kwam. Werkt ook een stap verder, voor een factuur die terug moet naar zijn
+ * opdracht.
+ *
+ * De vorige fase komt uit de activiteitenfeed: promoveren logt daar de wissel
+ * met de oude waarde erbij. Staat die er niet (bijvoorbeeld bij oude data), dan
+ * valt hij terug op de logische voorganger.
+ */
+export async function draaiPromotieTerug(recordId: string) {
+  const supabase = createServiceClient()
+
+  const { data: doel, error } = await supabase
+    .from('clickup_crm_records')
+    .select('id, entity_type, name, custom_fields, clickup_task_id')
+    .eq('id', recordId)
+    .single()
+
+  if (error || !doel) throw new Error('Record niet gevonden')
+
+  const bronSoort = doel.entity_type === 'assignment' ? 'lead'
+    : doel.entity_type === 'clickup_invoice' ? 'assignment'
+    : null
+  if (!bronSoort) throw new Error('Terugzetten kan alleen bij een opdracht of een factuur')
+
+  // De bron kan vanaf beide kanten gekoppeld zijn: het doel wijst terug met
+  // "Gekoppelde lead", of de bron wijst vooruit naar het doel.
+  const taskIds: string[] = []
+  for (const f of (doel.custom_fields as any[]) || []) {
+    if (f?.type !== 'tasks' && f?.type !== 'list_relationship') continue
+    for (const v of Array.isArray(f.value) ? f.value : []) if (v?.id) taskIds.push(String(v.id))
+  }
+
+  let bron: any = null
+  if (taskIds.length) {
+    const { data } = await supabase
+      .from('clickup_crm_records')
+      .select('id, entity_type, name, status')
+      .eq('entity_type', bronSoort)
+      .in('clickup_task_id', taskIds)
+    bron = data?.[0] ?? null
+  }
+  if (!bron) {
+    const { data } = await supabase
+      .from('clickup_crm_records')
+      .select('id, entity_type, name, status, custom_fields')
+      .eq('entity_type', bronSoort)
+    bron = (data || []).find((r: any) =>
+      ((r.custom_fields as any[]) || []).some((f) =>
+        (f?.type === 'tasks' || f?.type === 'list_relationship') &&
+        (Array.isArray(f.value) ? f.value : []).some((v: any) => String(v?.id) === String(doel.clickup_task_id))
+      )
+    ) ?? null
+  }
+
+  const afsluitStatus = bronSoort === 'lead' ? 'omgezet' : 'gefactureerd'
+  let vorige = bronSoort === 'lead' ? 'gewonnen' : 'afgerond'
+
+  if (bron) {
+    const { data: geschiedenis } = await supabase
+      .from('crm_activiteiten')
+      .select('oude_waarde, nieuwe_waarde, created_at')
+      .eq('record_id', bron.id)
+      .eq('soort', 'status')
+      .order('created_at', { ascending: false })
+      .limit(10)
+    const wissel = (geschiedenis || []).find((a: any) => a.nieuwe_waarde === afsluitStatus && a.oude_waarde)
+    if (wissel?.oude_waarde) vorige = wissel.oude_waarde
+
+    const now = new Date().toISOString()
+    await supabase
+      .from('clickup_crm_records')
+      .update({ status: vorige, clickup_date_updated: now, updated_at: now })
+      .eq('id', bron.id)
+
+    await logActiviteiten(bron.id, [
+      { soort: 'status', omschrijving: 'Status gewijzigd', oude_waarde: afsluitStatus, nieuwe_waarde: vorige },
+      { soort: 'promotie', omschrijving: `Teruggezet, ${doel.entity_type === 'assignment' ? 'opdracht' : 'factuur'} verwijderd`, oude_waarde: doel.name },
+    ])
+  }
+
+  await supabase.from('clickup_crm_records').delete().eq('id', recordId)
+
+  return { bron: bron ? { id: bron.id, name: bron.name, status: vorige } : null }
 }

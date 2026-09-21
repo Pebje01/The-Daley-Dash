@@ -36,7 +36,7 @@ export async function PATCH(
     const {
       name, status, description, due_date, custom_fields, notes, dash_tags,
       volgende_actie, volgende_actie_notitie,
-      contact_status, contact_status_tot, contact_status_reden,
+      contact_status, contact_status_tot, contact_status_reden, afsluit_reden,
       entity_type,
       ruwe_contact_email, ruwe_website, ruwe_bron, ruwe_fit_reden, ruwe_prioriteit,
       ruwe_contactpersoon, ruwe_telefoon, company_id,
@@ -71,6 +71,7 @@ export async function PATCH(
       contact_status,
       contact_status_tot,
       contact_status_reden,
+      afsluit_reden,
       entity_type,
       ruwe_contact_email,
       ruwe_website,

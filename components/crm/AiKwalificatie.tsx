@@ -7,6 +7,10 @@
  * dit component verandert de fase, de volgende actie of de contactstatus.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+
+// Open of dicht blijft per browser onthouden, voor alle leads tegelijk
+const OPEN_SLEUTEL = 'crm-ai-kwalificatie-open'
 
 export interface AiVelden {
   ai_status?: string | null
@@ -72,6 +76,15 @@ export function AiKwalificatieBlok({
   )
   const [fout, setFout] = useState<string | null>(null)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Standaard ingeklapt: het advies is naslag, het blok nam de halve werkkolom in
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    try { setOpen(localStorage.getItem(OPEN_SLEUTEL) === '1') } catch { /* privémodus */ }
+  }, [])
+  const wissel = () => setOpen((o) => {
+    try { localStorage.setItem(OPEN_SLEUTEL, o ? '0' : '1') } catch { /* privémodus */ }
+    return !o
+  })
 
   // Zolang de AI werkt de kaart elke 8 seconden verversen, zodat de uitslag
   // vanzelf binnenvalt zonder dat je hoeft te herladen.
@@ -116,51 +129,68 @@ export function AiKwalificatieBlok({
   const kleur = SCORE_KLEUR[record.ai_prioriteit || 'laag'] || SCORE_KLEUR.laag
   const beoordeeld = record.ai_score != null
 
+  const beoordeelKnop = (
+    <button
+      type="button"
+      onClick={beoordeel}
+      disabled={bezig}
+      className="text-xs px-2.5 py-1 rounded border border-brand-card-border/20 bg-white dark:bg-brand-card-bg hover:bg-brand-page-light disabled:opacity-50 text-brand-text-secondary shrink-0"
+    >
+      {bezig ? 'Bezig...' : beoordeeld ? 'Opnieuw beoordelen' : 'Beoordelen'}
+    </button>
+  )
+
   return (
-    <div className="rounded-brand border border-brand-card-border/15 bg-brand-lavender-light/40 p-4 space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <h4 className="text-sm font-medium text-brand-text-primary">AI-kwalificatie</h4>
+    <div className="rounded-brand border border-brand-card-border/15 bg-brand-lavender-light/40">
+      <div className="flex items-center gap-2 px-3 py-2">
+        {/* De kop is de uitklapknop, zolang er iets uit te klappen valt */}
+        <button
+          type="button"
+          onClick={beoordeeld ? wissel : undefined}
+          disabled={!beoordeeld}
+          aria-expanded={beoordeeld ? open : undefined}
+          className="flex items-center gap-2 flex-1 min-w-0 text-left disabled:cursor-default"
+        >
+          {beoordeeld && (open
+            ? <ChevronDown size={14} className="text-brand-text-secondary shrink-0" />
+            : <ChevronRight size={14} className="text-brand-text-secondary shrink-0" />)}
+          <span className="text-sm font-medium text-brand-text-primary shrink-0">AI-kwalificatie</span>
           {beoordeeld && (
-            <span className={`text-xs px-2 py-0.5 rounded border font-medium ${kleur}`}>
+            <span className={`text-xs px-2 py-0.5 rounded border font-medium shrink-0 ${kleur}`}>
               {record.ai_score}/100 · {record.ai_prioriteit}
             </span>
           )}
           {record.ai_branche && (
-            <span className="text-xs px-2 py-0.5 rounded bg-white dark:bg-brand-card-bg border border-brand-card-border/15 text-brand-text-secondary">
+            <span className="text-xs px-2 py-0.5 rounded bg-white dark:bg-brand-card-bg border border-brand-card-border/15 text-brand-text-secondary truncate">
               {record.ai_branche}
             </span>
           )}
-        </div>
-        <button
-          type="button"
-          onClick={beoordeel}
-          disabled={bezig}
-          className="text-xs px-2.5 py-1 rounded border border-brand-card-border/20 bg-white dark:bg-brand-card-bg hover:bg-brand-page-light disabled:opacity-50 text-brand-text-secondary shrink-0"
-        >
-          {bezig ? 'Bezig...' : beoordeeld ? 'Opnieuw beoordelen' : 'Beoordelen'}
+          {bezig && <span className="text-xs text-brand-text-secondary animate-pulse truncate">Claude kijkt...</span>}
         </button>
+        {(!beoordeeld || open) && beoordeelKnop}
       </div>
 
-      {bezig && (
-        <p className="text-xs text-brand-text-secondary">
-          Claude zoekt de website op en leest hem door. Dit duurt ongeveer een minuut.
-        </p>
+      {(fout || bezig || (!beoordeeld && !bezig) || (!bezig && record.ai_status === 'mislukt' && record.ai_fout)) && (
+        <div className="px-3 pb-3 space-y-1">
+          {bezig && (
+            <p className="text-xs text-brand-text-secondary">
+              Claude zoekt de website op en leest hem door. Dit duurt ongeveer een minuut.
+            </p>
+          )}
+          {fout && <p className="text-xs text-red-600">{fout}</p>}
+          {!bezig && record.ai_status === 'mislukt' && record.ai_fout && (
+            <p className="text-xs text-red-600">Laatste poging mislukt: {record.ai_fout}</p>
+          )}
+          {!bezig && !beoordeeld && record.ai_status !== 'mislukt' && (
+            <p className="text-xs text-brand-text-secondary">
+              Nog niet beoordeeld. Nieuwe leads gaan hier vanzelf doorheen.
+            </p>
+          )}
+        </div>
       )}
 
-      {fout && <p className="text-xs text-red-600">{fout}</p>}
-      {!bezig && record.ai_status === 'mislukt' && record.ai_fout && (
-        <p className="text-xs text-red-600">Laatste poging mislukt: {record.ai_fout}</p>
-      )}
-
-      {!bezig && !beoordeeld && record.ai_status !== 'mislukt' && (
-        <p className="text-xs text-brand-text-secondary">
-          Nog niet beoordeeld. Nieuwe leads gaan hier vanzelf doorheen.
-        </p>
-      )}
-
-      {beoordeeld && (
-        <>
+      {beoordeeld && open && (
+        <div className="px-4 pb-4 pt-1 space-y-3">
           {record.ai_website && (
             <a
               href={record.ai_website}
@@ -221,7 +251,7 @@ export function AiKwalificatieBlok({
               : ''}
             {record.ai_model ? ` · ${record.ai_model}` : ''} · advies, geen automaat
           </p>
-        </>
+        </div>
       )}
     </div>
   )

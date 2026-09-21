@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Plus, AlertCircle, ArrowRight, FileText, Clock, RefreshCw, Coins, Send } from 'lucide-react'
 import TodoWidget from '@/components/TodoWidget'
 import VandaagOppakken from '@/components/dashboard/VandaagOppakken'
+import OmzetBlok from '@/components/dashboard/OmzetBlok'
 import { getCompany } from '@/lib/companies'
 import { FactuurStatusBadge, OfferteStatusBadge } from '@/components/StatusBadge'
 import { Offerte, Factuur, Abonnement } from '@/lib/types'
@@ -146,11 +147,14 @@ export default function Dashboard() {
 
 
   return (
-    // Het dashboard is de pagina voor vandaag: wat moet ik doen en welk geld ligt
-    // klaar. Omzet en btw staan op /financieel. Vanaf xl past alles in één scherm:
+    // Het dashboard: omzet bovenaan (september 2026 teruggezet, Daley wilde het
+    // overzicht hier zien), dan wat klaarligt en wat je vandaag moet doen. De
+    // details per maand en de btw staan op /financieel. Vanaf xl vult het de
+    // hoogte van het scherm; "Vandaag oppakken" houdt minstens 10rem, en is het
+    // scherm daarvoor te laag dan scrolt de pagina in plaats van dat hij verdwijnt:
     // de to-do list loopt rechts over de volle hoogte, "Vandaag oppakken" vangt
     // de ruimte op en scrolt zelf.
-    <div className="p-4 sm:p-6 lg:p-8 xl:pt-8 xl:pb-4 xl:h-[calc(100dvh-var(--dash-topbar))] xl:flex xl:flex-col">
+    <div className="p-4 sm:p-6 lg:p-8 xl:pt-8 xl:pb-4 xl:min-h-[calc(100dvh-var(--dash-topbar))] xl:flex xl:flex-col">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6 xl:mb-3 xl:shrink-0">
         <div>
@@ -172,9 +176,18 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 xl:grid-rows-[auto_minmax(0,1fr)_auto_auto] gap-4 xl:flex-1 xl:min-h-0">
+      <div className="grid grid-cols-1 xl:grid-cols-3 xl:grid-rows-[auto_auto_minmax(10rem,1fr)_auto_auto] gap-4 xl:flex-1 xl:min-h-0">
+        {/* Omzet: dit jaar, per maand, verwacht */}
+        <OmzetBlok
+          className="xl:col-span-2 xl:col-start-1 xl:row-start-1"
+          omzetPerMaand={factuurStats.omzetPerMaand}
+          revenueYear={factuurStats.revenueYear}
+          revenueYearIncl={factuurStats.revenueYearIncl}
+          verwachteOmzet={factuurStats.verwachteOmzet}
+        />
+
         {/* Geld dat klaarligt: wat je nu kunt factureren of binnenhalen */}
-        <div className="card xl:p-4 xl:col-span-2 xl:col-start-1 xl:row-start-1">
+        <div className="card xl:p-4 xl:col-span-2 xl:col-start-1 xl:row-start-2">
           <div className="flex items-center justify-between mb-3 xl:mb-2">
             <h2 className="font-semibold text-body flex items-center gap-2" title="Bedragen incl. btw. Voor open uren is 21% aangenomen.">
               <Coins size={15} className="text-brand-lav-accent" /> Geld dat klaarligt
@@ -212,12 +225,12 @@ export default function Dashboard() {
         </div>
 
         {/* To-do list: rechts over de volle hoogte, op telefoon direct na het geld */}
-        <TodoWidget className="xl:col-start-3 xl:row-start-1 xl:row-span-4" />
+        <TodoWidget className="xl:col-start-3 xl:row-start-1 xl:row-span-5" />
 
-        <VandaagOppakken className="max-h-96 xl:max-h-none xl:col-span-2 xl:col-start-1 xl:row-start-2" />
+        <VandaagOppakken className="max-h-96 xl:max-h-none xl:col-span-2 xl:col-start-1 xl:row-start-3" />
 
         {/* Pijplijn: werk dat eraan komt */}
-        <div className="card xl:p-4 xl:col-span-2 xl:col-start-1 xl:row-start-3">
+        <div className="card xl:p-4 xl:col-span-2 xl:col-start-1 xl:row-start-4">
           <div className="flex items-center justify-between mb-3 xl:mb-2">
             <h2 className="font-semibold text-body flex items-center gap-2"><Send size={14} className="text-brand-lav-accent" /> Pijplijn</h2>
             <Link href="/crm/leads" className="text-caption text-brand-text-secondary hover:text-brand-text-primary flex items-center gap-1">
@@ -247,7 +260,7 @@ export default function Dashboard() {
         </div>
 
         {/* Recente offertes en facturen */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 xl:col-span-2 xl:col-start-1 xl:row-start-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 xl:col-span-2 xl:col-start-1 xl:row-start-5">
         {/* Recente offertes */}
         <div className="card">
           <div className="flex items-center justify-between mb-4 xl:mb-2">

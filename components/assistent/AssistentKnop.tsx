@@ -7,6 +7,8 @@ import { useActiveCompany } from '@/components/CompanyContext'
 import AssistentTekst from '@/components/assistent/AssistentTekst'
 import VoorstelKaart from '@/components/assistent/VoorstelKaart'
 import type { VoorstelRij } from '@/lib/assistent/voorstellen'
+import { createClient } from '@/lib/supabase/client'
+import { profielVan } from '@/lib/profiel'
 
 type Bericht =
   | { id: string; rol: 'gebruiker' | 'assistent' | 'systeem'; tekst: string }
@@ -142,10 +144,14 @@ export default function AssistentKnop() {
     }
 
     try {
+      // Roepnaam en voorkeuren uit het profiel (bolletje onderin de sidebar).
+      // getSession leest lokaal, dat kost geen extra verzoek per bericht.
+      const { data: sessie } = await createClient().auth.getSession()
+      const { roepnaam, voorkeuren } = profielVan(sessie.session?.user)
       const res = await fetch('/api/assistent/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gesprekId, bericht, pagina: pathname, bedrijf: scope }),
+        body: JSON.stringify({ gesprekId, bericht, pagina: pathname, bedrijf: scope, profiel: { roepnaam, voorkeuren } }),
         signal: controller.signal,
       })
       if (!res.ok || !res.body) {

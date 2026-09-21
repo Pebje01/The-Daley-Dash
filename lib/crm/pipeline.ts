@@ -81,14 +81,19 @@ export const LEAD_FASES: FaseDef[] = [
     // Zodra je van een gewonnen lead een opdracht maakt, sluit de lead zichzelf
     // af: het werk loopt verder op het opdrachtenbord. Zo blijft de kolom
     // Gewonnen een werklijstje van wat nog een opdracht moet worden.
-    status: 'omgezet', label: 'Omgezet naar opdracht', kleur: '#14b8a6', groep: 'Done',
+    status: 'omgezet', label: 'Afgerond', kleur: '#22c55e', groep: 'Done',
     opBord: false, opvolgDagen: null,
-    uitleg: 'Gewonnen en er is een opdracht van gemaakt. Je vindt het werk bij Opdrachten.',
+    uitleg: 'Gewonnen en er is een opdracht van gemaakt. Het werk loopt verder bij Opdrachten.',
   },
   // Onderstaande statussen bestaan nog in de data, maar krijgen geen eigen kolom.
   // Ze zijn zichtbaar via "Toon afgesloten" en in de lijstweergave.
   { status: 'klant on hold', label: 'Klant on hold', kleur: '#f59e0b', groep: 'Active', opBord: false, opvolgDagen: null },
-  { status: 'archief', label: 'Archief', kleur: '#9ca3af', groep: 'Closed', opBord: false, opvolgDagen: null },
+  {
+    // Hier komt alles waar niets uit is gekomen, met de reden erbij (afsluit_reden).
+    status: 'archief', label: 'Archief', kleur: '#9ca3af', groep: 'Closed',
+    opBord: false, opvolgDagen: null,
+    uitleg: 'Er is niets uit gekomen. De reden staat op de kaart.',
+  },
 ]
 
 export const FASE_ON_HOLD = 'on hold'

@@ -4,14 +4,16 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   TrendingUp,
-  LayoutDashboard, FileText, Receipt, Users, Settings,
+  LayoutDashboard, FileText, Receipt, Settings,
   CreditCard, Repeat2, BadgeDollarSign, Building2, ContactRound, BriefcaseBusiness, ScrollText,
   LogOut, Landmark, CheckSquare, Clock, FileBarChart, Percent, Menu, X, Ban, Inbox,
-  ChevronDown, Check, BookOpen,
+  ChevronDown, ChevronsUpDown, Check, BookOpen, UserRound,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 import SettingsModal from '@/components/SettingsModal'
+import ProfielModal from '@/components/ProfielModal'
+import { profielVan, weergaveNaam, initialen } from '@/lib/profiel'
 import { useActiveCompany } from '@/components/CompanyContext'
 import { COMPANIES, getCompany } from '@/lib/companies'
 
@@ -26,7 +28,8 @@ const financialNav = [
   { label: 'Facturen', href: '/facturen', icon: Receipt },
   { label: 'Betalingen', href: '/betalingen', icon: CreditCard },
   { label: 'Abonnementen', href: '/abonnementen', icon: Repeat2 },
-  { label: 'Klanten', href: '/klanten', icon: Users },
+  // Klanten staat niet meer los: een klant is een bedrijf in het CRM, met zijn
+  // uren- en factuurgegevens in de detailkaart (september 2026).
   // De aangifte loopt over alle drie de bedrijven samen (één KVK, één
   // BTW-nummer), dus die hoort thuis in de overkoepelende weergave. Binnen
   // WGB of Daley Photography valt er niets apart aan te geven.
@@ -117,12 +120,72 @@ function BedrijfKiezer() {
   )
 }
 
+/**
+ * Het bolletje met je naam onderin de sidebar. Klik opent een menu naar
+ * boven met je profiel, de instellingen en uitloggen.
+ */
+function ProfielMenu({ user, onProfiel, onInstellingen, onUitloggen }: {
+  user: User
+  onProfiel: () => void
+  onInstellingen: () => void
+  onUitloggen: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const profiel = profielVan(user)
+  const naam = weergaveNaam(profiel, user.email)
+  const heeftNaam = naam !== user.email
+
+  useEffect(() => {
+    if (!open) return
+    const klik = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', klik)
+    document.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('mousedown', klik); document.removeEventListener('keydown', esc) }
+  }, [open])
+
+  const kies = (actie: () => void) => () => { setOpen(false); actie() }
+  const item = 'flex items-center gap-2.5 w-full px-3 py-2 rounded-brand-sm text-body text-brand-text-primary hover:bg-brand-page-light transition-colors text-left'
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={`flex items-center gap-2.5 w-full px-2 py-1.5 rounded-brand-sm text-left transition-colors ${open ? 'bg-sidebar-hover/40' : 'hover:bg-sidebar-hover/40'}`}
+      >
+        <span className="w-8 h-8 rounded-full bg-brand-lavender-dark flex items-center justify-center text-caption text-sidebar-text font-semibold shrink-0">
+          {initialen(profiel, user.email)}
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-body text-sidebar-text font-medium truncate">{naam}</span>
+          {heeftNaam && <span className="block text-pill text-sidebar-muted truncate">{user.email}</span>}
+        </span>
+        <ChevronsUpDown size={14} className="text-sidebar-muted shrink-0" />
+      </button>
+
+      {open && (
+        <div role="menu" className="absolute bottom-full left-0 right-0 mb-2 bg-brand-card-bg border border-brand-card-border/20 rounded-brand-sm shadow-xl p-1 z-50">
+          <p className="px-3 pt-2 pb-2 text-caption text-brand-text-secondary truncate border-b border-brand-card-border/10 mb-1">{user.email}</p>
+          <button role="menuitem" onClick={kies(onProfiel)} className={item}><UserRound size={15} /> Profiel</button>
+          <button role="menuitem" onClick={kies(onInstellingen)} className={item}><Settings size={15} /> Instellingen</button>
+          <div className="border-t border-brand-card-border/10 my-1" />
+          <button role="menuitem" onClick={kies(onUitloggen)} className={item}><LogOut size={15} /> Uitloggen</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Sidebar() {
   const { scope } = useActiveCompany()
   const path = usePathname()
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [showProfiel, setShowProfiel] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
   // Sluit het mobiele menu zodra je naar een andere pagina navigeert
@@ -279,32 +342,15 @@ export default function Sidebar() {
 
       </nav>
 
-      {/* Bottom */}
-      <div className="px-2 py-4 border-t border-sidebar-text/10 space-y-2">
-        <button
-          onClick={() => setShowSettings(true)}
-          className="flex items-center gap-3 px-3 py-2 rounded-brand-sm text-body text-sidebar-muted hover:bg-sidebar-hover/40 transition-colors w-full text-left"
-        >
-          <Settings size={15} />
-          Instellingen
-        </button>
-
+      {/* Profiel: het bolletje onderin, net als bij Claude en ChatGPT */}
+      <div className="px-2 py-3 border-t border-sidebar-text/10">
         {user && (
-          <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-6 h-6 rounded-full bg-brand-lavender-dark flex items-center justify-center text-[10px] text-sidebar-text font-semibold">
-              {user.email?.charAt(0).toUpperCase()}
-            </div>
-            <span className="text-caption text-sidebar-muted truncate flex-1">
-              {user.email}
-            </span>
-            <button
-              onClick={handleLogout}
-              className="text-sidebar-muted/50 hover:text-sidebar-text transition-colors"
-              title="Uitloggen"
-            >
-              <LogOut size={14} />
-            </button>
-          </div>
+          <ProfielMenu
+            user={user}
+            onProfiel={() => setShowProfiel(true)}
+            onInstellingen={() => setShowSettings(true)}
+            onUitloggen={handleLogout}
+          />
         )}
       </div>
 
@@ -312,6 +358,12 @@ export default function Sidebar() {
         open={showSettings}
         onClose={() => setShowSettings(false)}
         userEmail={user?.email ?? undefined}
+      />
+      <ProfielModal
+        open={showProfiel}
+        onClose={() => setShowProfiel(false)}
+        user={user}
+        onOpgeslagen={setUser}
       />
     </aside>
     </>

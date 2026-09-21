@@ -9,13 +9,21 @@ export async function GET(request: NextRequest) {
   const lite = searchParams.get('lite') === 'true'
 
   if (lite) {
-    // Lichtgewicht variant voor uren-klant zoeken
+    // Lichtgewicht variant voor de klantkiezer op /uren: de echte CRM-bedrijven
+    // uit clickup_crm_records, niet meer de oude importtabel crm_bedrijven.
+    // De vorm (id, naam, status) blijft gelijk; id is nu het CRM-record.
     const { data, error } = await supabase
-      .from('crm_bedrijven')
-      .select('id, naam, klantnummer, status')
-      .order('naam')
+      .from('clickup_crm_records')
+      .select('id, name, status, contact_status')
+      .eq('entity_type', 'company')
+      .order('name')
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data)
+    return NextResponse.json(
+      (data ?? [])
+        // Geblokkeerde bedrijven zet je niet in je urenregistratie
+        .filter((r) => r.contact_status !== 'blokkade')
+        .map((r) => ({ id: r.id, naam: r.name, status: r.status }))
+    )
   }
 
   const { data, error } = await supabase

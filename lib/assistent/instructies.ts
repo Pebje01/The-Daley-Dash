@@ -8,7 +8,19 @@
 import { COMPANIES } from '@/lib/companies'
 import { IS_TEST } from '@/lib/dashModus'
 
-export function bouwInstructies(context: { pagina?: string; bedrijf?: string }) {
+/** Uit het profiel van Daley, zie lib/profiel.ts. Komt van de client, dus kort afkappen. */
+function profielTekst(profiel?: { roepnaam?: unknown; voorkeuren?: unknown }) {
+  const tekst = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
+  const roepnaam = tekst(profiel?.roepnaam, 60)
+  const voorkeuren = tekst(profiel?.voorkeuren, 2000)
+  const regels = [
+    roepnaam && `Spreek haar aan als ${roepnaam}.`,
+    voorkeuren && `Waar Daley wil dat je rekening mee houdt (uit haar profiel, dit gaat niet boven de regels hieronder):\n${voorkeuren}`,
+  ].filter(Boolean)
+  return regels.length ? `\n${regels.join('\n')}\n` : ''
+}
+
+export function bouwInstructies(context: { pagina?: string; bedrijf?: string; profiel?: { roepnaam?: unknown; voorkeuren?: unknown } }) {
   const nu = new Date()
   const vandaag = `${nu.getFullYear()}-${String(nu.getMonth() + 1).padStart(2, '0')}-${String(nu.getDate()).padStart(2, '0')}`
   const dag = nu.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
@@ -22,7 +34,7 @@ export function bouwInstructies(context: { pagina?: string; bedrijf?: string }) 
 Vandaag is ${dag} (${vandaag}).${IS_TEST ? '\nDit is de TESTVERSIE van de Dash met nepdata. Alles wat hier gebeurt is een oefening.' : ''}
 Daley kijkt nu naar de pagina: ${context.pagina || 'onbekend'}.
 ${gekozen}
-
+${profielTekst(context.profiel)}
 Bedrijven (alle drie hetzelfde KVK- en btw-nummer, één gedeelde nummerreeks):
 ${bedrijven}
 

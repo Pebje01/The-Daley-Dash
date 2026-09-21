@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Plus, Trash2, Copy, UserPlus, UserX, Eraser, X, Check, RefreshCw, FileText, FileEdit, ChevronDown, RotateCcw, GripVertical, Search, ExternalLink, Archive, ArchiveRestore } from 'lucide-react'
+import { Plus, Trash2, Copy, UserPlus, UserX, Eraser, X, Check, RefreshCw, FileText, FileEdit, ChevronDown, RotateCcw, GripVertical, Search, ExternalLink, Archive, ArchiveRestore, LayoutGrid } from 'lucide-react'
 import Link from 'next/link'
 import { Uur, UurKlant, UurProject, CompanyId } from '@/lib/types'
 import type { ArchiefFactuur } from '@/app/api/uren-archief/route'
 import { COMPANIES } from '@/lib/companies'
 import { deriveKlantnummerLetters } from '@/lib/klantnummer'
 import { useActiveCompany } from '@/components/CompanyContext'
+import UrenOverzicht from '@/components/uren/UrenOverzicht'
 
 // Alleen bedrijven die de factuur-van-uren route ondersteunt
 const FACTUUR_BEDRIJVEN = COMPANIES.filter(c => c.id === 'tde' || c.id === 'daleyphotography' || c.id === 'wgb')
@@ -106,8 +107,9 @@ export default function UrenPage() {
   const [archiefOpen, setArchiefOpen] = useState(false)
   const [restoringFactuur, setRestoringFactuur] = useState<string | null>(null)
 
-  // CRM bedrijven voor uren-klant zoeken
-  const [crmBedrijven, setCrmBedrijven] = useState<{ id: string; naam: string; klantnummer: string | null; status: string | null }[]>([])
+  // CRM-bedrijven voor de klantkiezer: een uren-klant is de uren- en
+  // factuurkant van een bedrijf uit het CRM (crmRecordId).
+  const [crmBedrijven, setCrmBedrijven] = useState<{ id: string; naam: string; klantnummer?: string | null; status: string | null }[]>([])
 
   // Nieuwe klant modal
   const [showKlantModal, setShowKlantModal] = useState(false)
@@ -164,11 +166,10 @@ export default function UrenPage() {
       if (klantRes.ok) {
         const kl: UurKlant[] = await klantRes.json()
         setKlanten(kl)
-        // Bij het wisselen van bedrijf staat de vorige klant er niet meer bij,
-        // dan pakken we de eerste actieve uit de nieuwe lijst. Een gearchiveerde
-        // klant openen doe je zelf, die rolt er nooit vanzelf uit.
-        const actief = kl.filter(k => !k.gearchiveerdOp)
-        setActiveKlantId(prev => (prev && kl.some(k => k.id === prev) ? prev : (actief[0]?.id ?? null)))
+        // De pagina opent op het overzicht (activeKlantId null). Een klant die
+        // je open had blijft open na verversen; staat hij er na het wisselen
+        // van bedrijf niet meer bij, dan terug naar het overzicht.
+        setActiveKlantId(prev => (prev && kl.some(k => k.id === prev) ? prev : null))
       }
       if (projectenRes.ok) setProjecten(await projectenRes.json())
       if (crmRes.ok) setCrmBedrijven(await crmRes.json())
@@ -181,6 +182,15 @@ export default function UrenPage() {
   useEffect(() => { load() }, [load])
 
   const activeKlant = klanten.find(k => k.id === activeKlantId) ?? null
+
+  /**
+   * Het CRM-bedrijf van een uren-klant. Via crmRecordId, en zolang de migratie
+   * 20260918_uren_klanten_crm_record.sql niet gedraaid is op naam.
+   */
+  const crmBedrijfVan = (k: UurKlant) =>
+    k.crmRecordId
+      ? crmBedrijven.find(cb => cb.id === k.crmRecordId)
+      : crmBedrijven.find(cb => cb.naam.trim().toLowerCase() === k.naam.trim().toLowerCase())
   const actieveKlanten = klanten.filter(k => !k.gearchiveerdOp)
   const gearchiveerdeKlanten = klanten.filter(k => k.gearchiveerdOp)
 
@@ -438,7 +448,7 @@ export default function UrenPage() {
           standaardUurtarief: Number(newKlantTarief) || 0,
           companyId: newKlantCompanyId,
           klantnummer: newKlantNummer.trim() || undefined,
-          crmBedrijfId: newKlantCrmId,
+          crmRecordId: newKlantCrmId,
         }),
       })
       if (res.ok) {
@@ -961,7 +971,7 @@ export default function UrenPage() {
         <div className="min-w-0">
           <h1 className="font-uxum text-headline text-brand-text-primary">Uren</h1>
           <p className="text-body text-brand-text-secondary mt-1">
-            Kies een klant en vul direct je uren in.
+            {activeKlant ? 'Vul je uren in en maak er een factuur van.' : 'Alles wat nog gefactureerd moet worden, per klant.'}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -986,6 +996,18 @@ export default function UrenPage() {
 
       {/* Klant selector: alleen wat actief is, plus een lade met het archief. */}
       <div className="flex flex-wrap gap-2">
+        {/* Overzicht vooraan, daarna elke klant als eigen sheet */}
+        <button
+          onClick={() => setActiveKlantId(null)}
+          className={`px-4 py-2 rounded-brand-sm text-body transition-all flex items-center gap-2 ${
+            !activeKlant
+              ? 'bg-brand-text-primary text-white font-semibold shadow-sm'
+              : 'bg-white border border-brand-card-border text-brand-text-secondary hover:text-brand-text-primary hover:border-brand-text-secondary'
+          }`}
+        >
+          <LayoutGrid size={14} /> Overzicht
+        </button>
+        <span className="w-px self-stretch bg-brand-card-border/30 mx-1" aria-hidden />
         {actieveKlanten.map(k => {
           const isActive = k.id === activeKlantId
           const bedrijf = FACTUUR_BEDRIJVEN.find(c => c.id === k.companyId)
@@ -1065,9 +1087,11 @@ export default function UrenPage() {
       )}
 
       {!activeKlant ? (
-        <div className="card p-8 text-center text-brand-text-secondary">
-          Kies een klant om uren in te vullen.
-        </div>
+        loading && klanten.length === 0 ? (
+          <div className="card p-8 text-center text-brand-text-secondary">Laden...</div>
+        ) : (
+          <UrenOverzicht klanten={klanten} uren={uren} projecten={projecten} onKies={setActiveKlantId} />
+        )
       ) : (
         <>
           {/* Klant header: gestapeld op telefoon, naast elkaar vanaf sm. De badge mag onder de naam wrappen. */}
@@ -1080,7 +1104,7 @@ export default function UrenPage() {
                 </span>
               )}
               {(() => {
-                const crmBedrijf = activeKlant.crmBedrijfId ? crmBedrijven.find(cb => cb.id === activeKlant.crmBedrijfId) : null
+                const crmBedrijf = crmBedrijfVan(activeKlant)
                 const status = crmBedrijf?.status?.toLowerCase().trim()
                 if (!status) return null
                 const bg =
@@ -1104,9 +1128,9 @@ export default function UrenPage() {
                   {activeKlant.klantnummer}
                 </span>
               )}
-              {activeKlant.crmBedrijfId && (
+              {crmBedrijfVan(activeKlant) && (
                 <Link
-                  href={`/crm/bedrijven?open=${encodeURIComponent(activeKlant.naam)}`}
+                  href={`/crm/bedrijven?open=${encodeURIComponent(crmBedrijfVan(activeKlant)!.naam)}`}
                   className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-600 transition-colors"
                 >
                   <ExternalLink size={11} /> CRM
@@ -1830,7 +1854,7 @@ export default function UrenPage() {
                       )
                     }
                     return gefilterd.map(cb => {
-                      const gekoppeldeKlant = klanten.find(k => k.crmBedrijfId === cb.id)
+                      const gekoppeldeKlant = klanten.find(k => crmBedrijfVan(k)?.id === cb.id)
                       return (
                         <button
                           key={cb.id}

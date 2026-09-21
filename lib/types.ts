@@ -61,7 +61,10 @@ export interface UurKlant {
   naam: string
   standaardUurtarief: number
   companyId?: CompanyId
+  /** Legacy: wijst naar de oude importtabel crm_bedrijven. Niet meer gebruiken. */
   crmBedrijfId?: string
+  /** Het CRM-bedrijf (clickup_crm_records) waar deze uren-klant bij hoort. */
+  crmRecordId?: string
   contactpersoon?: string
   adres?: string
   postcode?: string

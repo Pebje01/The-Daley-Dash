@@ -21,7 +21,7 @@ const STATUS_TEKST: Record<string, string> = {
  * NDJSON: { type: 'gesprek' | 'tekst' | 'actie' | 'voorstel' | 'klaar' | 'fout', ... }
  */
 export async function POST(request: NextRequest) {
-  const { gesprekId: bestaandId, bericht, pagina, bedrijf } = await request.json().catch(() => ({}))
+  const { gesprekId: bestaandId, bericht, pagina, bedrijf, profiel } = await request.json().catch(() => ({}))
   if (typeof bericht !== 'string' || !bericht.trim()) {
     return Response.json({ error: 'Leeg bericht' }, { status: 400 })
   }
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       try {
         const resultaat = await draaiAssistent({
           bericht: prompt,
-          instructies: bouwInstructies({ pagina, bedrijf }),
+          instructies: bouwInstructies({ pagina, bedrijf, profiel }),
           gesprekId,
           sessieId: gesprek!.claude_sessie_id,
           signal: request.signal,
