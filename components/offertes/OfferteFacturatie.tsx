@@ -36,19 +36,24 @@ export default function OfferteFacturatie({ offerteId, status }: { offerteId: st
   const openRestant = Math.max(0, data.offerteTotaal - data.gefactureerd)
 
   async function zetVervallen(vervalt: boolean) {
+    // Vervallen vraagt altijd om een reden: die blijft op de offerte staan,
+    // zodat je later nog weet waarom hij maar deels gefactureerd is.
+    let reden: string | null = null
     if (vervalt) {
-      const ok = await melding.bevestig({
+      reden = await melding.vraagTekst({
         titel: 'Restant laten vervallen?',
-        tekst: `${euro(openRestant)} van deze offerte wordt niet meer gefactureerd en telt niet meer mee bij nog te factureren. Je kunt dit later terugdraaien.`,
+        tekst: `${euro(openRestant)} van deze offerte wordt niet meer gefactureerd en telt niet meer mee bij nog te factureren. Waarom? Je kunt dit later terugdraaien.`,
+        placeholder: 'Bijvoorbeeld: korting gegeven op de tweede helft',
+        suggesties: ['Korting gegeven', 'Project kleiner uitgevallen', 'Opgenomen in een andere factuur', 'Klant is gestopt', 'Buiten de Dash gefactureerd'],
         bevestigLabel: 'Restant vervalt',
       })
-      if (!ok) return
+      if (reden === null) return
     }
     setBezig(true)
     const res = await fetch(`/api/offertes/${offerteId}/facturatie`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ restantVervalt: vervalt }),
+      body: JSON.stringify({ restantVervalt: vervalt, reden }),
     }).catch(() => null)
     const nieuw = await res?.json().catch(() => null)
     setBezig(false)
@@ -103,9 +108,14 @@ export default function OfferteFacturatie({ offerteId, status }: { offerteId: st
 
       {data.restantVervallenOp ? (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <p className="text-caption text-brand-text-secondary">
-            Restant van {euro(openRestant)} vervallen op {new Date(data.restantVervallenOp).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' })}
-          </p>
+          <div className="min-w-0">
+            <p className="text-caption text-brand-text-secondary">
+              Restant van {euro(openRestant)} vervallen op {new Date(data.restantVervallenOp).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+            {data.restantVervallenReden && (
+              <p className="text-body text-brand-text-primary break-words">{data.restantVervallenReden}</p>
+            )}
+          </div>
           <button onClick={() => zetVervallen(false)} disabled={bezig} className="btn-secondary py-1.5 text-caption self-start disabled:opacity-50">
             <RotateCcw size={13} /> Weer openzetten
           </button>

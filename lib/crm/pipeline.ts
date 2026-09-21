@@ -172,6 +172,16 @@ export function moetVandaagOpgepakt(record: ContactStatusRecord & {
   return stand === 'vandaag' || stand === 'te laat'
 }
 
+/** De waarde van een lead of opdracht: het veld "Prijs incl. btw", anders 0. */
+export function recordWaarde(customFields: unknown): number {
+  for (const f of (Array.isArray(customFields) ? customFields : []) as Array<{ name?: string; value?: unknown }>) {
+    if ((f?.name || '').toLowerCase() !== 'prijs incl. btw') continue
+    const n = parseFloat(String(f?.value ?? ''))
+    if (Number.isFinite(n)) return n
+  }
+  return 0
+}
+
 /** Leesbare weergave: "vandaag", "3 dagen te laat", "over 5 dagen". */
 export function opvolgLabel(volgendeActie?: string | null): string | null {
   if (!volgendeActie) return null

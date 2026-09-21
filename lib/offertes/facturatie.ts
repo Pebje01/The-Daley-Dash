@@ -36,10 +36,18 @@ export interface OfferteFacturatie {
   restant: number
   restantExcl: number
   restantVervallenOp: string | null
+  /** Waarom het restant vervallen is, leeg bij oudere of niet vervallen offertes */
+  restantVervallenReden: string | null
   facturen: FactuurVoorOfferte[]
 }
 
-type OfferteRij = { id: string; total: number | null; subtotal: number | null; restant_vervallen_op?: string | null }
+type OfferteRij = {
+  id: string
+  total: number | null
+  subtotal: number | null
+  restant_vervallen_op?: string | null
+  restant_vervallen_reden?: string | null
+}
 type FactuurRij = FactuurVoorOfferte & { offerte_id: string }
 
 export function berekenFacturatie(offerte: OfferteRij, facturen: FactuurRij[]): OfferteFacturatie {
@@ -60,15 +68,16 @@ export function berekenFacturatie(offerte: OfferteRij, facturen: FactuurRij[]): 
     restant: vervallen || rest < RESTANT_MARGE ? 0 : rond(rest),
     restantExcl: vervallen || restExcl < RESTANT_MARGE ? 0 : rond(restExcl),
     restantVervallenOp: vervallen,
+    restantVervallenReden: vervallen ? offerte.restant_vervallen_reden ?? null : null,
     facturen: eigen.map(({ offerte_id: _o, ...f }) => f).sort((a, b) => a.date.localeCompare(b.date)),
   }
 }
 
 const rond = (n: number) => Math.round(n * 100) / 100
 
-/** True als de kolom restant_vervallen_op nog niet bestaat (migratie niet gedraaid). */
+/** True als de restantkolommen nog niet bestaan (migratie niet gedraaid). */
 export function ontbrekendeRestantKolom(error: { code?: string; message?: string } | null) {
-  return error?.code === '42703' || /restant_vervallen_op/.test(error?.message || '')
+  return error?.code === '42703' || /restant_vervallen/.test(error?.message || '')
 }
 
 /**
@@ -87,13 +96,13 @@ export async function haalFacturatie(offertes: OfferteRij[]): Promise<Map<string
   return uit
 }
 
-/** Offertes met de restantkolom erbij, of zonder als de migratie er nog niet is. */
+/** Offertes met de restantkolommen erbij, of zonder als de migratie er nog niet is. */
 export async function selecteerOffertesMetRestant<T>(
   // Losse typering: dynamische kolommen geven bij Supabase geen bruikbaar rijtype
   bouw: (kolommen: string) => PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>,
   basisKolommen: string,
 ): Promise<T[]> {
-  let { data, error } = await bouw(`${basisKolommen}, restant_vervallen_op`)
+  let { data, error } = await bouw(`${basisKolommen}, restant_vervallen_op, restant_vervallen_reden`)
   if (error && ontbrekendeRestantKolom(error)) ({ data, error } = await bouw(basisKolommen))
   if (error) throw error
   return (data as T[] | null) ?? []

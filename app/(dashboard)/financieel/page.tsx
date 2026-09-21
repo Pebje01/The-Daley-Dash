@@ -6,6 +6,7 @@ import { Abonnement, Factuur } from '@/lib/types'
 import { useActiveCompany } from '@/components/CompanyContext'
 import { onDataChanged } from '@/lib/events'
 import { useDrawer } from '@/components/DrawerContext'
+import TeInnenBlok from '@/components/financieel/TeInnenBlok'
 
 function euro(n: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -23,9 +24,10 @@ function calcMRR(abonnementen: Abonnement[]): number {
 }
 
 /**
- * Financieel overzicht: omzet, verwachte omzet, betalingen, btw en abonnementen.
- * Stond eerst op het dashboard; dat is nu de pagina voor vandaag (wat moet ik
- * doen, welk geld ligt klaar). Dit kijk je eens per week of per kwartaal in.
+ * Financieel overzicht: alles over geld op één plek. Omzet, verwachte omzet,
+ * wat nog gefactureerd en betaald moet worden (met de betaalacties die de Dash
+ * klaarzet), ontvangsten, btw en abonnementen. Het dashboard is een
+ * overzichtspagina en toont hiervan alleen de omzet.
  */
 export default function Financieel() {
   const { openDrawer } = useDrawer()
@@ -35,6 +37,9 @@ export default function Financieel() {
     openFacturen: number
     totalOpenAmount: number
     overdueFacturen: number
+    overdueBedrag: number
+    openUren: number
+    openUrenIncl: number
     paidThisMonth: number
     revenueYear: number
     revenueYearIncl: number
@@ -48,7 +53,7 @@ export default function Financieel() {
     verwachteOmzetIncl: number
     recentFacturen: Factuur[]
     perMaand: { maand: string; openstaand: number; uren: number; totaal: number }[]
-  }>({ openFacturen: 0, totalOpenAmount: 0, overdueFacturen: 0, paidThisMonth: 0, revenueYear: 0, revenueYearIncl: 0, revenueMonth: 0, revenueMonthIncl: 0, omzetPerMaand: [], verwachteOmzet: 0, verwachteOmzetIncl: 0, recentFacturen: [], perMaand: [] })
+  }>({ openFacturen: 0, totalOpenAmount: 0, overdueFacturen: 0, overdueBedrag: 0, openUren: 0, openUrenIncl: 0, paidThisMonth: 0, revenueYear: 0, revenueYearIncl: 0, revenueMonth: 0, revenueMonthIncl: 0, omzetPerMaand: [], verwachteOmzet: 0, verwachteOmzetIncl: 0, recentFacturen: [], perMaand: [] })
 
   // Welke maand de omzetkaart toont. -1 betekent "nog niet gezet", dan springt hij
   // naar de huidige maand zodra de cijfers binnen zijn.
@@ -68,6 +73,13 @@ export default function Financieel() {
     eigen: { btwDitKwartaal: number }
   } | null>(null)
 
+  const [offerteStats, setOfferteStats] = useState<{
+    openOffertes: number
+    totalOpenAmount: number
+    nogTeFacturerenAantal: number
+    nogTeFactureren: number
+  }>({ openOffertes: 0, totalOpenAmount: 0, nogTeFacturerenAantal: 0, nogTeFactureren: 0 })
+
   const [abonnementen, setAbonnementen] = useState<Abonnement[]>([])
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState<Date | null>(null)
@@ -82,14 +94,14 @@ export default function Financieel() {
       const start = Date.now()
       // De BTW-kaart valt buiten de bedrijfskeuze: alle drie de bedrijven
       // vallen onder hetzelfde KVK- en BTW-nummer, dus dat is één aangifte.
-      // In het CRM zijn alleen de leads bedrijfsgericht; opdrachten en
-      // facturatie blijven gedeeld.
       const bedrijf = scope === 'alle' ? '' : `company=${scope}`
       Promise.all([
         fetch(`/api/facturen/stats?${bedrijf}`).then(r => r.ok ? r.json() : null),
         fetch(`/api/abonnementen?status=actief&${bedrijf}`).then(r => r.ok ? r.json() : null),
         scope === 'alle' ? fetch('/api/belasting/stats').then(r => r.ok ? r.json() : null) : null,
-      ]).then(([fac, abo, bel]) => {
+        fetch(`/api/offertes/stats?${bedrijf}`).then(r => r.ok ? r.json() : null),
+      ]).then(([fac, abo, bel, off]) => {
+        if (off) setOfferteStats(off)
         if (fac) setFactuurStats(fac)
         if (abo) setAbonnementen(abo)
         if (bel) setBelastingStats(bel)
@@ -128,6 +140,7 @@ export default function Financieel() {
   useEffect(() => { setNow(new Date()) }, [])
   const mrr = calcMRR(abonnementen)
   const activeAbonnementen = abonnementen.filter(a => a.status === 'actief').length
+  const ontvangenDitJaar = factuurStats.omzetPerMaand.reduce((som, m) => som + m.ontvangen, 0)
 
 
   return (
@@ -136,7 +149,7 @@ export default function Financieel() {
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6 xl:mb-3">
         <div>
           <h1 className="font-uxum text-headline text-brand-text-primary">Financieel</h1>
-          <p className="text-body text-brand-text-secondary mt-1">Omzet, betalingen, btw en abonnementen</p>
+          <p className="text-body text-brand-text-secondary mt-1">Omzet, wat nog binnen moet komen, btw en abonnementen</p>
         </div>
         <div className="flex gap-2 items-center">
           <button onClick={() => { setLoading(true); fetchData(600) }} className="btn-secondary" title="Vernieuwen">
@@ -249,6 +262,19 @@ export default function Financieel() {
         </Link>
       </div>
 
+      {/* Nog te factureren en te innen, met de betaalacties eronder */}
+      <TeInnenBlok
+        className="mb-6 xl:mb-3"
+        openUren={factuurStats.openUren}
+        openUrenIncl={factuurStats.openUrenIncl}
+        nogTeFactureren={offerteStats.nogTeFactureren}
+        nogTeFacturerenAantal={offerteStats.nogTeFacturerenAantal}
+        totalOpenAmount={factuurStats.totalOpenAmount}
+        openFacturen={factuurStats.openFacturen}
+        overdueBedrag={factuurStats.overdueBedrag}
+        overdueFacturen={factuurStats.overdueFacturen}
+      />
+
       {/* Omzet per maand en verwachte omzet per maand naast elkaar */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 xl:gap-4 mb-6 xl:mb-3 items-start">
         {/* Omzet per maand dit jaar, uit dezelfde cijfers als de maandtegel */}
@@ -324,28 +350,29 @@ export default function Financieel() {
 
       {/* Betalingen + BTW + Abonnementen */}
       <div className={`grid grid-cols-1 gap-6 xl:gap-4 [&>*]:xl:p-3 ${scope === 'alle' ? 'xl:grid-cols-3' : 'xl:grid-cols-2'}`}>
-        <Link href="/facturen" className="card hover:shadow-md transition-shadow cursor-pointer block">
+        {/* Openstaand en te laat staan in het blok hierboven; hier wat er binnenkwam
+            en wat er bij klanten ligt */}
+        <div className="card block">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-body">Betalingen overzicht</h2>
+            <h2 className="font-semibold text-body">Ontvangen en uitstaand</h2>
             <Clock size={15} className="text-brand-text-secondary" />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="rounded-brand-sm border border-brand-card-border bg-brand-card-bg p-3 xl:p-2.5">
-              <p className="text-caption text-brand-text-secondary mb-1 whitespace-nowrap">Betaald deze mnd</p>
+            <Link href="/betalingen" className="rounded-brand-sm border border-brand-card-border/60 bg-brand-lime p-3 xl:p-2.5 hover:opacity-80 transition-opacity">
+              <p className="text-caption text-brand-text-secondary mb-1 whitespace-nowrap">Ontvangen deze mnd</p>
               <p className="font-semibold text-body text-brand-text-primary">{euro(factuurStats.paidThisMonth)}</p>
-            </div>
-            <div className="rounded-brand-sm border border-brand-card-border bg-brand-card-bg p-3 xl:p-2.5">
-              <p className="text-caption text-brand-text-secondary mb-1">Openstaand</p>
-              <p className="font-semibold text-body text-brand-text-primary">{euro(factuurStats.totalOpenAmount)}</p>
-            </div>
-            <div className={`rounded-brand-sm border p-3 xl:p-2.5 ${factuurStats.overdueFacturen > 0 ? 'border-red-200 bg-red-50' : 'border-brand-card-border bg-brand-card-bg'}`}>
-              <p className="text-caption text-brand-text-secondary mb-1">Te laat</p>
-              <p className={`font-semibold text-body ${factuurStats.overdueFacturen > 0 ? 'text-red-600' : 'text-brand-text-primary'}`}>
-                {factuurStats.overdueFacturen} factuur{factuurStats.overdueFacturen !== 1 ? 'en' : ''}
-              </p>
-            </div>
+            </Link>
+            <Link href="/betalingen" className="rounded-brand-sm border border-brand-card-border/60 bg-brand-lavender-accent p-3 xl:p-2.5 hover:opacity-80 transition-opacity">
+              <p className="text-caption text-brand-text-secondary mb-1 whitespace-nowrap">Ontvangen dit jaar</p>
+              <p className="font-semibold text-body text-brand-text-primary">{euro(ontvangenDitJaar)}</p>
+            </Link>
+            <Link href="/offertes?status=verstuurd" title="Offertes die verstuurd zijn en nog op antwoord wachten" className="rounded-brand-sm border border-brand-card-border/60 bg-brand-light-blue p-3 xl:p-2.5 hover:opacity-80 transition-opacity">
+              <p className="text-caption text-brand-text-secondary mb-1 whitespace-nowrap">Offertes uitstaand</p>
+              <p className="font-semibold text-body text-brand-text-primary">{euro(offerteStats.totalOpenAmount)}</p>
+              <p className="text-caption text-brand-text-secondary">{offerteStats.openOffertes} {offerteStats.openOffertes === 1 ? 'offerte' : 'offertes'}</p>
+            </Link>
           </div>
-        </Link>
+        </div>
 
         {/* De aangifte loopt over alle drie de bedrijven samen, dus die kaart
             hoort alleen in de overkoepelende weergave */}

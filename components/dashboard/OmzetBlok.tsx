@@ -70,12 +70,12 @@ export default function OmzetBlok({
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4 lg:gap-6 items-end">
         {/* De cijfers */}
         <div className="grid grid-cols-3 gap-3 self-center">
-          <Link href="/facturen?periode=jaar" className="min-w-0 group">
+          <Link href="/facturen?periode=jaar" title="Alles wat je dit jaar gefactureerd hebt, ex. btw. Betaald of niet: het telt vanaf het moment dat de factuur er is." className="rounded-brand-sm border border-brand-card-border/60 p-3 xl:p-2.5 min-w-0 bg-brand-lavender-accent hover:opacity-80 transition-opacity group">
             <p className="text-caption text-brand-text-secondary">Dit jaar</p>
             <p className="font-uxum text-sidebar-t text-brand-text-primary group-hover:underline truncate">{euro(revenueYear)}</p>
             <p className="text-caption text-brand-text-secondary truncate">incl. btw {euro(revenueYearIncl)}</p>
           </Link>
-          <div className="min-w-0">
+          <div className="rounded-brand-sm border border-brand-card-border/60 p-3 xl:p-2.5 min-w-0 bg-brand-light-blue" title="Wat je in deze maand gefactureerd hebt, ex. btw. Blader met de pijltjes of klik op een staaf.">
             <div className="flex items-center gap-0.5 -ml-1">
               <button
                 onClick={() => setIndex((i) => Math.max(0, i - 1))}
@@ -100,7 +100,7 @@ export default function OmzetBlok({
               {(gekozen?.aantal ?? 0) === 0 ? 'geen facturen' : `${gekozen!.aantal} ${gekozen!.aantal === 1 ? 'factuur' : 'facturen'}`}
             </p>
           </div>
-          <Link href="/offertes?status=akkoord" className="min-w-0 group" title="Akkoord-offertes die nog niet gefactureerd zijn, plus verstuurde offertes">
+          <Link href="/offertes?status=akkoord" className="rounded-brand-sm border border-brand-card-border/60 p-3 xl:p-2.5 min-w-0 bg-brand-lime hover:opacity-80 transition-opacity group" title="Wat er nog binnen moet komen, ex. btw: openstaande facturen, het ongefactureerde deel van goedgekeurde offertes, verstuurde offertes zonder antwoord en open uren.">
             <p className="text-caption text-brand-text-secondary">Verwacht</p>
             <p className="font-uxum text-sidebar-t text-brand-text-primary group-hover:underline truncate">{euro(verwachteOmzet)}</p>
             <p className="text-caption text-brand-text-secondary truncate">nog te komen</p>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { recordWaarde } from '@/lib/crm/pipeline'
 import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -16,15 +17,6 @@ const OPEN_LEAD_STATUSES = new Set(['nieuwe kans', 'in gesprek', 'on hold', 'kla
 const WON_STATUSES = new Set(['gewonnen'])
 const LOST_STATUSES = new Set(['verloren', 'niets uitgekomen'])
 const OPEN_ASSIGNMENT_STATUSES = new Set(['nieuwe opdracht', 'in uitvoering', 'on hold'])
-
-function prijsVan(customFields: any[]): number {
-  for (const f of customFields || []) {
-    if ((f?.name || '').toLowerCase() !== 'prijs incl. btw') continue
-    const n = parseFloat(String(f?.value ?? ''))
-    if (Number.isFinite(n)) return n
-  }
-  return 0
-}
 
 export async function GET(request: NextRequest) {
   const supabase = createClient()
@@ -66,14 +58,14 @@ export async function GET(request: NextRequest) {
       if (metBedrijf && company && r.company_id !== company) continue
       if (OPEN_LEAD_STATUSES.has(status)) {
         openLeads++
-        openLeadsWaarde += prijsVan(r.custom_fields)
+        openLeadsWaarde += recordWaarde(r.custom_fields)
         if (status === 'in gesprek') inGesprek++
       } else if (WON_STATUSES.has(status)) gewonnen++
       else if (LOST_STATUSES.has(status)) verloren++
     } else if (r.entity_type === 'assignment') {
       if (OPEN_ASSIGNMENT_STATUSES.has(status)) {
         openOpdrachten++
-        openOpdrachtenWaarde += prijsVan(r.custom_fields)
+        openOpdrachtenWaarde += recordWaarde(r.custom_fields)
       }
     } else if (r.entity_type === 'clickup_invoice') {
       if (status === 'factuur open') openCrmFacturen++
