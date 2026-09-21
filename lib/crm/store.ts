@@ -111,7 +111,7 @@ function toIso(value: string | number | undefined): string | null {
 // ── Activiteitenlog ────────────────────────────────────────────────
 
 interface ActiviteitInput {
-  soort: 'aangemaakt' | 'status' | 'naam' | 'deadline' | 'notitie' | 'veld' | 'promotie' | 'contact' | 'opvolging' | 'blokkade'
+  soort: 'aangemaakt' | 'status' | 'naam' | 'deadline' | 'notitie' | 'veld' | 'promotie' | 'contact' | 'opvolging' | 'blokkade' | 'beschrijving'
   omschrijving: string
   oude_waarde?: string | null
   nieuwe_waarde?: string | null
@@ -483,6 +483,9 @@ export async function updateCrmRecord(recordId: string, data: CrmRecordData) {
       activiteiten.push({ soort: 'deadline', omschrijving: 'Deadline gewijzigd', oude_waarde: oud, nieuwe_waarde: nieuw })
     }
   }
+  if (data.description !== undefined && (data.description || '') !== ((existing.raw || {}).description ?? '')) {
+    activiteiten.push({ soort: 'beschrijving', omschrijving: 'Beschrijving bijgewerkt' })
+  }
   if (data.notes !== undefined && data.notes !== ((existing.raw || {}).notes ?? '')) {
     activiteiten.push({ soort: 'notitie', omschrijving: 'Notities bijgewerkt' })
   }
@@ -658,15 +661,17 @@ const PROMOTE_TARGETS: Record<string, PromoteTarget> = {
   lead: {
     target: 'assignment',
     fieldNames: [
+      // Details opdracht niet meer: dat is opgegaan in de beschrijving (raw.description),
+      // die hieronder bij het aanmaken meegaat
       'Bedrijf', 'Contactpersoon', 'Producten', 'Prijs incl. BTW',
-      'Details opdracht', 'Type kans', 'Bron', 'Op initiatief van',
+      'Type kans', 'Bron', 'Op initiatief van',
     ],
     linkBackFieldName: 'Gekoppelde lead',
   },
   assignment: {
     target: 'clickup_invoice',
     namePrefix: 'Factuur: ',
-    fieldNames: ['Bedrijf', 'Contactpersoon', 'Prijs incl. BTW', 'Details opdracht'],
+    fieldNames: ['Bedrijf', 'Contactpersoon', 'Prijs incl. BTW'],
   },
 }
 
@@ -715,7 +720,9 @@ export async function promoteCrmRecord(recordId: string) {
     assignees: [],
     tags: [],
     custom_fields: template,
-    raw: {},
+    // De beschrijving gaat mee: dat is sinds september 2026 het ene veld voor
+    // "waar gaat dit over" (Details opdracht is erin opgegaan)
+    raw: source.raw?.description ? { description: source.raw.description } : {},
     clickup_date_created: now,
     clickup_date_updated: now,
     due_date: null,

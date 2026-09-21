@@ -9,7 +9,7 @@ import { zoekBotsing, botsingMelding } from '@/lib/crm/dubbelcheck'
 const ALLOWED_ENTITY_TYPES = new Set<string>(CRM_ENTITY_TYPES)
 
 const RECORD_COLUMNS =
-  'id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, dash_tags, due_date, clickup_date_updated, synced_at, volgende_actie, volgende_actie_notitie, laatste_contact, contact_pogingen, contact_status, contact_status_tot, contact_status_reden, ai_status, ai_score, ai_prioriteit, ai_branche, ai_website, ai_samenvatting, ai_signalen, ai_volgende_stap, ai_beoordeeld_op, ai_model, ai_fout, afsluit_reden, ruwe_contact_email, ruwe_website, ruwe_bron, ruwe_fit_reden, ruwe_prioriteit, ruwe_contactpersoon, ruwe_telefoon, ruwe_contact_status, ruwe_contact_gezocht_op, ruwe_contact_toelichting, ruwe_contact_fout, company_id'
+  'id, entity_type, clickup_task_id, clickup_list_id, name, status, url, archived, active, assignees, tags, custom_fields, dash_tags, due_date, clickup_date_updated, synced_at, volgende_actie, volgende_actie_notitie, laatste_contact, contact_pogingen, contact_status, contact_status_tot, contact_status_reden, ai_status, ai_score, ai_prioriteit, ai_branche, ai_website, ai_samenvatting, ai_signalen, ai_volgende_stap, ai_beoordeeld_op, ai_model, ai_fout, afsluit_reden, ruwe_contact_email, ruwe_website, ruwe_bron, ruwe_fit_reden, ruwe_prioriteit, ruwe_contactpersoon, ruwe_telefoon, ruwe_contact_status, ruwe_contact_gezocht_op, ruwe_contact_toelichting, ruwe_contact_fout, beschrijving:raw->>description, company_id'
 
 /** True als de fout komt doordat company_id nog niet in de tabel staat. */
 function ontbrekendeBedrijfsKolom(error: any) {

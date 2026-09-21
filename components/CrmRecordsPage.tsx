@@ -8,7 +8,7 @@ import {
   RefreshCw, Search, Plus, X, Save, Trash2, LayoutList, Columns3, ArrowRight,
   Building2, User, BadgeDollarSign, BriefcaseBusiness,
   ArrowUp, ArrowDown, Filter as FilterIcon, FileText, CalendarDays, PencilLine,
-  Bell, Ban, Mail, GripVertical, Send, Undo2, Link2,
+  Bell, Ban, Mail, GripVertical, Send, Undo2, Link2, MessageSquare,
 } from 'lucide-react'
 import {
   LEAD_STATUS_VOLGORDE, faseDef, leadBordFases, contactStand,
@@ -18,7 +18,7 @@ import {
 import {
   OpvolgBadge, OpvolgPicker, ContactKnop, ContactSamenvatting, ContactStatusBlok,
 } from '@/components/crm/OpvolgControls'
-import { AiScoreBadge, AiKwalificatieBlok } from '@/components/crm/AiKwalificatie'
+import { AiScoreBadge, AiScoreGetal, AiKwalificatieBlok } from '@/components/crm/AiKwalificatie'
 import BenaderenBlok from '@/components/crm/BenaderenBlok'
 import ReactieMelding from '@/components/crm/ReactieMelding'
 import MailAdresKiezer from '@/components/crm/MailAdresKiezer'
@@ -77,6 +77,8 @@ function FieldOptionsProvider({ children }: { children: React.ReactNode }) {
 interface CrmRecord {
   id: string
   entity_type: EntityType
+  /** raw.description, meegeleverd door de lijstroute voor de kolom Beschrijving */
+  beschrijving?: string | null
   clickup_task_id: string
   clickup_list_id: string
   name: string
@@ -544,9 +546,11 @@ function textCell(val: string | null) {
 }
 
 const LEAD_COLUMNS: Column[] = [
+  // De AI-score vooraan: daarop weeg je de lijst. Klik op de kop sorteert erop.
+  { key: 'score',           label: 'Score',           width: 64,  render: (r) => (r.ai_score != null || r.ai_status === 'bezig' || r.ai_status === 'wachtend' ? <AiScoreGetal record={r} /> : DASH), sortValue: (r) => r.ai_score ?? null },
   { key: 'bedrijf',         label: 'Bedrijf',         width: 140, render: (r) => cfRelationLinks(r, 'Bedrijf', 'company'), sortValue: (r) => cfValue(r, 'Bedrijf') },
   { key: 'contact',         label: 'Contactpersoon',   width: 130, render: (r) => cfRelationLinks(r, 'Contactpersoon', 'contact'), sortValue: (r) => cfValue(r, 'Contactpersoon') },
-  { key: 'details',         label: 'Details opdracht', width: 160, render: (r) => textCell(cfValue(r, 'Details opdracht')) },
+  { key: 'details',         label: 'Beschrijving', width: 160, render: (r) => textCell(r.beschrijving || cfValue(r, 'Details opdracht')) },
   {
     key: 'producten', label: 'Producten', width: 120,
     render: (r) => {
@@ -587,7 +591,7 @@ const LEAD_COLUMNS: Column[] = [
 const ASSIGNMENT_COLUMNS: Column[] = [
   { key: 'bedrijf',      label: 'Bedrijf',         width: 140, render: (r) => cfRelationLinks(r, 'Bedrijf', 'company'), sortValue: (r) => cfValue(r, 'Bedrijf') },
   { key: 'contact',      label: 'Contactpersoon',   width: 130, render: (r) => cfRelationLinks(r, 'Contactpersoon', 'contact'), sortValue: (r) => cfValue(r, 'Contactpersoon') },
-  { key: 'details',      label: 'Details opdracht', width: 160, render: (r) => textCell(cfValue(r, 'Details opdracht') || cfValue(r, 'Details')) },
+  { key: 'details',      label: 'Beschrijving', width: 160, render: (r) => textCell(r.beschrijving || cfValue(r, 'Details opdracht') || cfValue(r, 'Details')) },
   { key: 'producten',    label: 'Producten',        width: 120, render: (r) => cfLabelPills(r, 'Producten') ?? DASH },
   { key: 'prijs',        label: 'Prijs',            width: 108, render: (r) => textCell(cfValue(r, 'Prijs incl. BTW')), sortValue: (r) => cfNumber(r, 'Prijs incl. BTW') },
   { key: 'bron',         label: 'Bron',             width: 110, render: (r) => cfDropdownPill(r, 'Bron') ?? DASH, sortValue: (r) => cfValue(r, 'Bron') },
@@ -1930,7 +1934,12 @@ function EditableFieldsPanel({
       (f: any) => f?.id && f?.name && !HIDDEN_FIELD_TYPES.has(f?.type) &&
         // Het klantnummer van een bedrijf staat in "Urenregistratie en facturatie";
         // het oude importveld zou een tweede, afwijkend nummer tonen
-        !(entity === 'company' && String(f.name).toLowerCase() === 'klantnummer')
+        !(entity === 'company' && String(f.name).toLowerCase() === 'klantnummer') &&
+        // Details opdracht is opgegaan in Beschrijving (september 2026): één veld
+        // voor "waar gaat dit over", niet twee die uit elkaar lopen. Staat er
+        // nog tekst in (nog niet samengevoegd), dan blijft hij zichtbaar tot
+        // scripts/details-naar-beschrijving.mjs hem heeft overgezet.
+        !(String(f.name).toLowerCase() === 'details opdracht' && !String(f.value ?? '').trim())
     )
     // Dedupliceer op naam (de oude import heeft soms dubbele velden); hou het veld met waarde
     const byName = new Map<string, any>()
@@ -2418,6 +2427,8 @@ function activiteitIcoon(soort: string) {
   if (soort === 'contact') return <Mail size={11} className="text-purple-500" />
   if (soort === 'opvolging') return <Bell size={11} className="text-amber-500" />
   if (soort === 'blokkade') return <Ban size={11} className="text-gray-700" />
+  if (soort === 'opmerking') return <MessageSquare size={11} className="text-brand-lav-accent" />
+  if (soort === 'beschrijving') return <FileText size={11} className="text-amber-500" />
   return <PencilLine size={11} className="text-gray-400" />
 }
 
@@ -2433,9 +2444,21 @@ function fmtActiviteitTijd(iso: string): string {
     + ' ' + d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
 }
 
+/**
+ * Activiteit plus opmerkingen. Een opmerking is een losse, gedateerde notitie
+ * (soort 'opmerking' in crm_activiteiten) en verving het grote Notities-veld:
+ * wat je weet hoort bij een moment, tussen je contactmomenten en fasewissels,
+ * zodat je later terugziet wanneer je wat wist.
+ */
 function ActivityFeed({ record }: { record: CrmRecord }) {
+  const melding = useMelding()
   const [items, setItems] = useState<Activiteit[]>([])
   const [state, setState] = useState<'loading' | 'error' | 'done'>('loading')
+  const [nieuw, setNieuw] = useState('')
+  const [bezig, setBezig] = useState(false)
+  const [alleenOpmerkingen, setAlleenOpmerkingen] = useState(false)
+  const [bewerkId, setBewerkId] = useState<string | null>(null)
+  const [bewerkTekst, setBewerkTekst] = useState('')
 
   const load = useCallback(() => {
     setState('loading')
@@ -2447,14 +2470,92 @@ function ActivityFeed({ record }: { record: CrmRecord }) {
 
   useEffect(load, [load])
 
+  const plaats = async () => {
+    const tekst = nieuw.trim()
+    if (!tekst || bezig) return
+    setBezig(true)
+    try {
+      const res = await fetch('/api/crm/activiteiten', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recordId: record.id, tekst }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || 'Opmerking plaatsen mislukt')
+      setItems((prev) => [json, ...prev])
+      setNieuw('')
+    } catch (e: any) {
+      melding.fout(e.message)
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  const bewaarBewerking = async (id: string) => {
+    const tekst = bewerkTekst.trim()
+    if (!tekst) return
+    const res = await fetch('/api/crm/activiteiten', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, tekst }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) { melding.fout(json.error || 'Opslaan mislukt'); return }
+    setItems((prev) => prev.map((i) => (i.id === id ? json : i)))
+    setBewerkId(null)
+  }
+
+  const haalWeg = async (id: string) => {
+    const ok = await melding.bevestig({ titel: 'Opmerking weghalen?', tekst: 'Deze opmerking verdwijnt uit de kaart.', bevestigLabel: 'Weghalen', gevaarlijk: true })
+    if (!ok) return
+    const res = await fetch(`/api/crm/activiteiten?id=${id}`, { method: 'DELETE' })
+    if (!res.ok) { melding.fout('Weghalen mislukt'); return }
+    setItems((prev) => prev.filter((i) => i.id !== id))
+  }
+
   // Bestaat er geen log-entry voor het aanmaken (records van voor de feed),
   // toon dan de aanmaakdatum als synthetisch eerste item.
   const heeftAanmaak = items.some((i) => i.soort === 'aangemaakt')
   const aanmaakDatum = record.clickup_date_created || record.synced_at
+  const aantalOpmerkingen = items.filter((i) => i.soort === 'opmerking').length
+  const zichtbaar = alleenOpmerkingen ? items.filter((i) => i.soort === 'opmerking') : items
 
   return (
     <div className="h-full flex flex-col">
-      <h3 className="text-caption font-semibold uppercase tracking-wide text-brand-text-secondary mb-3 shrink-0">Activiteit</h3>
+      <div className="flex items-center justify-between gap-2 mb-3 shrink-0">
+        <h3 className="text-caption font-semibold uppercase tracking-wide text-brand-text-secondary">Activiteit</h3>
+        {aantalOpmerkingen > 0 && (
+          <button
+            onClick={() => setAlleenOpmerkingen((v) => !v)}
+            className={`text-caption rounded-full px-2 py-0.5 border transition-colors ${alleenOpmerkingen ? 'border-brand-lav-accent/40 bg-brand-lavender-light/50 text-brand-text-primary' : 'border-transparent text-brand-text-secondary hover:text-brand-text-primary'}`}
+          >
+            Alleen opmerkingen ({aantalOpmerkingen})
+          </button>
+        )}
+      </div>
+
+      {/* Nieuwe opmerking: Enter plaatst, shift+Enter is een nieuwe regel */}
+      <div className="mb-4 shrink-0">
+        <textarea
+          value={nieuw}
+          onChange={(e) => setNieuw(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); plaats() }
+          }}
+          placeholder="Opmerking toevoegen..."
+          rows={2}
+          className={`${VELD_INPUT} resize-none leading-relaxed placeholder:text-brand-text-secondary/50`}
+        />
+        {nieuw.trim() && (
+          <div className="flex items-center justify-between mt-1.5">
+            <span className="text-[11px] text-brand-text-secondary">Enter plaatst, shift+Enter nieuwe regel</span>
+            <button onClick={plaats} disabled={bezig} className="btn-primary text-xs py-1 px-2.5 disabled:opacity-50">
+              {bezig ? 'Bezig...' : 'Plaatsen'}
+            </button>
+          </div>
+        )}
+      </div>
+
       {state === 'loading' ? (
         <p className="text-xs text-gray-400">Laden...</p>
       ) : state === 'error' ? (
@@ -2463,11 +2564,50 @@ function ActivityFeed({ record }: { record: CrmRecord }) {
           <button onClick={load} className="text-xs text-indigo-600 hover:underline">Opnieuw proberen</button>
         </div>
       ) : (
-        <div className="space-y-3 overflow-y-auto pr-1">
-          {items.length === 0 && !aanmaakDatum && (
+        <div className="space-y-3 overflow-y-auto pr-1 min-h-0">
+          {zichtbaar.length === 0 && (alleenOpmerkingen || !aanmaakDatum) && (
             <p className="text-xs text-gray-400 italic">Nog geen activiteit</p>
           )}
-          {items.map((a) => (
+          {zichtbaar.map((a) => a.soort === 'opmerking' ? (
+            <div key={a.id} className="group/opm rounded-brand-sm border border-brand-card-border/15 bg-white dark:bg-brand-card-bg p-2.5">
+              {bewerkId === a.id ? (
+                <>
+                  <textarea
+                    autoFocus
+                    value={bewerkTekst}
+                    onChange={(e) => setBewerkTekst(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); bewaarBewerking(a.id) }
+                      if (e.key === 'Escape') setBewerkId(null)
+                    }}
+                    rows={3}
+                    className={`${VELD_INPUT} resize-y leading-relaxed`}
+                  />
+                  <div className="flex justify-end gap-2 mt-1.5">
+                    <button onClick={() => setBewerkId(null)} className="text-caption text-brand-text-secondary hover:text-brand-text-primary">Annuleren</button>
+                    <button onClick={() => bewaarBewerking(a.id)} className="btn-primary text-xs py-1 px-2.5">Opslaan</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-brand-text-primary leading-relaxed whitespace-pre-wrap break-words">{a.nieuwe_waarde}</p>
+                  <div className="flex items-center justify-between gap-2 mt-1">
+                    <p className="text-[11px] text-brand-text-secondary flex items-center gap-1">
+                      <MessageSquare size={10} className="text-brand-lav-accent" /> {fmtActiviteitTijd(a.created_at)}
+                    </p>
+                    <span className="flex items-center gap-1 opacity-0 group-hover/opm:opacity-100 focus-within:opacity-100 transition-opacity">
+                      <button onClick={() => { setBewerkId(a.id); setBewerkTekst(a.nieuwe_waarde || '') }} title="Aanpassen" className="p-0.5 text-brand-text-secondary hover:text-brand-text-primary">
+                        <PencilLine size={12} />
+                      </button>
+                      <button onClick={() => haalWeg(a.id)} title="Weghalen" className="p-0.5 text-brand-text-secondary hover:text-brand-status-red">
+                        <Trash2 size={12} />
+                      </button>
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
             <div key={a.id} className="flex gap-2">
               <div className="w-5 h-5 rounded-full bg-brand-card-bg border border-brand-card-border/20 flex items-center justify-center shrink-0 mt-0.5">
                 {activiteitIcoon(a.soort)}
@@ -2488,7 +2628,7 @@ function ActivityFeed({ record }: { record: CrmRecord }) {
               </div>
             </div>
           ))}
-          {!heeftAanmaak && aanmaakDatum && (
+          {!alleenOpmerkingen && !heeftAanmaak && aanmaakDatum && (
             <div className="flex gap-2">
               <div className="w-5 h-5 rounded-full bg-brand-card-bg border border-brand-card-border/20 flex items-center justify-center shrink-0 mt-0.5">
                 {activiteitIcoon('aangemaakt')}
@@ -2535,6 +2675,9 @@ function RecordDetailModal({
   const [notes, setNotes] = useState('')
   // Beschrijving is een gewoon wit tekstvlak dat je zelf bijwerkt. null = nog niet geladen.
   const [beschrijving, setBeschrijving] = useState<string | null>(null)
+  // Wat er in de database staat, zodat opslaan bij wegklikken alleen iets doet als het veranderd is
+  const [beschrijvingOpgeslagen, setBeschrijvingOpgeslagen] = useState('')
+  const [beschrijvingStand, setBeschrijvingStand] = useState<'' | 'bezig' | 'opgeslagen' | 'fout'>('')
   const [fieldEdits, setFieldEdits] = useState<Record<string, { value: any }>>({})
   // Alleen leads horen bij één bedrijf; bedrijven en contacten blijven gedeeld.
   const [companyId, setCompanyId] = useState<string>(record.company_id || '')
@@ -2556,7 +2699,10 @@ function RecordDetailModal({
         setFull(item)
         if (item && item.company_id !== undefined) setCompanyId(item.company_id || '')
         if (toonLader && item?.raw?.notes) setNotes(item.raw.notes)
-        if (toonLader && item) setBeschrijving(item.raw?.description ?? '')
+        if (toonLader && item) {
+          setBeschrijving(item.raw?.description ?? '')
+          setBeschrijvingOpgeslagen(item.raw?.description ?? '')
+        }
         // Verse opvolgwaarden uit de database overnemen
         if (item) {
           setOpvolgRec((prev) => ({
@@ -2635,8 +2781,26 @@ function RecordDetailModal({
   }, [record.id, laadFull])
 
   const raw = full?.raw || {}
-  const description: string | null = raw.description || null
   const tags = full?.tags || record.tags || []
+
+  /** Beschrijving opslaan zodra je uit het veld klikt, net als een opmerking. */
+  const bewaarBeschrijving = async () => {
+    if (beschrijving === null || beschrijving === beschrijvingOpgeslagen) return
+    const tekst = beschrijving
+    setBeschrijvingStand('bezig')
+    try {
+      const res = await fetch(`/api/crm/records/${record.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: tekst }),
+      })
+      if (!res.ok) throw new Error()
+      setBeschrijvingOpgeslagen(tekst)
+      setBeschrijvingStand('opgeslagen')
+    } catch {
+      setBeschrijvingStand('fout')
+    }
+  }
 
   const handleSave = async () => {
     setSaving(true)
@@ -2649,9 +2813,9 @@ function RecordDetailModal({
         body: JSON.stringify({
           name,
           status: currentStatus || undefined,
-          notes,
-          // Alleen meesturen als hij geladen en gewijzigd is, anders wis je hem
-          description: beschrijving !== null && beschrijving !== (description ?? '') ? beschrijving : undefined,
+          // Notities worden niet meer bewerkt (opmerkingen in de activiteit vervingen ze).
+          // De beschrijving slaat zichzelf op bij wegklikken; hier alleen als vangnet.
+          description: beschrijving !== null && beschrijving !== beschrijvingOpgeslagen ? beschrijving : undefined,
           due_date: dueDate && dueDate !== origDueDate ? `${dueDate}T12:00:00Z` : undefined,
           custom_fields: customFields.length ? customFields : undefined,
           company_id: record.entity_type === 'lead' ? companyId || null : undefined,
@@ -2845,21 +3009,27 @@ function RecordDetailModal({
                   className={`${VELD_INPUT} !text-body !p-4 resize-y min-h-[88px] leading-relaxed placeholder:text-brand-text-secondary/50`}
                   placeholder={record.entity_type === 'lead' ? 'Wat weet je van deze lead? Wie, wat zoeken ze, hoe kwam het binnen...' : 'Wat wil je hierover onthouden?'}
                   value={beschrijving ?? ''}
-                  onChange={(e) => setBeschrijving(e.target.value)}
+                  onChange={(e) => { setBeschrijving(e.target.value); setBeschrijvingStand('') }}
+                  onBlur={bewaarBeschrijving}
                   rows={3}
+                  style={{ fieldSizing: 'content' as any }}
                 />
+                <p className={`text-[11px] mt-1 h-4 ${beschrijvingStand === 'fout' ? 'text-brand-status-red' : 'text-brand-text-secondary'}`}>
+                  {beschrijvingStand === 'bezig' && 'Opslaan...'}
+                  {beschrijvingStand === 'opgeslagen' && 'Opgeslagen'}
+                  {beschrijvingStand === 'fout' && 'Opslaan mislukt, klik Opslaan onderaan om het nog eens te proberen'}
+                </p>
               </DetailSectie>
             )}
 
-            <DetailSectie titel="Notities">
-              <textarea
-                className={`${VELD_INPUT} resize-y min-h-[140px] leading-relaxed placeholder:text-brand-text-secondary/50`}
-                placeholder="Voeg een notitie toe..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={6}
-              />
-            </DetailSectie>
+            {/* Het grote Notities-veld is vervangen door opmerkingen in de kolom
+                Activiteit. Staat er bij een oud record nog iets in, dan blijft
+                het hier leesbaar. */}
+            {notes.trim() && (
+              <DetailSectie titel="Oude notities">
+                <p className="text-body text-brand-text-secondary whitespace-pre-wrap">{notes}</p>
+              </DetailSectie>
+            )}
           </div>
 
           {/* Details: status van contact, relaties, velden en uren */}

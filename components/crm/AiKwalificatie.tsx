@@ -61,6 +61,26 @@ export function AiScoreBadge({ record }: { record: AiVelden }) {
   )
 }
 
+/**
+ * Alleen het getal, voor de scorekolom in de lijst. Zelfde kleuren als de badge
+ * op de bordkaart, de samenvatting staat in de tooltip.
+ */
+export function AiScoreGetal({ record }: { record: AiVelden }) {
+  if (record.ai_status === 'bezig' || record.ai_status === 'wachtend') {
+    return <span className="text-xs text-brand-text-secondary animate-pulse" title="AI kijkt nog">...</span>
+  }
+  if (record.ai_score == null) return null
+  const kleur = SCORE_KLEUR[record.ai_prioriteit || 'laag'] || SCORE_KLEUR.laag
+  return (
+    <span
+      className={`inline-block min-w-[2rem] text-center text-xs px-1.5 py-0.5 rounded border font-medium tabular-nums ${kleur}`}
+      title={record.ai_samenvatting || undefined}
+    >
+      {record.ai_score}
+    </span>
+  )
+}
+
 /** Volledig blok voor de detailkaart. */
 export function AiKwalificatieBlok({
   recordId,
